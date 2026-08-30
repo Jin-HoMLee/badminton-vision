@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TrackNet browser spike</title>
+  <style>
+    :root { color-scheme: dark; font: 14px system-ui, sans-serif; }
+    body { max-width: 1000px; margin: 2rem auto; padding: 0 1rem; background: #14171a; color: #e8eaed; }
+    label { display: inline-flex; gap: .4rem; align-items: center; margin: .3rem 1rem .3rem 0; }
+    input, select, button { color: inherit; background: #252a30; border: 1px solid #59636d; border-radius: 4px; padding: .4rem; }
+    input[type=url] { width: 26rem; } button { cursor: pointer; }
+    pre { overflow: auto; white-space: pre-wrap; background: #0b0d0f; padding: 1rem; border-radius: 5px; }
+    .muted { color: #aeb7c0; } .error { color: #ff9b9b; }
+  </style>
+</head>
+<body>
+  <h1>TrackNet browser spike</h1>
+  <p class="muted">This page is deliberately shaped like an MV3 offscreen document: it owns no video element and receives three frame buffers per inference call.</p>
+  <form id="controls">
+    <label>Model URL <input id="model" type="text" value="/fixtures/tracknet_fixture.onnx" required></label>
+    <label>Backend <select id="backend"><option value="wasm">WASM</option><option value="webgl">WebGL</option><option value="webgpu">WebGPU</option></select></label>
+    <label>Resolution <select id="resolution"><option value="512x288">512 × 288</option><option value="640x360">640 × 360</option></select></label>
+    <label>Warm-up <input id="warmup" type="number" min="0" max="50" value="3"></label>
+    <label>Steady calls <input id="iterations" type="number" min="1" max="200" value="20"></label>
+    <button id="run" type="submit">Run benchmark</button>
+  </form>
+  <p id="status" class="muted">Ready.</p>
+  <pre id="result">No run yet.</pre>
+  <script src="/node_modules/onnxruntime-web/dist/ort.all.min.js"></script>
+  <script type="module" src="/src/app.mjs"></script>
+</body>
+</html>

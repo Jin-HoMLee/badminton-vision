@@ -1,0 +1,16 @@
+{
+  "name": "tracknet-browser-spike",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Spike A harness for TrackNet ONNX inference in a Chrome MV3/offscreen-shaped runtime",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "serve": "node scripts/server.mjs",
+    "benchmark": "node scripts/benchmark.mjs",
+    "make-fixture": ".venv/bin/python scripts/make_fixture.py"
+  },
+  "dependencies": {
+    "onnxruntime-web": "1.29.0"
+  }
+}
