@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Badminton Stats Overlay (runtime)",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "description": "A local-first runtime foundation for timestamp-synchronized badminton video analysis.",
+  "permissions": [
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "action": {
+    "default_title": "Badminton Stats Overlay"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/watch*",
+        "https://youtube.com/watch*"
+      ],
+      "js": [
+        "common/protocol.js",
+        "common/capabilities.js",
+        "common/synchronization.js",
+        "content/overlay.js",
+        "content/capture.js",
+        "content/video-discovery.js",
+        "content/runtime.js",
+        "content/main.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ]
+}
