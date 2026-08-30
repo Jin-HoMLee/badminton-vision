@@ -1,0 +1,11 @@
+{
+  "name": "badminton-stats-overlay-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first Chrome MV3 runtime foundation for Badminton Stats Overlay",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.js",
+    "check": "npm run build && npm test"
+  }
+}
