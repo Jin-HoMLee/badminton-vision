@@ -1,0 +1,41 @@
+<!-- @dsCard group="Components" viewport="700x430" name="Data" subtitle="CourtDiagram, StrokeFeedItem, SuggestionRow, StatTile, RallyRow, MixBar, Legend" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Data</title>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@0.446.0/dist/umd/lucide.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{padding:16px;background:radial-gradient(120% 90% at 20% 0%,#16222a 0%,var(--ink-900) 70%)}.row{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.col{display:flex;flex-direction:column;gap:12px}.cap{font:var(--type-label);letter-spacing:var(--ls-caps);text-transform:uppercase;color:var(--text-faint)}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const NS = window.BadmintonVisionDesignSystem_0ab536;
+
+const {CourtDiagram,StrokeFeedItem,SuggestionRow,StatTile,RallyRow,MixBar,Legend} = NS;
+const LANDINGS=[{x:1.6,y:11.4,call:'IN'},{x:3.2,y:12.2,call:'IN'},{x:4.8,y:10.6,call:'IN'},{x:2.2,y:13.9,call:'OUT'},{x:5.4,y:12.8,call:'IN'},{x:0.8,y:9.8,call:'UNKNOWN'},{x:3.9,y:2.4,call:'IN'},{x:2.1,y:3.6,call:'IN'},{x:5.2,y:1.2,call:'IN'},{x:6.4,y:2.9,call:'OUT'},{x:1.2,y:1.9,call:'UNKNOWN'},{x:4.4,y:4.6,call:'IN'}];
+function Card(){return (<div style={{display:'grid',gridTemplateColumns:'150px 1fr',gap:24,alignItems:'start'}}>
+  <div className="col" style={{gap:8}}>
+    <CourtDiagram width={150} landings={LANDINGS} colorBy="call"/>
+    <Legend direction="column" items={[{color:'var(--signal-in)',label:'Landed in'},{color:'var(--signal-out)',label:'Landed out'},{color:'var(--signal-unknown)',label:'Not located',dashed:true}]}/>
+  </div>
+  <div className="col" style={{gap:14}}>
+    <div className="col" style={{gap:2}}>
+      <StrokeFeedItem sequence={5} player="A" shot="Clear" time="12:02.140" status="accepted" confidence={0.91}/>
+      <StrokeFeedItem sequence={6} player="B" shot="Drop" time="12:03.020" status="corrected" source="manual" confidence={null}/>
+      <StrokeFeedItem sequence={7} player="A" status="unclassified" time="12:03.560" confidence={0.22}/>
+    </div>
+    <Legend items={[{color:'var(--player-a)',label:'Player A',shape:'bar'},{color:'var(--player-b)',label:'Player B',shape:'bar'},{color:'var(--signal-in)',label:'confirmed'},{color:'var(--signal-warn)',label:'guessing'},{color:'var(--signal-unknown)',label:'could not tell',dashed:true}]}/>
+    <SuggestionRow shot="Smash" confidence={0.61} time="12:04.120"/>
+    <div className="row" style={{gap:28}}>
+      <StatTile label="Rally" value="14"/>
+      <StatTile label="Shots" value="17"/>
+      <StatTile label="Duration" value="28.4" unit="s"/>
+      <StatTile label="Best rally score" value="87" tone="accent" note="42 rallies"/>
+    </div>
+    <MixBar segments={[{label:'Clear',value:22,color:'var(--player-a)'},{label:'Smash',value:14,color:'var(--lime-500)'},{label:'Net',value:11,color:'var(--player-b)'},{label:'Unclassified',value:6}]}/>
+    <RallyRow rank={1} rallyId={23} index={87} shots={31} duration="42.6s" outcome="winner" timestamp="18:42" partial/>
+  </div>
+</div>);}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Card/>);
+</script></body></html>

@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Badminton Vision",
+  "description": "A local-first, confidence-aware badminton rally review overlay.",
+  "version": "0.1.0",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["*://www.youtube.com/*", "*://youtube.com/*"],
+  "action": {
+    "default_title": "Badminton Vision",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "design-system/assets/icon-16.svg",
+      "32": "design-system/assets/icon-16.svg",
+      "48": "design-system/assets/icon.svg",
+      "128": "design-system/assets/icon.svg"
+    }
+  },
+  "icons": {
+    "16": "design-system/assets/icon-16.svg",
+    "32": "design-system/assets/icon-16.svg",
+    "48": "design-system/assets/icon.svg",
+    "128": "design-system/assets/icon.svg"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/watch*", "*://youtube.com/watch*"],
+      "js": ["runtime.js", "analysis.js", "fixtures.js", "state.js", "ui.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["styles.css", "design-system/tokens/*", "design-system/assets/*"],
+      "matches": ["*://www.youtube.com/*", "*://youtube.com/*"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

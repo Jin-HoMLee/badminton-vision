@@ -1,0 +1,50 @@
+<!-- @dsCard group="Components" viewport="700x380" name="Feedback" subtitle="StatusChip, ConfidenceMeter, StepDots, EmptyState, Callout, InfoTip" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Feedback</title>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@0.446.0/dist/umd/lucide.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{padding:16px;background:radial-gradient(120% 90% at 20% 0%,#16222a 0%,var(--ink-900) 70%)}.row{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.col{display:flex;flex-direction:column;gap:12px}.cap{font:var(--type-label);letter-spacing:var(--ls-caps);text-transform:uppercase;color:var(--text-faint)}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const NS = window.BadmintonVisionDesignSystem_0ab536;
+
+const {StatusChip,ConfidenceMeter,StepDots,EmptyState,Callout,InfoTip,Button,Icon} = NS;
+function Card(){return (<div className="col" style={{gap:14}}>
+  <Callout tone="guide" title="This is your rally, shot by shot" onDismiss={()=>{}}>
+    Green means the system is sure. Amber means it is guessing — click any row to fix it.
+  </Callout>
+  <div style={{display:'grid',gridTemplateColumns:'1fr 250px',gap:20,alignItems:'start'}}>
+    <div className="col">
+      <div className="row">
+        <StatusChip state="live" label="Rally 14" detail="12:04.320"/>
+        <StatusChip state="stale" label="Analysis behind" detail="+1.2s"/>
+        <StatusChip state="error" label="Camera cut · set up again"/>
+      </div>
+      <div className="row" style={{gap:18}}>
+        <ConfidenceMeter value={0.88} showWord/>
+        <ConfidenceMeter value={0.56} showWord/>
+        <ConfidenceMeter value={0.24} showWord/>
+        <ConfidenceMeter value={null} showWord/>
+      </div>
+      <div className="row" style={{gap:18}}>
+        <StepDots total={4} current={2} labels={['Near left','Near right','Far right','Far left']}/>
+        <span style={{font:'var(--type-ui-sm)',color:'var(--text-muted)',display:'inline-flex',alignItems:'center',gap:6}}>
+          Best rallies score
+          <InfoTip term="Best rallies score">A 0–100 score that ranks rallies by length, shot variety, how the point ended, and how sure the tracking was.</InfoTip>
+        </span>
+      </div>
+      <Callout tone="warn" title="Score not readable">The on-screen score could not be read, so rally endings are ranked without it.</Callout>
+    </div>
+    <div style={{border:'1px solid var(--border-hairline)',borderRadius:'var(--radius-lg)',background:'var(--surface-panel)'}}>
+      <EmptyState compact icon={<Icon name="crosshair" size={20}/>} title="Court not set up yet"
+        body="Click the four outer corners once — every other line is drawn for you."
+        action={<Button variant="primary" size="sm">Set up court</Button>}/>
+    </div>
+  </div>
+</div>);}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Card/>);
+</script></body></html>
