@@ -1,0 +1,12 @@
+{
+  "name": "badminton-analysis-core",
+  "private": true,
+  "description": "Dependency-free backend analysis primitives for badminton-vision",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
