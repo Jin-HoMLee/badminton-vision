@@ -220,21 +220,26 @@ npm run check
 
 Load `dist/` from `chrome://extensions` with **Developer mode → Load unpacked**. The action popup is the 360px control center. On a YouTube watch page it sends explicit messages to the sibling content overlay, which provides the four-corner court seed, Minimal-first live panels, inline suggestion correction, keyboard-first manual labeling, and the summary/export tab. The same content UI receives runtime capability/result messages through the small seam in `src/runtime.js`.
 
-The default analyzer is the deterministic `fixture-probe-v1`: a local runtime
-integration probe, not production CV. It proves capture → service-worker →
-offscreen messaging and leaves player/shuttle/shot values unknown or editable.
-`src/extension/offscreen/movenet-adapter.js` implements the local MoveNet
-MultiPose Lightning decode/backend seam and feeds normalized observations into
-four-track-capable session association, but the checkpoint is deliberately not
-bundled: the official MultiPose model card does not provide an explicit weight
-redistribution license. The TensorFlow.js source license does not clear the
-weights. See `docs/runtime.md` for this concrete release gate. The versioned
-pose shape and deterministic multi-person association gates live in
-`src/extension/common/player-tracking.js`; see
-`docs/runtime.md` for the contract, runtime smoke check, and canonical
-packaging details. The standalone shuttle candidate/trajectory experiment is
-documented in [`docs/shuttle-tracking.md`](docs/shuttle-tracking.md); it is
-packaged but intentionally not wired into the live offscreen session yet.
+The canonical analyzer is the bundled local `lightweight-openpose-lite-256-v1`
+path: an Apache-2.0 LiteRT/TFLite conversion with an 18-keypoint heatmap
+output. `src/extension/offscreen/lite-openpose-adapter.js` decodes up to four
+local pose candidates and feeds normalized observations into session-local
+association. Its model, LiteRT.js runtime, WASM executors, licenses, source
+links, and artifact hash are packaged under
+`src/extension/offscreen/vendor/`; no network fetch is used for inference.
+WebGPU is attempted first, WebGL is reported honestly as unsupported by
+LiteRT.js, and WASM is the local fallback. If the local runtime or checkpoint
+is unavailable, the analyzer reports `inference: false` and unknown pose state;
+the deterministic `fixture-probe-v1` is only used when the production analyzer
+script is absent (for Node plumbing diagnostics), never as a silent CV
+substitute. `src/extension/offscreen/movenet-adapter.js` remains a tested
+legacy MoveNet seam, but its uncleared checkpoint is not selected or bundled.
+The versioned pose shape and deterministic multi-person association gates live
+in `src/extension/common/player-tracking.js`; see `docs/runtime.md` for the
+contract, licensing notice, runtime smoke check, and canonical packaging
+details. The standalone shuttle candidate/trajectory experiment is documented
+in [`docs/shuttle-tracking.md`](docs/shuttle-tracking.md); it is packaged but
+intentionally not wired into the live offscreen session yet.
 
 `src/runtime.js` is the read-only playback boundary and UI seam. It reads
 `currentTime`, frame metadata, dimensions, and playback state; it does not

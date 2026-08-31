@@ -19,6 +19,7 @@ const uiFiles = [
   "popup.html",
   "popup.js",
   "runtime.js",
+  "seed-card.js",
   "state.js",
   "styles.css",
   "summary.html",
@@ -41,10 +42,23 @@ const runtimeFiles = [
   ["content/runtime.js", "content/runtime.js"],
   ["offscreen/analyzer.js", "offscreen/analyzer.js"],
   ["offscreen/movenet-adapter.js", "offscreen/movenet-adapter.js"],
+  ["offscreen/lite-runtime-loader.js", "offscreen/lite-runtime-loader.js"],
+  ["offscreen/lite-openpose-adapter.js", "offscreen/lite-openpose-adapter.js"],
   // Kept packaged but intentionally not loaded by offscreen.html: the local
   // shuttle adapter is an experimental seam until a later integration pass.
   ["offscreen/shuttle-tracking-adapter.js", "offscreen/shuttle-tracking-adapter.js"],
   ["offscreen/fixture-model.js", "offscreen/fixture-model.js"],
+  ["offscreen/vendor/lite-openpose/pose_256.tflite", "offscreen/vendor/lite-openpose/pose_256.tflite"],
+  ["offscreen/vendor/lite-openpose/LICENSE", "offscreen/vendor/lite-openpose/LICENSE"],
+  ["offscreen/vendor/litert/core.js", "offscreen/vendor/litert/core.js"],
+  ["offscreen/vendor/litert/wasm-utils.js", "offscreen/vendor/litert/wasm-utils.js"],
+  ["offscreen/vendor/litert/litert_wasm_internal.js", "offscreen/vendor/litert/litert_wasm_internal.js"],
+  ["offscreen/vendor/litert/litert_wasm_internal.wasm", "offscreen/vendor/litert/litert_wasm_internal.wasm"],
+  ["offscreen/vendor/litert/litert_wasm_compat_internal.js", "offscreen/vendor/litert/litert_wasm_compat_internal.js"],
+  ["offscreen/vendor/litert/litert_wasm_compat_internal.wasm", "offscreen/vendor/litert/litert_wasm_compat_internal.wasm"],
+  ["offscreen/vendor/litert/LICENSE", "offscreen/vendor/litert/LICENSE"],
+  ["offscreen/vendor/litert/LITERT-README.md", "offscreen/vendor/litert/LITERT-README.md"],
+  ["offscreen/vendor/lite-openpose/MODEL-NOTICE.md", "offscreen/vendor/lite-openpose/MODEL-NOTICE.md"],
   ["offscreen/offscreen.html", "offscreen/offscreen.html"],
   ["offscreen/offscreen.js", "offscreen/offscreen.js"]
 ];
@@ -125,7 +139,7 @@ for (const file of contentScripts) {
   if (!required.includes(file)) throw new Error(`Manifest content script is not packaged: ${file}`);
 }
 const offscreenHtml = await readFile(join(dist, "offscreen/offscreen.html"), "utf8");
-for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
+for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "lite-runtime-loader.js", "lite-openpose-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
   if (!offscreenHtml.includes(`src="${script}"`)) throw new Error(`Packed offscreen document is missing ${script}`);
 }
 await assertNoRemoteDependencies(dist);

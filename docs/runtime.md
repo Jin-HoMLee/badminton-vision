@@ -1,11 +1,11 @@
 # Runtime contract and local integration slice
 
 This repository contains a local-first Chrome MV3 runtime foundation and a
-small end-to-end runtime integration slice. It intentionally does not claim
-that production player/shuttle computer vision is solved. The offscreen
-analyzer is a committed deterministic fixture probe until a cleared model
-artifact is available; it is not TrackNet, model weights, court analytics, or
-a production CV model.
+local player-pose inference slice. Shuttle, stroke, court, and rally computer
+vision remain outside this slice. The canonical offscreen analyzer is the
+bundled Apache-2.0 Lightweight OpenPose LiteRT conversion; its local artifact
+and runtime are versioned under `src/extension/offscreen/vendor/`. The
+committed deterministic fixture remains only an explicit plumbing fallback.
 
 ## Canonical build and load
 
@@ -118,18 +118,20 @@ and media timestamps are copied into every result, and all of this work is
 synchronous and local to the offscreen analyzer; it never blocks or mutates
 playback.
 
-The offscreen HTML loads this contract before the MoveNet adapter and fixture
-analyzer. `offscreen/movenet-adapter.js` decodes the official MultiPose output
-shape (`[1, 6, 56]`), maps its padded coordinates back to the captured frame,
-and feeds normalized observations to `SessionPlayerTracker`; its result is
-placed under the existing model-neutral `analysis.result` envelope. The
-adapter probes WebGPU, WebGL, and WASM with a real tensor operation before
-loading a model, and drops stale or concurrent frames without mutating the
-tracker. The public package currently selects the fixture because the official
-MoveNet MultiPose weight release has no explicit redistribution license in the
-model card or artifact metadata. The TensorFlow.js source license does not by
-itself clear the weights, so no model, TensorFlow.js runtime, or CDN fallback
-is bundled. This is an intentional release gate, not a production CV claim.
+The offscreen HTML loads this contract before the LiteRT runtime loader,
+Lightweight OpenPose adapter, MoveNet seam, and fixture analyzer.
+`offscreen/lite-openpose-adapter.js` decodes the cleared model's
+`[1, 32, 32, 19]` heatmap output, groups torso-anchored local peaks into up to
+four normalized candidates, and feeds them to `SessionPlayerTracker`; its
+result is placed under the existing model-neutral `analysis.result` envelope.
+It reports WebGPU compile failure, LiteRT's unsupported WebGL backend, and WASM
+fallback separately, and drops stale or concurrent frames without mutating the
+tracker. The model card explicitly clears the published conversion and source
+weights under Apache-2.0; `vendor/lite-openpose/MODEL-NOTICE.md` records the
+source links and SHA-256. LiteRT.js 2.5.3 and both selected WASM executors are
+Apache-2.0 and are packaged locally. The older `movenet-adapter.js` remains a
+contract-tested seam only: its official checkpoint is not bundled because the
+MoveNet model card does not state a weight redistribution license.
 
 ## MoveNet artifact release gate
 
@@ -223,12 +225,16 @@ MV3 JSON messaging, avoiding the silent `{}` conversion that would otherwise
 make the offscreen frame unreadable. A channel that explicitly reports
 `message_serialization: "structured_clone"` may send the bitmap with the
 existing `transferables` contract. The service-worker relay preserves
-the message shape across the offscreen boundary. The default offscreen analyzer is `fixture-probe-v1`:
-it reads the local frame pixels (through a canvas for the bitmap path) and runs a deterministic sampled-RGB
-checksum fixture. Results identify themselves as `runtime-integration-probe`,
-set `runtimeIntegrationTest: true` and `productionModel: false`, and remain
-explicitly unclassified. This is not a production player or shuttle CV model;
-no TrackNet asset is used in the live runtime path.
+the message shape across the offscreen boundary. The canonical offscreen analyzer is the local
+`lightweight-openpose-lite-256-v1` pose path. It reads the local frame pixels,
+creates the model's bounded 256x256 RGB input, runs LiteRT locally, and returns
+normalized two-player-capable pose observations with session-local IDs. Its
+result identifies `productionModel: true` only when inference succeeds; an
+artifact/backend failure returns unknown observations and
+`inferenceAvailable: false`. The explicit `fixture-probe-v1` fallback reads
+local pixels only to prove plumbing, identifies itself as
+`runtime-integration-probe`, and never produces player/shuttle/shot claims.
+No TrackNet asset is used in the live runtime path.
 
 ## Synchronization and stale results
 
@@ -247,10 +253,13 @@ The renderer never waits for inference and never seeks to catch up. Playback-rat
 The runtime reports capture mode, frame transport, offscreen availability,
 analyzer name, inference availability, and fallback reasons. The expected
 stable ready state is `frameTransport: "rgba-array-v1"`,
-`analyzer: "fixture-probe-v1"`, and `inference: true`, with the explicit
-fallback `runtime-integration-probe-not-production-cv`; this is a local
-plumbing signal, not a model-quality claim. Missing offscreen support reports
-`analyzer: "none"` and `inference: false`. Missing frame-copy support,
+`analyzer: "lightweight-openpose-lite-256-v1"`, and `inference: true`, with
+backend status identifying WebGPU or WASM. LiteRT's WebGL path is explicitly
+reported as unsupported rather than mislabeled. If the local artifact/runtime
+or backend is unavailable, capability state reports `inference: false` and
+`analyzer: "none"`; results carry an unavailable identity and unknown pose
+state. The fixture's explicit diagnostics state uses
+`runtime-integration-probe-not-production-cv`. Missing frame-copy support,
 serialization canvas support, disconnected runtime ports, invalid protocol
 messages, and analyzer errors are visible in the UI status surfaces while
 playback remains untouched.
