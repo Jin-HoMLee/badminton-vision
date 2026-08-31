@@ -25,6 +25,22 @@ test("public setup journey keeps minimal density and exposes reversible states",
   assert.equal(current.labeling, true);
   current = state.reduceExtensionState(current, { type: "CLOSE_LABELING" });
   assert.equal(current.labeling, false);
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL", panel: "stats", value: true });
+  assert.equal(current.panels.stats, true);
+  current = state.reduceExtensionState(current, { type: "SET_DENSITY", value: "full" });
+  assert.equal(current.panels.stats, true);
+  assert.equal(current.panels.map, true);
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL", panel: "map", value: false });
+  current = state.reduceExtensionState(current, { type: "SET_DENSITY", value: "minimal" });
+  assert.equal(current.panels.map, false);
+  current = state.reduceExtensionState(current, { type: "SET_DENSITY", value: "full" });
+  assert.equal(current.panels.map, false);
+  current = state.reduceExtensionState(current, { type: "OPEN_OVERLAY" });
+  assert.equal(current.enabled, true);
+  current = state.reduceExtensionState(current, { type: "DISABLE" });
+  assert.equal(current.enabled, false);
+  assert.equal(current.panels.stats, true);
+  assert.equal(current.panelOverrides.map, false);
 });
 
 test("court instruction position is video-local, normalized, and safely reset", async () => {
@@ -64,6 +80,19 @@ test("video-local calibration state persists for one video and resets on navigat
   assert.equal(reset.calibration, null);
   assert.equal(reset.seedPoints.length, 0);
   assert.equal(reset.density, "minimal");
+  assert.equal(reset.manualLabels.length, 0);
+});
+
+test("manual review records persist by event id and reset with the video", async () => {
+  const state = await stateModule();
+  const label = { eventId: "r14-s07", shot: "Smash", source: "manual", status: "corrected", axes: { Timing: "late" } };
+  let current = state.initialExtensionState({ manualLabels: [label] });
+  assert.equal(current.manualLabels[0].eventId, "r14-s07");
+  assert.equal(current.manualLabels[0].axes.Timing, "late");
+  current = state.reduceExtensionState(current, { type: "DISABLE" });
+  assert.equal(current.manualLabels.length, 1);
+  current = state.resetVideoLocalState(current, "youtube:next");
+  assert.equal(current.manualLabels.length, 0);
 });
 
 test("camera-cut invalidation requires a fresh seed", async () => {

@@ -6,6 +6,7 @@
   var mapMode = "call";
   var notice = "";
   var runtimeStatus = null;
+  var storedState = window.BVState ? window.BVState.initialExtensionState() : { manualLabels: [] };
 
   function formatTime(seconds) {
     var minutes = Math.floor(seconds / 60);
@@ -15,9 +16,13 @@
   function count(predicate) { return data.landings.filter(predicate).length; }
   function copyTimestamp(rally) {
     var text = formatTime(rally.startSec);
-    notice = "Timestamp " + text + " copied. Playback was not changed.";
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(function () {});
-    render();
+    notice = "Timestamp " + text + " ready. Playback was not changed.";
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        notice = "Timestamp " + text + " copied. Playback was not changed.";
+        render();
+      }).catch(function () { render(); });
+    } else render();
   }
   function download(name, content) {
     var link = document.createElement("a");
@@ -26,22 +31,32 @@
     link.click();
     setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
   }
+  function reviewStrokes() {
+    return window.BVReview ? window.BVReview.mergeStrokes(data.strokes, storedState.manualLabels) : data.strokes.slice();
+  }
   function shotRows() {
-    return data.strokes.map(function (stroke, index) {
-      return {
-        video_url: data.video.url,
-        shot_id: stroke.eventId,
-        start_sec: 721 + index * .7,
-        end_sec: 721 + index * .7 + .4,
-        label: stroke.shot || "unclassified",
-        longitudinal_position: "",
-        lateral_position: "",
-        timing: "",
-        intention: "",
-        impact: "",
-        direction: ""
-      };
+    var videoUrl = storedState.videoUrl || data.video.url;
+    return reviewStrokes().map(function (stroke, index) {
+      return window.BVReview ? window.BVReview.toShotRow(stroke, videoUrl, index) : { video_url: videoUrl, shot_id: stroke.eventId, label: stroke.shot || "unclassified" };
     });
+  }
+  function backToVideo() {
+    var from = "";
+    try { from = new URLSearchParams(window.location.search).get("from") || ""; } catch (_) {}
+    if (from && typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.query) {
+      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        var tab = tabs && tabs[0];
+        if (tab && tab.id != null && chrome.tabs.update) chrome.tabs.update(tab.id, { url: from });
+        else if (window.location) window.location.href = from;
+      });
+    } else if (from && window.location) {
+      window.location.href = from;
+    } else if (window.close) {
+      window.close();
+      // window.close() is a no-op for a tab not opened by script. History is
+      // the local fallback for a summary opened without a source URL.
+      if (window.history && window.history.back) window.history.back();
+    } else if (window.history && window.history.back) window.history.back();
   }
   function rallyRows() {
     var ranked = window.BVAnalysis.rankRallies(data.rallies);
@@ -56,7 +71,7 @@
   function render() {
     var ranked = window.BVAnalysis.rankRallies(data.rallies).slice(0, 5);
     var header = ui.el("header", { className: "bv-summary-header" }, [
-      ui.iconButton("arrow-left", "Back to video", { variant: "solid", size: "md", onClick: function () { if (window.close) window.close(); } }),
+      ui.iconButton("arrow-left", "Back to video", { variant: "solid", size: "md", onClick: backToVideo }),
       ui.el("div", { className: "bv-summary-heading" }, [
         ui.el("h1", {}, ["Match summary"]),
         ui.el("p", {}, [data.video.title + " · local data only, nothing uploaded"])
@@ -68,23 +83,37 @@
     ]);
     var runtimeNotice = runtimeStatus && runtimeStatus.phase === "fallback"
       ? ui.callout("warn", "Local analysis fallback", "Playback was unaffected. Manual labels remain available; no production CV result is asserted.")
-      : ui.callout("guide", runtimeStatus && runtimeStatus.resultKind === "runtime-integration-probe" ? "Fixture result observed" : "Fixture analyzer boundary", "The deterministic local fixture is an integration probe, not production CV. Player detections remain unknown/partial and no model is bundled.");
-    var overview = block("Overview", "42 rallies · 249 shots · manual + fixture probe", ui.el("div", { className: "bv-overview-grid" }, [ui.stat("Match duration", "1:12:40"), ui.stat("Rallies", "42"), ui.stat("Shots", "249"), ui.stat("Avg rally", "8.4", "shots", "42 rallies"), ui.stat("Longest rally", "31", "shots", "rally 23 · 18:42", true)]));
+      : runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer !== "fixture-probe-v1"
+        ? ui.callout("guide", "Local pose runtime active", "Pose tracking runs on-device. Rally shots, shuttle paths, and this summary are deterministic fixture/demo data until production shot analysis is available.")
+        : ui.callout("guide", runtimeStatus && runtimeStatus.resultKind === "runtime-integration-probe" ? "Fixture result observed" : "Fixture analyzer boundary", "The deterministic local fixture is an integration probe, not production CV. Player detections remain unknown/partial; manual labels stay local and editable.");
+    var reviewedStrokes = reviewStrokes();
+    var shotTotal = 249 + Math.max(0, reviewedStrokes.length - data.strokes.length);
+    var manualCount = storedState.manualLabels.filter(function (label) { return label && label.source === "manual"; }).length;
+    var reviewMeta = manualCount ? "42 rallies · " + shotTotal + " shots · " + manualCount + " manual review" + (manualCount === 1 ? "" : "s") + " · fixture probe" : "42 rallies · " + shotTotal + " shots · manual + fixture probe";
+    var overview = block("Overview", reviewMeta, ui.el("div", { className: "bv-overview-grid" }, [ui.stat("Match duration", "1:12:40"), ui.stat("Rallies", "42"), ui.stat("Shots", String(shotTotal)), ui.stat("Avg rally", "8.4", "shots", "42 rallies"), ui.stat("Longest rally", "31", "shots", "rally 23 · 18:42", true)]));
     var filters = ui.el("div", { className: "bv-filter-row", "aria-label": "Shot mix filters" }, [ui.chip("All", filter === "all", function () { filter = "all"; render(); }), ui.chip("Player A", filter === "player a", function () { filter = "player a"; render(); }), ui.chip("Player B", filter === "player b", function () { filter = "player b"; render(); })]);
     var mixes = ui.el("div", { className: "bv-summary-two-col" }, [block("Shot mix", "18 unclassified", ui.el("div", {}, [ui.mixBar(data.shotMix), filters])), block("Winner / error attribution", "12 unclassified", ui.el("div", {}, [ui.mixBar(data.outcomeMix), ui.el("p", { className: "bv-disclaimer", style: { marginTop: "var(--sp-6)" } }, ["Attribution needs a known final landing and player identity. Where either is missing the rally stays unclassified rather than being guessed."]) ]))]);
     var rallyList = ui.el("div", { className: "bv-rally-list" }, ranked.map(function (rally, index) { rally.timestamp = formatTime(rally.startSec); return ui.rallyRow(rally, index + 1, copyTimestamp); }));
     var rallyFoot = ui.el("div", { className: "bv-footnote" }, [ui.badge("*partial", "warn"), ui.el("span", {}, ["index = 0.40 length percentile + 0.25 variety + 0.20 outcome pressure + 0.15 mean tracking confidence. Score OCR unavailable on starred rallies, so outcome pressure used the ordinary-state value."]) ]);
     if (notice) rallyFoot.appendChild(ui.el("span", { role: "status", style: { marginLeft: "auto", color: "var(--signal-in)" } }, [notice]));
     var topRallies = block("Top rallies", "highlights index · deterministic · 12-rally sample", ui.el("div", {}, [rallyList, rallyFoot]));
-    var located = count(function (point) { return point.call !== "UNKNOWN"; });
-    var map = ui.el("div", { className: "bv-map-layout" }, [ui.el("div", {}, [ui.courtDiagram({ renderWidth: 190, labels: true, landings: data.landings, colorBy: mapMode, ariaLabel: "Court landing map" })]), ui.el("div", { className: "bv-map-copy" }, [ui.segmented([{ value: "call", label: "By line call" }, { value: "player", label: "By player" }, { value: "pro", label: "Compare to pro", disabled: true }], mapMode, function (value) { mapMode = value; render(); }), ui.el("p", {}, ["One dot per shot: the point on the court where the shuttle came down, for every rally in this match. Dots are projected through the court seed onto the canonical 13.40 × 6.10 m court, so they are comparable across camera angles and across videos."]), mapMode === "player" ? ui.legend([{ color: "var(--player-a)", label: "Player A hit it", value: count(function (point) { return point.side === "a"; }) }, { color: "var(--player-b)", label: "Player B hit it", value: count(function (point) { return point.side === "b"; }) }]) : ui.legend([{ color: "var(--signal-in)", label: "Landed in", value: count(function (point) { return point.call === "IN"; }) }, { color: "var(--signal-out)", label: "Landed out", value: count(function (point) { return point.call === "OUT"; }) }, { color: "var(--signal-unknown)", label: "Not located", value: count(function (point) { return point.call === "UNKNOWN"; }), dashed: true }]), ui.el("p", { className: "bv-disclaimer" }, ["A 40 mm line belongs to the area it bounds (BWF Law 1.3), so a shuttle touching the line reads IN. Shots the shuttle tracker could not locate stay dashed and are excluded from the counts above."])])]);
-    var landingMap = block("Where the shuttle landed", located + " of " + data.landings.length + " shots located · " + (data.landings.length - located) + " unknown", map);
+    var visibleLandings = data.landings.filter(function (point) { return filter === "all" || point.side === (filter === "player a" ? "a" : "b"); });
+    var located = visibleLandings.filter(function (point) { return point.call !== "UNKNOWN"; }).length;
+    var visibleCount = function (predicate) { return visibleLandings.filter(predicate).length; };
+    var map = ui.el("div", { className: "bv-map-layout" }, [ui.el("div", {}, [ui.courtDiagram({ renderWidth: 190, labels: true, landings: visibleLandings, colorBy: mapMode, ariaLabel: "Court landing map" })]), ui.el("div", { className: "bv-map-copy" }, [ui.segmented([{ value: "call", label: "By line call" }, { value: "player", label: "By player" }, { value: "pro", label: "Compare to pro", disabled: true }], mapMode, function (value) { mapMode = value; render(); }), ui.el("p", {}, ["One dot per shot: the point on the court where the shuttle came down, for every rally in this match. Dots are projected through the court seed onto the canonical 13.40 × 6.10 m court, so they are comparable across camera angles and across videos."]), mapMode === "player" ? ui.legend([{ color: "var(--player-a)", label: "Player A hit it", value: visibleCount(function (point) { return point.side === "a"; }) }, { color: "var(--player-b)", label: "Player B hit it", value: visibleCount(function (point) { return point.side === "b"; }) }]) : ui.legend([{ color: "var(--signal-in)", label: "Landed in", value: visibleCount(function (point) { return point.call === "IN"; }) }, { color: "var(--signal-out)", label: "Landed out", value: visibleCount(function (point) { return point.call === "OUT"; }) }, { color: "var(--signal-unknown)", label: "Not located", value: visibleCount(function (point) { return point.call === "UNKNOWN"; }), dashed: true }]), ui.el("p", { className: "bv-disclaimer" }, ["A 40 mm line belongs to the area it bounds (BWF Law 1.3), so a shuttle touching the line reads IN. Shots the shuttle tracker could not locate stay dashed and are excluded from the counts above."])])]);
+    var landingMap = block("Where the shuttle landed", located + " of " + visibleLandings.length + " shots located · " + (visibleLandings.length - located) + " unknown", map);
     app.replaceChildren(ui.el("div", { className: "bv-summary-inner" }, [header, runtimeNotice, overview, mixes, topRallies, landingMap]));
   }
   render();
   if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(["bvRuntimeStatus"], function (result) {
+    chrome.storage.local.get(["bvState", "bvRuntimeStatus"], function (result) {
+      if (result && result.bvState && window.BVState) storedState = window.BVState.initialExtensionState(result.bvState);
       if (result && result.bvRuntimeStatus) runtimeStatus = result.bvRuntimeStatus;
+      render();
+    });
+    if (chrome.storage.onChanged && chrome.storage.onChanged.addListener) chrome.storage.onChanged.addListener(function (changes) {
+      if (changes.bvState && changes.bvState.newValue && window.BVState) storedState = window.BVState.initialExtensionState(changes.bvState.newValue);
+      if (changes.bvRuntimeStatus && changes.bvRuntimeStatus.newValue) runtimeStatus = changes.bvRuntimeStatus.newValue;
       render();
     });
   }

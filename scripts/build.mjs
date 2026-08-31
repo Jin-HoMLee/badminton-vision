@@ -18,6 +18,7 @@ const uiFiles = [
   "fixtures.js",
   "popup.html",
   "popup.js",
+  "review.js",
   "runtime.js",
   "seed-card.js",
   "state.js",

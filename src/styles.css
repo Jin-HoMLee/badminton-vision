@@ -237,6 +237,8 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-feed-time { font: var(--type-mono); font-size: var(--fs-10); color: var(--text-faint); }
 .bv-feed-meta { display: flex; align-items: center; gap: var(--sp-3); }
 .bv-suggestion { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-4); border: 1px dashed rgba(200,240,74,.5); border-radius: var(--radius-sm); background: var(--lime-tint); }
+.bv-review-undo { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-3); padding: var(--sp-3) var(--sp-4); border: 1px solid rgba(98,182,255,.35); border-radius: var(--radius-sm); background: var(--signal-info-tint); color: var(--text-muted); font: var(--type-ui-sm); font-size: var(--fs-11); }
+.bv-review-undo > span { min-width: 0; flex: 1; }
 .bv-suggestion-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: var(--sp-2); }
 .bv-suggestion-line { display: flex; align-items: baseline; gap: var(--sp-3); }
 .bv-suggestion-label { font: var(--type-label); letter-spacing: var(--ls-caps); text-transform: uppercase; color: var(--lime-600); }
@@ -353,6 +355,20 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
   .bv-summary-actions { width: 100%; margin-left: 0; }
   .bv-overview-grid { grid-template-columns: repeat(3, 1fr); }
   .bv-summary-two-col { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .bv-summary-header { gap: var(--sp-4); }
+  .bv-summary-heading h1 { font-size: var(--fs-22); }
+  .bv-summary-actions { flex-wrap: wrap; }
+  .bv-summary-actions .bv-button { flex: 1; }
+  .bv-overview-grid { grid-template-columns: repeat(2, 1fr); gap: var(--sp-5); }
+  .bv-block { padding: var(--sp-5); }
+  .bv-map-layout { flex-direction: column; gap: var(--sp-6); }
+  .bv-rally-row { grid-template-columns: 22px 40px minmax(0, 1fr); gap: var(--sp-3); }
+  .bv-rally-row > .bv-badge, .bv-rally-row > .bv-review { grid-column: 3; justify-self: start; }
+  .bv-footnote { flex-wrap: wrap; }
+  .bv-axis { align-items: flex-start; flex-direction: column; gap: var(--sp-2); }
+  .bv-axis-label { flex-basis: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0ms !important; transition-duration: 0ms !important; }
