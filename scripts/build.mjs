@@ -39,6 +39,7 @@ const runtimeFiles = [
   ["content/video-discovery.js", "content/video-discovery.js"],
   ["content/runtime.js", "content/runtime.js"],
   ["offscreen/analyzer.js", "offscreen/analyzer.js"],
+  ["offscreen/movenet-adapter.js", "offscreen/movenet-adapter.js"],
   ["offscreen/fixture-model.js", "offscreen/fixture-model.js"],
   ["offscreen/offscreen.html", "offscreen/offscreen.html"],
   ["offscreen/offscreen.js", "offscreen/offscreen.js"]
@@ -120,7 +121,7 @@ for (const file of contentScripts) {
   if (!required.includes(file)) throw new Error(`Manifest content script is not packaged: ${file}`);
 }
 const offscreenHtml = await readFile(join(dist, "offscreen/offscreen.html"), "utf8");
-for (const script of ["../common/protocol.js", "../common/player-tracking.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
+for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
   if (!offscreenHtml.includes(`src="${script}"`)) throw new Error(`Packed offscreen document is missing ${script}`);
 }
 await assertNoRemoteDependencies(dist);

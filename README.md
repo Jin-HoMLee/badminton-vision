@@ -223,10 +223,14 @@ Load `dist/` from `chrome://extensions` with **Developer mode → Load unpacked*
 The default analyzer is the deterministic `fixture-probe-v1`: a local runtime
 integration probe, not production CV. It proves capture → service-worker →
 offscreen messaging and leaves player/shuttle/shot values unknown or editable.
-Its model-neutral result envelope has room for an array of session-local player
-tracks with confidence and partial/unknown states; no production model or
-weight is bundled. The versioned pose shape and deterministic multi-person
-association gates live in `src/extension/common/player-tracking.js`; see
+`src/extension/offscreen/movenet-adapter.js` implements the local MoveNet
+MultiPose Lightning decode/backend seam and feeds normalized observations into
+four-track-capable session association, but the checkpoint is deliberately not
+bundled: the official MultiPose model card does not provide an explicit weight
+redistribution license. The TensorFlow.js source license does not clear the
+weights. See `docs/runtime.md` for this concrete release gate. The versioned
+pose shape and deterministic multi-person association gates live in
+`src/extension/common/player-tracking.js`; see
 `docs/runtime.md` for the contract, runtime smoke check, and canonical
 packaging details.
 

@@ -3,8 +3,9 @@
 This repository contains a local-first Chrome MV3 runtime foundation and a
 small end-to-end runtime integration slice. It intentionally does not claim
 that production player/shuttle computer vision is solved. The offscreen
-analyzer is a committed deterministic fixture probe, not TrackNet, model
-weights, court analytics, or a production CV model.
+analyzer is a committed deterministic fixture probe until a cleared model
+artifact is available; it is not TrackNet, model weights, court analytics, or
+a production CV model.
 
 ## Canonical build and load
 
@@ -115,13 +116,30 @@ and media timestamps are copied into every result, and all of this work is
 synchronous and local to the offscreen analyzer; it never blocks or mutates
 playback.
 
-The offscreen HTML loads this contract before the fixture analyzer. The
-fixture still emits `tracking.state: "unknown"` with `tracking.players: []`
-and an explicit fixture detector/source identity; it never converts pixels into
-production player detections. A future adapter can feed normalized observations
-to the tracker and place its result under the existing model-neutral
-`analysis.result` envelope without changing capture, service-worker relay, or
-the media-time watermark policy.
+The offscreen HTML loads this contract before the MoveNet adapter and fixture
+analyzer. `offscreen/movenet-adapter.js` decodes the official MultiPose output
+shape (`[1, 6, 56]`), maps its padded coordinates back to the captured frame,
+and feeds normalized observations to `SessionPlayerTracker`; its result is
+placed under the existing model-neutral `analysis.result` envelope. The
+adapter probes WebGPU, WebGL, and WASM with a real tensor operation before
+loading a model, and drops stale or concurrent frames without mutating the
+tracker. The public package currently selects the fixture because the official
+MoveNet MultiPose weight release has no explicit redistribution license in the
+model card or artifact metadata. The TensorFlow.js source license does not by
+itself clear the weights, so no model, TensorFlow.js runtime, or CDN fallback
+is bundled. This is an intentional release gate, not a production CV claim.
+
+## MoveNet artifact release gate
+
+The adapter contract is implemented and deterministic decoding/association is
+tested, but the checkpoint is not shipped. The official MultiPose model card
+(`https://storage.googleapis.com/movenet/MoveNet.MultiPose%20Model%20Card.pdf`)
+describes the model and output shape but does not state a license, and the
+TensorFlow.js MoveNet repository's Apache-2.0 notice covers its adapter source,
+not necessarily Google's separately distributed weights. Until Google provides
+an explicit weight redistribution grant or a model package with a clear license
+and attribution notice, adding `model.json` or weight shards would violate the
+launch brief's licensing gate. Do not replace this gate with a CDN URL.
 
 ## Court calibration boundary
 
@@ -152,6 +170,7 @@ own discovery and capture. The content runtime:
 - uses `requestVideoFrameCallback` when available and reads `mediaTime`, dimensions, and playback rate;
 - throttles frame copies by wall-clock/media time and creates a real `ImageBitmap` snapshot;
 - limits pending `createImageBitmap` operations with an explicit one-sample default (`maxInFlight`), reports backpressure, and never builds an unbounded queue;
+- the offscreen scheduler allows one active inference and one newest pending frame, closes coalesced/stale bitmaps, and drops older work;
 - reports `timer-fallback` when `requestVideoFrameCallback` is unavailable, and `unavailable` when frame copying is unavailable;
 - never pauses, seeks, mutes, changes playback rate, changes `src`, changes video styles, or replaces the player.
 

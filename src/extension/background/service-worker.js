@@ -60,7 +60,7 @@ function stateCapabilities(state, overrides = {}) {
     transferableFrames: Boolean(state?.capabilities?.transferableFrames),
     offscreen: Boolean(overrides.offscreen ?? state?.ready),
     inference: Boolean(overrides.inference ?? (state?.ready && captureAvailable)),
-    analyzer: overrides.analyzer || (state?.ready ? 'fixture-probe-v1' : 'none'),
+    analyzer: overrides.analyzer || (state?.ready ? 'pending' : 'none'),
     transport: 'mv3-runtime-messaging'
   };
 }
@@ -75,7 +75,7 @@ function unavailable(state, reason) {
     offscreen: false,
     inference: false,
     analyzer: 'none',
-    fallbacks: ['offscreen-document-unavailable', 'fixture-probe-unavailable'],
+    fallbacks: ['offscreen-document-unavailable'],
     reason
   }));
   send(state.port, BSOProtocol.createRuntimeStatus({
@@ -123,9 +123,9 @@ function setupSession(state, message) {
     send(state.port, BSOProtocol.createRuntimeStatus({
       sessionId: state.sessionId,
       phase: 'ready',
-      message: 'Offscreen boundary ready; local runtime integration probe active.',
-      capabilities: stateCapabilities(state, { offscreen: true, analyzer: 'fixture-probe-v1' }),
-      reason: 'runtime-integration-probe'
+      message: 'Offscreen boundary ready; local analyzer initializing.',
+      capabilities: stateCapabilities(state, { offscreen: true, analyzer: 'pending', inference: false }),
+      reason: 'offscreen-runtime'
     }));
     // Complete session setup before a frame can be analyzed. The per-session
     // queue also preserves start -> frames -> end ordering across navigation.

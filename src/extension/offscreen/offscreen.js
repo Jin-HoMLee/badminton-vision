@@ -1,4 +1,4 @@
-/* global chrome, BSOProtocol, BSOFixtureAnalyzer */
+/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter */
 'use strict';
 
 const ANALYZER_FALLBACK = 'fixture-probe-v1';
@@ -32,9 +32,9 @@ function unknownTracking(sample, reason) {
 }
 
 /**
- * The default analyzer is a committed, deterministic runtime fixture. It
- * proves that an ImageBitmap can cross the MV3 boundary and be read locally;
- * it is deliberately not a production player/shuttle CV model.
+ * The fixture remains available to Node integration harnesses. The browser
+ * package selects the local MoveNet adapter below; no UI or capture code
+ * knows which analyzer is active.
  */
 class MockAnalyzer {
   async analyze(sample) {
@@ -70,10 +70,19 @@ class MockAnalyzer {
   }
 }
 
-const DefaultAnalyzer = globalThis.BSOFixtureAnalyzer && globalThis.BSOFixtureAnalyzer.FixtureProbeAnalyzer;
-let activeAnalyzer = DefaultAnalyzer ? new DefaultAnalyzer() : new MockAnalyzer();
+const ProductionAnalyzer = globalThis.BSOMoveNetAdapter && globalThis.tf &&
+  globalThis.BSOMoveNetAdapter.MoveNetMultiPoseLightningAnalyzer;
+const FixtureAnalyzer = globalThis.BSOFixtureAnalyzer && globalThis.BSOFixtureAnalyzer.FixtureProbeAnalyzer;
+// The adapter is shipped as a seam, but its TensorFlow.js runtime and model
+// are intentionally absent until the weight license is cleared. Node/runtime
+// harnesses retain the deterministic fixture, so plumbing tests never claim CV
+// detections.
+let activeAnalyzer = ProductionAnalyzer
+  ? new ProductionAnalyzer({ tf: globalThis.tf, environment: globalThis })
+  : FixtureAnalyzer ? new FixtureAnalyzer() : new MockAnalyzer();
 const sessions = new Map();
 const sessionQueues = new Map();
+const frameStates = new Map();
 
 function analyzerIdentity() {
   const identity = activeAnalyzer && activeAnalyzer.identity;
@@ -98,13 +107,13 @@ function setAnalyzer(nextAnalyzer) {
   activeAnalyzer = nextAnalyzer;
 }
 
-function capabilityState(input = {}, { inference = input.capture !== 'unavailable' } = {}) {
+function capabilityState(input = {}, { inference = input.capture !== 'unavailable', analyzer = analyzerId(), offscreen = true } = {}) {
   return {
     capture: input.capture || 'unknown',
     transferableFrames: Boolean(input.transferableFrames),
-    offscreen: true,
+    offscreen: Boolean(offscreen),
     inference: Boolean(inference),
-    analyzer: analyzerId(),
+    analyzer,
     transport: 'mv3-runtime-messaging'
   };
 }
@@ -113,7 +122,8 @@ function capabilityState(input = {}, { inference = input.capture !== 'unavailabl
 // to plug in. Capture and UI code never imports a model implementation.
 globalThis.BSOOffscreenAnalyzer = Object.freeze({
   MockAnalyzer,
-  FixtureProbeAnalyzer: DefaultAnalyzer,
+  FixtureProbeAnalyzer: FixtureAnalyzer,
+  MoveNetMultiPoseLightningAnalyzer: ProductionAnalyzer,
   setAnalyzer,
   getActiveAnalyzer: () => activeAnalyzer
 });
@@ -131,7 +141,11 @@ function enqueue(sessionId, task) {
 }
 
 function resultWithState(result, inputCapabilities) {
-  const state = capabilityState(inputCapabilities, { inference: result.inferenceAvailable });
+  if (!result) return null;
+  const state = capabilityState(inputCapabilities, {
+    inference: result.inferenceAvailable,
+    analyzer: result.analyzer || analyzerId()
+  });
   return {
     ...result,
     analyzer: result.analyzer || analyzerId(),
@@ -143,58 +157,156 @@ function resultWithState(result, inputCapabilities) {
 
 async function handleSessionStart(message) {
   return enqueue(message.sessionId, async () => {
-    sessions.set(message.sessionId, { capabilities: message.capabilities || {} });
+    sessions.set(message.sessionId, { sessionId: message.sessionId, capabilities: message.capabilities || {} });
+    frameStates.set(message.sessionId, {
+      busy: false,
+      pending: null,
+      watermark: -Infinity,
+      waiters: []
+    });
     const input = message.capabilities || {};
+    const initialized = typeof activeAnalyzer.initialize === 'function'
+      ? await activeAnalyzer.initialize()
+      : { available: true, fallbacks: ['runtime-integration-probe-not-production-cv'], reason: 'runtime-integration-probe' };
+    const inference = input.capture !== 'unavailable' && initialized.available !== false;
+    const fallbacks = (initialized.fallbacks || []).slice();
+    if (activeAnalyzer.identity?.runtimeIntegrationTest) fallbacks.push('runtime-integration-probe-not-production-cv');
+    if (input.capture === 'unavailable') fallbacks.push('capture-unavailable');
+    const reason = initialized.reason || (activeAnalyzer.identity?.runtimeIntegrationTest
+      ? 'A deterministic local fixture is active; production CV is not bundled.' : 'Local MoveNet inference is active.');
     await send(BSOProtocol.createCapabilityReport({
       sessionId: message.sessionId,
       capture: input.capture || 'unknown',
       transferableFrames: Boolean(input.transferableFrames),
       offscreen: true,
-      inference: input.capture !== 'unavailable',
+      inference,
       analyzer: analyzerId(),
-      fallbacks: ['runtime-integration-probe-not-production-cv'].concat(input.capture === 'unavailable' ? ['capture-unavailable'] : []),
-      reason: 'A deterministic local fixture is active; production CV is not bundled.'
+      fallbacks: Array.from(new Set(fallbacks)),
+      reason
     }));
     await send(BSOProtocol.createRuntimeStatus({
       sessionId: message.sessionId,
-      phase: 'ready',
-      message: 'Local runtime integration probe ready; not production CV.',
-      capabilities: capabilityState(input),
-      reason: 'runtime-integration-probe'
+      phase: inference ? 'ready' : 'fallback',
+      message: inference ? (activeAnalyzer.identity?.runtimeIntegrationTest
+        ? 'Local runtime integration probe ready; not production CV.'
+        : 'Local MoveNet MultiPose Lightning ready.') : 'Local inference unavailable; playback is unaffected.',
+      capabilities: capabilityState(input, { inference }),
+      reason
     }));
   });
 }
 
-async function handleFrame(message) {
-  return enqueue(message.sessionId, async () => {
-    const session = sessions.get(message.sessionId);
-    if (!session) return;
-    if (!BSOProtocol.isFrameSample(message)) {
-      await send(BSOProtocol.createRuntimeStatus({
-        sessionId: message.sessionId,
-        phase: 'fallback',
-        message: 'Frame sample did not satisfy the runtime contract.',
-        capabilities: capabilityState(session.capabilities, { inference: false }),
-        reason: 'message-contract-rejected'
-      }));
-      return;
-    }
-    try {
-      const result = await activeAnalyzer.analyze(message);
-      await send(resultWithState(result, session.capabilities));
-    } finally {
-      // ImageBitmap.close releases the snapshot even when an analyzer throws.
-      if (message.frame && typeof message.frame.close === 'function') message.frame.close();
-    }
+function closeFrame(message) {
+  if (message?.frame && typeof message.frame.close === 'function') message.frame.close();
+}
+
+async function reportFrameStatus(session, phase, message, reason) {
+  await send(BSOProtocol.createRuntimeStatus({
+    sessionId: session.sessionId,
+    phase,
+    message,
+    capabilities: capabilityState(session.capabilities, { inference: phase !== 'fallback' }),
+    reason
+  }));
+}
+
+function waitForFrames(sessionId) {
+  const state = frameStates.get(sessionId);
+  if (!state || !state.busy) return Promise.resolve();
+  return new Promise((resolve) => state.waiters.push(resolve));
+}
+
+function finishFrame(sessionId) {
+  const state = frameStates.get(sessionId);
+  if (!state) return;
+  if (state.pending) {
+    const next = state.pending;
+    state.pending = null;
+    void processFrame(sessionId, next).catch(() => undefined);
+    return;
+  }
+  state.busy = false;
+  const waiters = state.waiters.splice(0);
+  waiters.forEach((resolve) => resolve());
+}
+
+async function processFrame(sessionId, message) {
+  const session = sessions.get(sessionId);
+  const state = frameStates.get(sessionId);
+  if (!session || !state) {
+    closeFrame(message);
+    if (state) finishFrame(sessionId);
+    return;
+  }
+  try {
+    const result = await activeAnalyzer.analyze(message);
+    const envelope = resultWithState(result, session.capabilities);
+    if (envelope) await send(envelope);
+  } finally {
+    // ImageBitmap.close releases the snapshot even when an analyzer throws.
+    closeFrame(message);
+    finishFrame(sessionId);
+  }
+}
+
+/**
+ * Keep at most one active and one latest pending frame per session. Capture
+ * already bounds bitmap creation; this second gate prevents a slow local
+ * backend from turning MV3 messages into an unbounded analysis queue.
+ */
+function handleFrame(message) {
+  const session = sessions.get(message.sessionId);
+  const state = frameStates.get(message.sessionId);
+  if (!session || !state) {
+    closeFrame(message);
+    return;
+  }
+  if (!BSOProtocol.isFrameSample(message)) {
+    closeFrame(message);
+    void reportFrameStatus(session, 'fallback', 'Frame sample did not satisfy the runtime contract.', 'message-contract-rejected');
+    return;
+  }
+  // A pending newer frame is already the session watermark; an older arrival
+  // cannot be a timeline reset while that frame is waiting to run.
+  if (state.busy && state.pending && message.mediaTime <= state.pending.mediaTime) {
+    closeFrame(message);
+    void reportFrameStatus(session, 'ready', 'Stale frame sample discarded.', 'stale-frame-dropped');
+    return;
+  }
+  // A backwards media-time jump starts a new local timeline. The synchronizer
+  // applies the same policy on the UI side; association state must not bridge
+  // across the jump.
+  if (state.watermark !== -Infinity && message.mediaTime < state.watermark) {
+    state.watermark = -Infinity;
+    if (typeof activeAnalyzer.resetSession === 'function') activeAnalyzer.resetSession(message.sessionId, 'media-time-reset');
+  }
+  if (message.mediaTime === state.watermark) {
+    closeFrame(message);
+    void reportFrameStatus(session, 'ready', 'Stale frame sample discarded.', 'stale-frame-dropped');
+    return;
+  }
+  state.watermark = message.mediaTime;
+  if (state.busy) {
+    if (state.pending) closeFrame(state.pending);
+    state.pending = message;
+    void reportFrameStatus(session, 'ready', 'Local analyzer busy; keeping only the newest frame.', 'backpressure');
+    return;
+  }
+  state.busy = true;
+  void processFrame(message.sessionId, message).catch(async (error) => {
+    await reportFrameStatus(session, 'fallback', 'Local analyzer failed; playback is unaffected.', error instanceof Error ? error.message : String(error));
   });
 }
 
 async function handleSessionEnd(message) {
   return enqueue(message.sessionId, async () => {
     const session = sessions.get(message.sessionId);
+    // Wait for the active frame and its one coalesced successor before
+    // acknowledging the end marker. Dropped pending frames are closed by the
+    // frame scheduler, so navigation cannot leak ImageBitmaps.
+    await waitForFrames(message.sessionId);
     sessions.delete(message.sessionId);
-    // The queue makes the end marker wait behind all frame analyses, so a
-    // result cannot be lost merely because navigation arrived quickly.
+    frameStates.delete(message.sessionId);
     await send(message);
     if (session) {
       await send(BSOProtocol.createRuntimeStatus({
@@ -223,7 +335,7 @@ if (typeof chrome !== 'object' || !chrome.runtime || !chrome.runtime.onMessage |
 } else {
 chrome.runtime.onMessage.addListener((message) => {
   if (!BSOProtocol.isRuntimeMessage(message)) return false;
-  void handle(message).catch(async (error) => {
+  void Promise.resolve(handle(message)).catch(async (error) => {
     const session = sessions.get(message.sessionId);
     if (message.sessionId && session) {
       await send(BSOProtocol.createRuntimeStatus({
