@@ -27,6 +27,11 @@ class MockAnalyzer {
         kind: 'runtime-integration-probe',
         runtimeIntegrationTest: true,
         productionModel: false,
+        state: 'partial',
+        // The compatibility seam identifies no player or shuttle.
+        players: [],
+        shuttle: { state: 'unknown', confidence: null },
+        strokeEvents: [],
         shotFamily: 'unclassified',
         classificationConfidence: 0,
         geometryConfidence: 0,
@@ -64,7 +69,7 @@ function setAnalyzer(nextAnalyzer) {
   activeAnalyzer = nextAnalyzer;
 }
 
-function capabilityState(input = {}, { inference = true } = {}) {
+function capabilityState(input = {}, { inference = input.capture !== 'unavailable' } = {}) {
   return {
     capture: input.capture || 'unknown',
     transferableFrames: Boolean(input.transferableFrames),
@@ -116,9 +121,9 @@ async function handleSessionStart(message) {
       capture: input.capture || 'unknown',
       transferableFrames: Boolean(input.transferableFrames),
       offscreen: true,
-      inference: true,
+      inference: input.capture !== 'unavailable',
       analyzer: analyzerId(),
-      fallbacks: ['runtime-integration-probe-not-production-cv'],
+      fallbacks: ['runtime-integration-probe-not-production-cv'].concat(input.capture === 'unavailable' ? ['capture-unavailable'] : []),
       reason: 'A deterministic local fixture is active; production CV is not bundled.'
     }));
     await send(BSOProtocol.createRuntimeStatus({
@@ -167,7 +172,7 @@ async function handleSessionEnd(message) {
         sessionId: message.sessionId,
         phase: 'ended',
         message: 'Local runtime session ended.',
-        capabilities: capabilityState(session.capabilities, { inference: true }),
+        capabilities: capabilityState(session.capabilities),
         reason: 'session-end-ack'
       }));
     }

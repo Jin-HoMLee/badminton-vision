@@ -130,6 +130,11 @@
           fixtureModel: this.fixture.schema,
           runtimeIntegrationTest: true,
           productionModel: false,
+          state: 'partial',
+          // The deterministic probe identifies no player or shuttle.
+          players: [],
+          shuttle: { state: 'unknown', confidence: null },
+          strokeEvents: [],
           shotFamily: 'unclassified',
           classificationConfidence: 0,
           geometryConfidence: 0,

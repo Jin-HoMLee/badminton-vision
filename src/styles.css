@@ -191,6 +191,9 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-status-chip.live .bv-status-dot::after { content: ""; position: absolute; inset: -3px; border: 1px solid var(--lime-500); border-radius: 50%; opacity: .45; }
 .bv-status-label { font: var(--type-ui-sm); }
 .bv-status-detail { font: var(--type-mono); font-size: var(--fs-11); color: var(--text-faint); }
+.bv-runtime-note, .bv-runtime-footnote { display: inline-flex; align-items: center; gap: 5px; color: var(--text-faint); font: var(--type-mono); font-size: var(--fs-10); }
+.bv-runtime-note { max-width: 280px; padding-left: 4px; }
+.bv-runtime-footnote { white-space: nowrap; }
 .bv-confidence { display: inline-flex; align-items: center; gap: var(--sp-3); white-space: nowrap; }
 .bv-confidence-segments { display: inline-flex; gap: 2px; }
 .bv-confidence-segments i { width: 9px; height: 4px; border-radius: 1px; background: var(--ink-500); }

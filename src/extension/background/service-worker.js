@@ -53,11 +53,13 @@ function send(port, message) {
 }
 
 function stateCapabilities(state, overrides = {}) {
+  const capture = state?.capabilities?.capture || 'unknown';
+  const captureAvailable = capture !== 'unavailable';
   return {
-    capture: state?.capabilities?.capture || 'unknown',
+    capture,
     transferableFrames: Boolean(state?.capabilities?.transferableFrames),
     offscreen: Boolean(overrides.offscreen ?? state?.ready),
-    inference: Boolean(overrides.inference ?? state?.ready),
+    inference: Boolean(overrides.inference ?? (state?.ready && captureAvailable)),
     analyzer: overrides.analyzer || (state?.ready ? 'fixture-probe-v1' : 'none'),
     transport: 'mv3-runtime-messaging'
   };
@@ -122,7 +124,7 @@ function setupSession(state, message) {
       sessionId: state.sessionId,
       phase: 'ready',
       message: 'Offscreen boundary ready; local runtime integration probe active.',
-      capabilities: stateCapabilities(state, { offscreen: true, inference: true, analyzer: 'fixture-probe-v1' }),
+      capabilities: stateCapabilities(state, { offscreen: true, analyzer: 'fixture-probe-v1' }),
       reason: 'runtime-integration-probe'
     }));
     // Complete session setup before a frame can be analyzed. The per-session
@@ -203,6 +205,25 @@ chrome.runtime.onMessage.addListener((message) => {
       sessions.delete(message.sessionId);
       sessionQueues.delete(message.sessionId);
     }
+  }
+  return false;
+});
+
+// UI actions use this separate, deliberately small message surface. Runtime
+// envelopes stay on the versioned port protocol; the popup can read the last
+// sanitized capability snapshot without coupling itself to frame transport.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'OPEN_SUMMARY') {
+    void chrome.tabs.create({ url: chrome.runtime.getURL('summary.html') });
+    return false;
+  }
+  if (message?.type === 'GET_RUNTIME_STATUS') {
+    if (!chrome.storage?.local) {
+      sendResponse({ status: null });
+      return false;
+    }
+    chrome.storage.local.get(['bvRuntimeStatus'], (result) => sendResponse({ status: result?.bvRuntimeStatus || null }));
+    return true;
   }
   return false;
 });

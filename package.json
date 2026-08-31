@@ -5,10 +5,9 @@
   "description": "Local-first, confidence-aware badminton rally review overlay.",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "build-runtime": "node build.mjs",
     "test": "node --test tests/*.test.mjs test/*.test.js analysis/test/*.test.js",
-    "runtime-smoke": "npm run build-runtime && node --test test/runtime-integration.test.js test/capture-backpressure.test.js",
-    "check": "npm run build && npm test && npm run build-runtime"
+    "runtime-smoke": "npm run build && node --test test/runtime-integration.test.js test/capture-backpressure.test.js",
+    "check": "npm run build && npm test"
   },
   "engines": {
     "node": ">=20"
