@@ -10,11 +10,36 @@
   var state = window.BVState.initialExtensionState();
   var strokes = data.strokes.slice();
   var suggestion = data.suggestion ? Object.assign({}, data.suggestion) : null;
+  var mediaTime = 0;
+  var editingEventId = null;
   var draft = newDraft();
 
-  function newDraft() {
-    var next = { shot: null, start: "12:03.980", end: "12:04.420", axes: {} };
-    data.axes.forEach(function (axis) { next.axes[axis.label] = axis.value; });
+  function currentMediaTimestamp() {
+    return Number.isFinite(mediaTime) && mediaTime >= 0 ? mediaTime : null;
+  }
+  function newDraft(record) {
+    var start = record && record.startSec != null ? record.startSec : currentMediaTimestamp();
+    var end = record && record.endSec != null ? record.endSec : null;
+    var next = {
+      shot: record && (record.shot || record.label) || null,
+      start: start == null ? "" : formatMediaTime(start),
+      end: end == null ? "" : formatMediaTime(end),
+      playerId: record && (record.playerId != null ? record.playerId : record.player) || null,
+      axes: {}
+    };
+    var dimensionFields = {
+      Longitudinal: "longitudinal_position",
+      Lateral: "lateral_position",
+      Timing: "timing",
+      Intention: "intention",
+      Impact: "impact",
+      Direction: "direction"
+    };
+    data.axes.forEach(function (axis) {
+      var axes = record && record.axes && typeof record.axes === "object" ? record.axes : {};
+      var field = dimensionFields[axis.label];
+      next.axes[axis.label] = axes[axis.label] != null ? axes[axis.label] : axes[field] != null ? axes[field] : record && record[axis.label] != null ? record[axis.label] : record && field && record[field] != null ? record[field] : null;
+    });
     return next;
   }
   // Draft points are normalized to the current video rectangle. The fitted
@@ -29,7 +54,7 @@
   var video = null;
   var domObserver = null;
   var navigationListeners = [];
-  var mediaTime = 0;
+  var mediaTimeListener = null;
   var runtimeController = null;
   var runtimeView = {
     phase: "idle", message: "Local runtime starting", reason: "", analyzer: "none",
@@ -123,7 +148,12 @@
     return window.BVState.videoKeyForUrl(window.location && window.location.href);
   }
   function reviewStrokes() {
-    return window.BVReview ? window.BVReview.mergeStrokes(data.strokes, state.manualLabels) : data.strokes.slice();
+    var merged = window.BVReview ? window.BVReview.mergeStrokes(data.strokes, state.manualLabels) : data.strokes.slice();
+    return merged.map(function (stroke) {
+      var isFixture = data.strokes.some(function (fixture) { return String(fixture.eventId) === String(stroke.eventId); });
+      var hasSavedReview = labelForEvent(stroke.eventId);
+      return isFixture && !hasSavedReview ? Object.assign({}, stroke, { fixtureRow: true }) : stroke;
+    });
   }
   function restoreReviewState() {
     strokes = reviewStrokes();
@@ -135,7 +165,8 @@
     calibration = null;
     seedPoints = [];
     seedCardDrag = null;
-    strokes = data.strokes.slice();
+    editingEventId = null;
+    strokes = reviewStrokes();
     suggestion = data.suggestion ? Object.assign({}, data.suggestion) : null;
     draft = newDraft();
     persist();
@@ -170,7 +201,8 @@
     else if (state.videoKey && key && state.videoKey !== key) resetVideoLocalState("video-replacement");
     else {
       activeVideoKey = key;
-      if (!state.videoKey) state.videoKey = key;
+      state = window.BVState.stateForVideo(state, key);
+      restoreReviewState();
       restoreCalibrationState();
     }
   }
@@ -190,9 +222,26 @@
   function attachVideo() {
     var next = document.querySelector("video");
     if (next === video) { positionToVideo(); return; }
-    if (video && next !== video) resetVideoLocalState("video-replacement");
+    if (video && next !== video) {
+      if (mediaTimeListener) video.removeEventListener("timeupdate", mediaTimeListener);
+      mediaTimeListener = null;
+      resetVideoLocalState("video-replacement");
+    }
     video = next;
     bindVideoState();
+    if (video) {
+      mediaTime = Number.isFinite(video.currentTime) && video.currentTime >= 0 ? video.currentTime : 0;
+      if (!state.stale) state.time = formatMediaTime(mediaTime);
+      mediaTimeListener = function () {
+        var nextTime = Number(video.currentTime);
+        if (Number.isFinite(nextTime) && nextTime >= 0) {
+          mediaTime = nextTime;
+          if (!state.stale) state.time = formatMediaTime(nextTime);
+          if (state.labeling) render();
+        }
+      };
+      video.addEventListener("timeupdate", mediaTimeListener);
+    }
     positionToVideo();
   }
 
@@ -466,13 +515,21 @@
   function mapPanel() {
     return ui.panel("Court", { icon: "crosshair", mediaTime: state.time, className: "bv-court-panel", bodyStyle: { padding: "10px" }, actions: [ui.iconButton("chevron-down", "Hide court map", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "map", value: false }); persist(); render(); } })] }, [ui.courtDiagram({ renderWidth: 154, players: [{ x: 3.1, y: 9.7 }, { x: 2.5, y: 4.1, side: "b" }], trajectory: [{ x: 2.5, y: 4.3 }, { x: 3.5, y: 8.4 }, { x: 4.8, y: 12.9 }], landing: { x: 4.8, y: 12.9 }, call: "IN", ariaLabel: "Current court map" }), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-4)" } }, [ui.badge("IN", "in"), ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-10)", color: "var(--text-faint)" } }, ["0.11 m inside"])]), ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.confidence(.52, { label: "geo", showWord: true })])]);
   }
+  function labelForEvent(eventId) {
+    return (state.manualLabels || []).find(function (label) { return label && String(label.eventId) === String(eventId); }) || null;
+  }
+  function openExistingLabel(stroke) {
+    if (!stroke || stroke.eventId == null) return openLabeling();
+    editingEventId = String(stroke.eventId);
+    openLabeling(labelForEvent(stroke.eventId) || stroke);
+  }
   function feedPanel() {
     var rows = ui.el("div", { className: "bv-feed" });
-    strokes.forEach(function (stroke) { rows.appendChild(ui.strokeFeedItem(stroke)); });
+    strokes.forEach(function (stroke) { rows.appendChild(ui.strokeFeedItem(stroke, function () { openExistingLabel(stroke); })); });
     var children = [];
-    if (state.lastEdit) children.push(ui.el("div", { className: "bv-review-undo", role: "status" }, [ui.el("span", {}, [(state.lastEdit.source === "manual" ? "Saved manual review at " : "Accepted fixture suggestion at ") + (state.lastEdit.time || "the current timestamp") + "."]), ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit })]));
+    if (state.lastEdit) children.push(ui.el("div", { className: "bv-review-undo", role: "status" }, [ui.el("span", {}, [(state.lastEdit.source === "manual" ? "Saved manual label at " : "Saved review suggestion at ") + (state.lastEdit.time || "the current timestamp") + "."]), ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit })]));
     children.push(rows);
-    if (suggestion) children.push(ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.suggestionRow(suggestion, acceptSuggestion, openLabeling)]));
+    if (suggestion) children.push(ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.suggestionRow(suggestion, acceptSuggestion, function () { openLabeling(); })]));
     var footer = ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.badge("rally 13 · index 74", "accent", false), ui.el("span", { className: "bv-runtime-footnote" }, [runtimeView.result && runtimeView.result.kind === "runtime-integration-probe" ? "fixture result · not production CV" : "analysis unknown"]), ui.button("Older rallies", { variant: "ghost", size: "sm", iconRight: "chevron-right", style: { marginLeft: "auto" }, onClick: openSummary })]);
     return ui.panel("Stroke feed", { icon: "list", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", bodyStyle: { padding: "6px" }, footer: footer, actions: [ui.iconButton("pencil", "Open manual labeling (O)", { size: "sm", onClick: openLabeling }), ui.iconButton("chevron-up", "Hide stroke feed", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "feed", value: false }); persist(); render(); } })] }, children);
   }
@@ -508,27 +565,38 @@
     return overlay;
   }
 
-  function openLabeling() {
+  function openLabeling(record) {
     state = window.BVState.reduceExtensionState(state, { type: "OPEN_LABELING" });
-    draft = newDraft();
+    if (record && record.eventId != null) editingEventId = String(record.eventId);
+    draft = record ? newDraft(record) : newDraft();
     persist();
     render();
   }
-  function commitReviewEvent(record, previousSuggestion) {
-    if (!record || !record.eventId || !window.BVReview) return;
+  function commitReviewEvent(record, previousSuggestion, operation) {
+    if (!record || !record.eventId || !window.BVReview) return null;
     var previousStroke = strokes.find(function (stroke) { return String(stroke.eventId) === String(record.eventId); });
-    var previousLabel = (state.manualLabels || []).find(function (label) { return String(label.eventId) === String(record.eventId); });
-    state.lastEdit = {
-      eventId: record.eventId,
-      source: record.source || "manual",
-      time: record.time,
+    var previousLabel = labelForEvent(record.eventId);
+    var editNow = new Date().toISOString();
+    if (previousLabel) {
+      if (record.createdAt == null) record.createdAt = previousLabel.createdAt;
+      record.updatedAt = editNow;
+    }
+    var normalized = window.BVReview.normalizeManualLabel(record, { now: editNow });
+    if (!normalized) return null;
+    var nextLabels = window.BVReview.upsert(state.manualLabels, normalized);
+    var edit = {
+      eventId: normalized.eventId,
+      operation: operation || (previousLabel ? "update" : "create"),
+      source: normalized.source || "manual",
+      time: normalized.time,
       previousStroke: previousStroke ? window.BVReview.clone(previousStroke) : null,
       previousLabel: previousLabel ? window.BVReview.clone(previousLabel) : null,
       previousSuggestion: previousSuggestion ? window.BVReview.clone(previousSuggestion) : null
     };
-    state.manualLabels = window.BVReview.upsert(state.manualLabels, record);
-    strokes = window.BVReview.mergeStrokes(data.strokes, state.manualLabels);
+    state = window.BVState.reduceExtensionState(state, { type: "SET_REVIEW_LABELS", videoKey: activeVideoKey, labels: nextLabels, lastEdit: edit });
+    strokes = reviewStrokes();
     persist();
+    return normalized;
   }
   function acceptSuggestion() {
     if (!suggestion) return;
@@ -536,17 +604,20 @@
       eventId: suggestion.eventId,
       rallyId: suggestion.rallyId,
       sequence: strokes.length + 1,
-      player: "A",
       shot: suggestion.shot,
       time: suggestion.time,
-      startSec: window.BVReview.mediaSeconds(suggestion.time),
-      endSec: window.BVReview.mediaSeconds(suggestion.time) + .4,
+      startSec: suggestion.startSec != null ? suggestion.startSec : window.BVReview.mediaSeconds(suggestion.time),
+      endSec: suggestion.endSec,
       status: "accepted",
       source: "auto",
+      provenance: "suggestion",
       confidence: suggestion.confidence
     };
+    if (suggestion.playerId != null) accepted.playerId = suggestion.playerId;
+    if (suggestion.player != null) accepted.player = suggestion.player;
     var priorSuggestion = suggestion;
-    commitReviewEvent(accepted, priorSuggestion);
+    var saved = commitReviewEvent(accepted, priorSuggestion);
+    if (!saved) return;
     send({ type: "ACCEPT_SUGGESTION", eventId: accepted.eventId });
     suggestion = null;
     closeLabeling();
@@ -554,11 +625,9 @@
   function undoLastEdit() {
     var edit = state.lastEdit;
     if (!edit || !edit.eventId || !window.BVReview) return;
-    state.manualLabels = window.BVReview.without(state.manualLabels, edit.eventId);
-    if (edit.previousLabel) state.manualLabels = window.BVReview.upsert(state.manualLabels, edit.previousLabel);
-    strokes = window.BVReview.mergeStrokes(data.strokes, state.manualLabels);
+    state = window.BVState.reduceExtensionState(state, { type: "UNDO_LABEL", videoKey: activeVideoKey, edit: edit, labels: window.BVReview.undoLabelMutation(state.manualLabels, edit) });
+    strokes = reviewStrokes();
     suggestion = edit.previousSuggestion ? window.BVReview.clone(edit.previousSuggestion) : null;
-    state.lastEdit = null;
     persist();
     send({ type: "UNDO_LABEL", eventId: edit.eventId });
     render();
@@ -583,54 +652,109 @@
     var link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([window.BVAnalysis.toShotsCsv(rows)], { type: "text/csv" })); link.download = "badminton-vision-shots.csv"; link.click(); setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
   }
   function manualPanel() {
-    var saveLabel = draft.shot || (suggestion && suggestion.shot);
-    var saveActionLabel = draft.shot ? "Save correction" : suggestion ? "Accept suggestion" : "Save shot";
-    var panel = ui.panel("Manual labeling", { icon: "pencil", mediaTime: state.time, className: "bv-label-panel", bodyStyle: { flex: "1" }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Cancel", { variant: "ghost", size: "sm", onClick: closeLabeling }), ui.button(saveActionLabel, { variant: "primary", size: "sm", disabled: !saveLabel, onClick: saveDraft })])]) }, []);
+    // Offline mode has no suggestion source. Fixture suggestions only enter
+    // the correction path when the live overlay is explicitly enabled.
+    var activeSuggestion = state.enabled ? suggestion : null;
+    var saveLabel = draft.shot || (activeSuggestion && activeSuggestion.shot);
+    var saveActionLabel = editingEventId ? "Save correction" : draft.shot ? "Save label" : activeSuggestion ? "Accept suggestion" : "Save label";
+    var canDelete = Boolean(editingEventId && labelForEvent(editingEventId));
+    var panel = ui.panel("Manual labeling", { icon: "pencil", mediaTime: state.time, className: "bv-label-panel", bodyStyle: { flex: "1" }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), state.lastEdit ? ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit }) : null, canDelete ? ui.button("Delete label", { variant: "danger", size: "sm", onClick: deleteExistingLabel }) : null, ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Cancel", { variant: "ghost", size: "sm", onClick: closeLabeling }), ui.button(saveActionLabel, { variant: "primary", size: "sm", disabled: !saveLabel, onClick: saveDraft })])]) }, []);
     panel.tabIndex = 0;
     var body = panel.querySelector(".bv-panel-body");
-    body.appendChild(ui.el("div", { className: "bv-segment-window" }, [ui.el("span", { className: "bv-mono" }, [draft.start + " → " + draft.end]), ui.el("span", { className: "bv-segment-controls" }, [ui.button("Start", { variant: "ghost", size: "sm", iconRight: null, onClick: function () { draft.start = formatMediaTime(mediaTime); render(); } }), ui.button("End", { variant: "ghost", size: "sm", onClick: function () { draft.end = formatMediaTime(mediaTime); render(); } })]) ]));
-    if (suggestion) body.appendChild(ui.el("div", { className: "bv-manual-suggestion" }, [ui.badge("auto suggestion", "warn"), ui.el("span", { className: "bv-feed-shot" + (draft.shot ? " replaced" : "") }, [suggestion.shot]), ui.confidence(suggestion.confidence, { showWord: true }), ui.el("span", { style: { marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "var(--sp-2)", font: "var(--type-ui-sm)", color: "var(--text-faint)" } }, ["accept", ui.kbd("↵", true)])]));
+    body.appendChild(ui.callout("guide", "Manual / offline mode", "Playback is read-only. No court seed, inference model, or production CV evidence is required."));
+    if (state.manualLabels && state.manualLabels.length) {
+      var savedLabels = ui.el("div", { className: "bv-manual-saved", "aria-label": "Saved labels for this video" });
+      savedLabels.appendChild(ui.el("span", { className: "bv-field-label" }, ["Saved labels for this video"]));
+      state.manualLabels.forEach(function (label, index) {
+        var savedRow = Object.assign({}, label, { sequence: label.sequence || index + 1 });
+        savedLabels.appendChild(ui.strokeFeedItem(savedRow, function () { openExistingLabel(label); }));
+      });
+      body.appendChild(savedLabels);
+    }
+    body.appendChild(ui.el("div", { className: "bv-segment-window" }, [ui.el("span", { className: "bv-mono" }, [(draft.start || "current timestamp") + " → " + (draft.end || "—")]), ui.el("span", { className: "bv-segment-controls" }, [ui.button("Start", { variant: "ghost", size: "sm", disabled: currentMediaTimestamp() == null, onClick: function () { if (currentMediaTimestamp() != null) draft.start = formatMediaTime(currentMediaTimestamp()); render(); } }), ui.button("End", { variant: "ghost", size: "sm", disabled: currentMediaTimestamp() == null, onClick: function () { if (currentMediaTimestamp() != null) draft.end = formatMediaTime(currentMediaTimestamp()); render(); } })]) ]));
+    if (activeSuggestion) body.appendChild(ui.el("div", { className: "bv-manual-suggestion" }, [ui.badge("auto suggestion", "warn"), ui.el("span", { className: "bv-feed-shot" + (draft.shot ? " replaced" : "") }, [activeSuggestion.shot]), ui.confidence(activeSuggestion.confidence, { showWord: true }), ui.el("span", { style: { marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "var(--sp-2)", font: "var(--type-ui-sm)", color: "var(--text-faint)" } }, ["accept", ui.kbd("↵", true)])]));
     body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Shot family"]));
-    body.appendChild(ui.shotPicker(draft.shot, suggestion && suggestion.shot, function (shot) { draft.shot = shot; render(); }));
-    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Dimensions"]));
+    body.appendChild(ui.shotPicker(draft.shot, activeSuggestion && activeSuggestion.shot, function (shot) { draft.shot = shot; render(); }));
+    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Player identity (optional)"]));
+    body.appendChild(ui.segmented([{ value: "", label: "Unknown" }, { value: "A", label: "Player A" }, { value: "B", label: "Player B" }], draft.playerId || "", function (player) { draft.playerId = player || null; render(); }, true));
+    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Dimensions (optional)"]));
     var axisList = ui.el("div", { className: "bv-axis-list" });
     data.axes.forEach(function (axis) { axisList.appendChild(ui.dimensionAxis(axis.label, axis.options, draft.axes[axis.label], function (value) { draft.axes[axis.label] = value; render(); })); });
     body.appendChild(axisList);
-    body.appendChild(ui.el("p", { className: "bv-helper" }, ["Manual labels are first-class records. Saving updates the same event id and appends provenance — it never creates a duplicate."]));
+    body.appendChild(ui.el("p", { className: "bv-helper" }, ["Manual labels are first-class records. Saving updates the same event id and appends provenance — it never creates a duplicate or invents CV evidence."]));
     setTimeout(function () { panel.focus(); }, 0);
     return panel;
   }
   function saveDraft() {
     if (draft.shot) saveManual(draft.shot);
-    else if (suggestion) acceptSuggestion();
+    else if (state.enabled && suggestion) acceptSuggestion();
   }
   function saveManual(shot) {
     if (!shot || !window.BVReview) return;
-    var eventId = suggestion ? suggestion.eventId : "r" + state.rally + "-s" + String(strokes.length + 1).padStart(2, "0");
+    var activeSuggestion = state.enabled ? suggestion : null;
+    var existing = editingEventId ? labelForEvent(editingEventId) : null;
     var startSec = window.BVReview.mediaSeconds(draft.start);
     var endSec = window.BVReview.mediaSeconds(draft.end);
+    if (startSec == null) startSec = currentMediaTimestamp();
+    var eventId = editingEventId || (activeSuggestion && activeSuggestion.eventId) || window.BVState.createManualEventId(activeVideoKey, startSec, state.manualLabels);
     var record = {
       eventId: eventId,
-      rallyId: suggestion ? suggestion.rallyId : state.rally,
+      rallyId: activeSuggestion ? activeSuggestion.rallyId : existing && existing.rallyId != null ? existing.rallyId : state.rally,
       sequence: (strokes.find(function (stroke) { return String(stroke.eventId) === String(eventId); }) || {}).sequence || strokes.length + 1,
-      player: "A",
       shot: shot,
-      time: draft.start,
+      time: startSec == null ? draft.start : formatMediaTime(startSec),
       startSec: startSec,
       endSec: endSec,
-      axes: Object.assign({}, draft.axes),
-      status: suggestion ? "corrected" : "accepted",
+      axes: Object.keys(draft.axes || {}).reduce(function (result, key) { if (draft.axes[key] != null && draft.axes[key] !== "") result[key] = draft.axes[key]; return result; }, {}),
+      status: activeSuggestion || existing ? "corrected" : "accepted",
       source: "manual",
-      confidence: null
+      provenance: activeSuggestion ? "manual-correction" : existing ? "manual-edit" : "manual"
     };
-    var priorSuggestion = suggestion;
-    commitReviewEvent(record, priorSuggestion);
+    if (draft.playerId) {
+      record.playerId = draft.playerId;
+      record.player = draft.playerId;
+    } else if (existing && existing.playerId != null) {
+      record.playerId = existing.playerId;
+      if (existing.player != null) record.player = existing.player;
+    } else if (existing && existing.player != null) record.player = existing.player;
+    else if (activeSuggestion && activeSuggestion.playerId != null) {
+      record.playerId = activeSuggestion.playerId;
+      if (activeSuggestion.player != null) record.player = activeSuggestion.player;
+    } else if (activeSuggestion && activeSuggestion.player != null) record.player = activeSuggestion.player;
+    if (existing) {
+      var dimensionFields = { Longitudinal: "longitudinal_position", Lateral: "lateral_position", Timing: "timing", Intention: "intention", Impact: "impact", Direction: "direction" };
+      Object.keys(dimensionFields).forEach(function (axis) {
+        if (record.axes[axis] != null && existing[dimensionFields[axis]] != null) record[dimensionFields[axis]] = record.axes[axis];
+      });
+    }
+    var priorSuggestion = activeSuggestion;
+    var saved = commitReviewEvent(record, priorSuggestion);
+    if (!saved) return;
     send({ type: "LABEL_EVENT", eventId: eventId, shot: shot, provenance: "manual", startSec: startSec, endSec: endSec });
-    suggestion = null;
+    if (activeSuggestion) suggestion = null;
+    closeLabeling();
+  }
+  function deleteExistingLabel() {
+    var existing = editingEventId && labelForEvent(editingEventId);
+    if (!existing || !window.BVReview) return;
+    var edit = {
+      eventId: existing.eventId,
+      operation: "delete",
+      source: "manual",
+      time: existing.time,
+      previousLabel: window.BVReview.clone(existing),
+      previousSuggestion: null
+    };
+    state = window.BVState.reduceExtensionState(state, { type: "SET_REVIEW_LABELS", videoKey: activeVideoKey, labels: window.BVReview.without(state.manualLabels, existing.eventId), lastEdit: edit });
+    strokes = reviewStrokes();
+    persist();
+    send({ type: "DELETE_LABEL", eventId: existing.eventId, provenance: "manual" });
+    editingEventId = null;
     closeLabeling();
   }
   function closeLabeling() {
     state = window.BVState.reduceExtensionState(state, { type: "CLOSE_LABELING" });
+    editingEventId = null;
     draft = newDraft();
     persist();
     render();
@@ -679,31 +803,24 @@
     if (!root) return;
     updateDiagnosticsMarkers();
     root.replaceChildren();
-    if (!state.enabled && !state.seeding) return;
+    if (!state.enabled && !state.seeding && !state.labeling) return;
     if (state.seeding) root.appendChild(seedFlow());
-    else root.appendChild(liveOverlay());
+    else if (state.enabled) root.appendChild(liveOverlay());
     if (state.labeling && !state.seeding) root.appendChild(ui.el("div", { className: "bv-overlay-label" }, [manualPanel()]));
   }
   function applyStoredState(nextState) {
-    state = window.BVState.initialExtensionState(nextState);
-    restoreReviewState();
     var key = currentVideoKey();
-    if (state.videoKey && key && state.videoKey !== key) {
-      state = window.BVState.resetVideoLocalState(state, key);
-    } else {
-      state.videoKey = state.videoKey || key;
-    }
+    state = window.BVState.stateForVideo(nextState, key);
+    restoreReviewState();
     if (state.seeded && !state.calibration) {
-      var savedLabels = state.manualLabels;
-      var savedLastEdit = state.lastEdit;
       state = window.BVState.resetVideoLocalState(state, key);
-      state.manualLabels = savedLabels;
-      state.lastEdit = savedLastEdit;
       state.calibrationError = "This saved court has no fitted calibration. Please seed the four outer corners again.";
       restoreReviewState();
     }
     activeVideoKey = key;
+    if (video && Number.isFinite(video.currentTime) && !state.stale) state.time = formatMediaTime(video.currentTime);
     restoreCalibrationState();
+    if (state.enabled) startRuntime();
     persist();
   }
   function handleNavigation() {
@@ -714,8 +831,10 @@
   function handleMessage(message) {
     if (!message) return;
     if (message.type === "START_SEED") {
+      bindVideoState();
       state = window.BVState.reduceExtensionState(state, { type: "START_SEED" });
       state.videoKey = activeVideoKey || currentVideoKey();
+      startRuntime();
       seedPoints = [];
       calibration = null;
       persist(); render();
@@ -724,6 +843,7 @@
       bindVideoState();
       state = window.BVState.reduceExtensionState(state, { type: message.type });
       state.videoKey = activeVideoKey || currentVideoKey();
+      startRuntime();
       seedPoints = state.seeding ? state.seedDraftPoints.slice() : [];
       if (state.seeded && state.calibration && !calibration) restoreCalibrationState();
       persist(); render();
@@ -732,7 +852,7 @@
       state = window.BVState.reduceExtensionState(state, { type: "DISABLE" });
       persist(); render();
     }
-    else if (message.type === "OPEN_LABELING") openLabeling();
+    else if (message.type === "OPEN_LABELING") { bindVideoState(); openLabeling(); }
     else if (message.type === "SET_DENSITY") { state = window.BVState.reduceExtensionState(state, { type: "SET_DENSITY", value: message.value }); persist(); render(); }
     else if (message.type === "SET_PANELS") { state = window.BVState.reduceExtensionState(state, { type: "SET_PANELS", panels: message.panels }); persist(); render(); }
     else if (message.type === "SET_TRACKER") { state = window.BVState.reduceExtensionState(state, message); persist(); render(); }
@@ -761,7 +881,8 @@
     });
     if (typeof ResizeObserver !== "undefined") new ResizeObserver(positionToVideo).observe(document.documentElement);
     domObserver = new MutationObserver(attachVideo); domObserver.observe(document.documentElement, { childList: true, subtree: true }); attachVideo();
-    startRuntime();
+    // Manual/offline labeling intentionally does not start the runtime. It
+    // reads the media clock only; live inference begins on ENABLE/OPEN_OVERLAY.
     if (hasChrome() && chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(handleMessage);
     if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState"], function (result) { applyStoredState(result && result.bvState ? result.bvState : state); render(); });
     else { applyStoredState(state); render(); }

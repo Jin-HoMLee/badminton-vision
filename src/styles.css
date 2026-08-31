@@ -227,6 +227,8 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-mix-dot { width: 7px; height: 7px; border-radius: 2px; }
 .bv-feed { display: flex; flex-direction: column; gap: 1px; max-height: 212px; overflow: hidden; }
 .bv-feed-row { display: grid; grid-template-columns: 18px 3px minmax(0,1fr) auto; align-items: center; gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); border-radius: var(--radius-sm); }
+.bv-feed-row[role="button"] { cursor: pointer; }
+.bv-feed-row.manual { box-shadow: inset 2px 0 var(--signal-info); }
 .bv-feed-row.selected { background: var(--surface-active); }
 .bv-feed-seq { font: var(--type-mono); font-size: var(--fs-10); color: var(--text-faint); text-align: right; }
 .bv-feed-player { width: 3px; height: 18px; border-radius: 2px; background: var(--player-a); }
@@ -254,6 +256,9 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-segment-controls { display: flex; gap: var(--sp-2); margin-left: auto; }
 .bv-manual-suggestion { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-5); }
 .bv-manual-suggestion .bv-feed-shot { text-decoration: none; }
+.bv-manual-saved { margin: var(--sp-5) 0; padding: var(--sp-3); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); background: rgba(255,255,255,.02); }
+.bv-manual-saved .bv-field-label { margin: var(--sp-2) var(--sp-2) var(--sp-3); }
+.bv-manual-saved .bv-feed { max-height: 160px; }
 .bv-manual-suggestion .replaced { color: var(--text-faint); text-decoration: line-through; }
 .bv-field-label { display: block; margin: var(--sp-6) 0 var(--sp-4); font: var(--type-label); letter-spacing: var(--ls-caps); text-transform: uppercase; color: var(--text-faint); }
 .bv-shot-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); }
