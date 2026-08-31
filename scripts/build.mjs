@@ -13,6 +13,7 @@ const dist = join(root, "dist");
 // become extension dependencies.
 const uiFiles = [
   "analysis.js",
+  "calibration.js",
   "content.js",
   "fixtures.js",
   "popup.html",
@@ -23,6 +24,9 @@ const uiFiles = [
   "summary.html",
   "summary.js",
   "ui.js"
+];
+const browserPrimitiveFiles = [
+  ["analysis/index.js", "analysis-primitives.js"]
 ];
 const runtimeFiles = [
   ["background/service-worker.js", "background/service-worker.js"],
@@ -91,6 +95,7 @@ async function assertNoRemoteDependencies(directory) {
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
 for (const file of uiFiles) await copyFile(join(src, file), join(dist, file));
+for (const [source, destination] of browserPrimitiveFiles) await copyFile(join(root, source), join(dist, destination));
 await copyFile(join(root, "manifest.json"), join(dist, "manifest.json"));
 for (const [source, destination] of runtimeFiles) await copyFile(join(extension, source), join(dist, destination));
 for (const file of designSystemFiles) await copyFile(join(designSystem, file), join(dist, "design-system", file));
@@ -103,6 +108,7 @@ if (manifest.manifest_version !== 3 || manifest.background?.service_worker !== "
 const required = [
   ...uiFiles,
   "manifest.json",
+  ...browserPrimitiveFiles.map(([, destination]) => destination),
   ...runtimeFiles.map(([, destination]) => destination),
   ...designSystemFiles.map((file) => join("design-system", file))
 ];

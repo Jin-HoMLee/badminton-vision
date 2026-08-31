@@ -234,6 +234,9 @@ packaging details.
 `currentTime`, frame metadata, dimensions, and playback state; it does not
 assign playback properties, call player controls, or style the video.
 `src/analysis.js` contains the deterministic highlights-index and CSV adapters
-used by fixtures, manual labels, and later runtime messages.
+used by fixtures, manual labels, and later runtime messages. Court calibration
+uses the shared browser copy of `analysis/index.js` (`analysis-primitives.js`)
+through `src/calibration.js`; its normalized result is stored with the
+video-local extension state and rendered without changing the player.
 
 The supplied design system is copied to `design-system/`; see `design-system/PROVENANCE.md` for source and exclusions. `src/styles.css` imports its local color, type, spacing, elevation, motion, and base tokens. No server, credentials, model binary, or private endpoint is included.
