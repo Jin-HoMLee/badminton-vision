@@ -37,13 +37,21 @@ const MANUAL_SHOT_LABELS = Object.freeze([
   'Drive',
   'Block',
 ]);
-const EVENT_SOURCES = Object.freeze(['auto', 'manual', 'corrected']);
-const EVENT_STATUSES = Object.freeze(['suggested', 'accepted', 'corrected', 'unclassified']);
+const EVENT_SOURCES = Object.freeze(['auto', 'manual', 'corrected', 'unknown']);
+const EVENT_STATUSES = Object.freeze(['suggested', 'accepted', 'corrected', 'partial', 'unknown', 'unclassified']);
 const OUTCOME_LABELS = Object.freeze(['winner', 'forced_error', 'unforced_error', 'unclassified']);
 const LINE_CALL_LABELS = Object.freeze(['in', 'out', 'unknown']);
+const EVIDENCE_STATES = Object.freeze(['accepted', 'suggested', 'corrected', 'partial', 'unknown']);
+const RALLY_STATUSES = Object.freeze(['in_progress', 'completed', 'incomplete']);
+const RALLY_TERMINATIONS = Object.freeze(['rally_end', 'camera_cut', 'implicit', 'unknown']);
 const STROKE_EVENT_FIELDS = Object.freeze([
   'event_id', 'rally_id', 'sequence', 'player_id', 'shot_family', 'label', 'hit_media_time',
   'classification_confidence', 'geometry_confidence', 'tracking_confidence', 'status', 'created_at_wall_time',
+  'evidence', 'player_evidence', 'shuttle_evidence', 'shot_evidence', 'landing_evidence',
+]);
+const RALLY_OPTIONAL_FIELDS = Object.freeze([
+  'evidence_state', 'partial_reasons', 'termination', 'boundary_media_time', 'camera_cut_id',
+  'line_calls', 'evidence',
 ]);
 
 class AnalysisError extends Error {
@@ -702,12 +710,17 @@ function normalizeProvenanceList(value) {
 function eventErrors(value) {
   const errors = [];
   if (!isRecord(value)) return ['value must be an object'];
-  for (const field of ['event_id', 'rally_id', 'player_id']) {
+  for (const field of ['event_id', 'rally_id']) {
     if (typeof value[field] !== 'string' || value[field].trim() === '') errors.push(`${field} must be a non-empty string`);
   }
-  if (!Number.isInteger(value.sequence) || value.sequence < 0) errors.push('sequence must be a non-negative integer');
-  if (typeof value.hit_media_time !== 'number' || !Number.isFinite(value.hit_media_time) || value.hit_media_time < 0) {
-    errors.push('hit_media_time must be a non-negative finite number');
+  if (value.player_id !== null && (typeof value.player_id !== 'string' || value.player_id.trim() === '')) {
+    errors.push('player_id must be a non-empty string or null');
+  }
+  if (value.sequence !== null && (!Number.isInteger(value.sequence) || value.sequence < 0)) {
+    errors.push('sequence must be a non-negative integer or null');
+  }
+  if (value.hit_media_time !== null && (typeof value.hit_media_time !== 'number' || !Number.isFinite(value.hit_media_time) || value.hit_media_time < 0)) {
+    errors.push('hit_media_time must be a non-negative finite number or null');
   }
   validateEnum(value.shot_family, `${'shot_family'}`, [...COARSE_SHOT_FAMILIES, SHOT_FAMILY_UNKNOWN], errors);
   validateEnum(value.source, 'source', EVENT_SOURCES, errors);
@@ -738,19 +751,22 @@ function createStrokeEvent(input) {
   const value = {
     event_id: input.event_id,
     rally_id: input.rally_id,
-    sequence: input.sequence,
-    player_id: input.player_id,
-    shot_family: input.shot_family,
+    sequence: input.sequence ?? null,
+    player_id: input.player_id ?? null,
+    shot_family: input.shot_family ?? SHOT_FAMILY_UNKNOWN,
     label: input.label ?? null,
-    hit_media_time: input.hit_media_time,
-    source: input.source,
+    hit_media_time: input.hit_media_time ?? null,
+    source: input.source ?? 'unknown',
     classification_confidence: createConfidence(input.classification_confidence),
     geometry_confidence: createConfidence(input.geometry_confidence),
     tracking_confidence: input.tracking_confidence === undefined ? null : createConfidence(input.tracking_confidence),
-    status: input.status,
+    status: input.status ?? 'unknown',
     created_at_wall_time: input.created_at_wall_time ?? null,
     correction_provenance: normalizeProvenanceList(input.correction_provenance),
   };
+  for (const field of ['evidence', 'player_evidence', 'shuttle_evidence', 'shot_evidence', 'landing_evidence']) {
+    if (Object.prototype.hasOwnProperty.call(input, field)) value[field] = deepClone(input[field]);
+  }
   const errors = eventErrors(value);
   if (errors.length) throw new SchemaValidationError('StrokeEvent', errors);
   return finishRecord(value);
@@ -793,16 +809,34 @@ function replaceCorrectedStrokeEvent(events, eventId, patch, provenance = {}) {
   return finishRecord(normalized.map((event) => event.event_id === eventId ? correctStrokeEvent(event, patch, provenance) : event));
 }
 
+function inferScoreState(score) {
+  if (!isRecord(score)) return 'unknown';
+  const left = score.player_a ?? score.a ?? score.home;
+  const right = score.player_b ?? score.b ?? score.away;
+  if (!Number.isFinite(left) || !Number.isFinite(right) || left < 0 || right < 0) return 'unknown';
+  return Math.abs(left - right) <= 2 && Math.max(left, right) >= 18 ? 'tight' : 'ordinary';
+}
+
+function inferGamePoint(score) {
+  if (!isRecord(score)) return null;
+  if (typeof score.game_point === 'boolean') return score.game_point;
+  const left = score.player_a ?? score.a ?? score.home;
+  const right = score.player_b ?? score.b ?? score.away;
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
+  return Math.max(left, right) >= 20 && Math.abs(left - right) <= 1;
+}
+
 function normalizeScoreContext(value) {
   if (value === undefined || value === null) {
     return finishRecord({ state: 'unknown', game_point: null, source: 'unknown', score: null });
   }
   assertObject(value, 'ScoreContext');
+  const score = value.score === undefined ? null : deepClone(value.score);
   const candidate = {
-    state: value.state ?? 'unknown',
-    game_point: value.game_point ?? null,
+    state: value.state ?? inferScoreState(score),
+    game_point: value.game_point ?? inferGamePoint(score),
     source: value.source ?? 'unknown',
-    score: value.score === undefined ? null : deepClone(value.score),
+    score,
   };
   const errors = [];
   validateEnum(candidate.state, 'score_context.state', ['tight', 'ordinary', 'unknown'], errors);
@@ -854,13 +888,14 @@ function rallyErrors(value) {
   const errors = [];
   if (!isRecord(value)) return ['value must be an object'];
   if (typeof value.rally_id !== 'string' || value.rally_id.trim() === '') errors.push('rally_id must be a non-empty string');
-  if (typeof value.start_media_time !== 'number' || !Number.isFinite(value.start_media_time) || value.start_media_time < 0) {
-    errors.push('start_media_time must be a non-negative finite number');
+  if (value.start_media_time !== null && (typeof value.start_media_time !== 'number' || !Number.isFinite(value.start_media_time) || value.start_media_time < 0)) {
+    errors.push('start_media_time must be a non-negative finite number or null');
   }
-  if (value.end_media_time !== null && (typeof value.end_media_time !== 'number' || !Number.isFinite(value.end_media_time) || value.end_media_time < value.start_media_time)) {
+  if (value.end_media_time !== null && (typeof value.end_media_time !== 'number' || !Number.isFinite(value.end_media_time) ||
+      (value.start_media_time !== null && value.end_media_time < value.start_media_time))) {
     errors.push('end_media_time must be null or a finite number no earlier than start_media_time');
   }
-  validateEnum(value.status, 'status', ['in_progress', 'completed'], errors);
+  validateEnum(value.status, 'status', RALLY_STATUSES, errors);
   if (value.status === 'completed' && value.end_media_time === null) errors.push('completed rallies require end_media_time');
   if (!Array.isArray(value.stroke_event_ids) || value.stroke_event_ids.some((id) => typeof id !== 'string')) errors.push('stroke_event_ids must be an array of strings');
   if (new Set(value.stroke_event_ids || []).size !== (value.stroke_event_ids || []).length) errors.push('stroke_event_ids must not contain duplicates');
@@ -879,6 +914,22 @@ function rallyErrors(value) {
   validateEnum(value.source, 'source', EVENT_SOURCES, errors);
   if (!Array.isArray(value.correction_provenance)) errors.push('correction_provenance must be an array');
   else value.correction_provenance.forEach((item, index) => errors.push(...provenanceErrors(item, `correction_provenance[${index}]`)));
+  if (value.evidence_state !== undefined) validateEnum(value.evidence_state, 'evidence_state', EVIDENCE_STATES, errors);
+  if (value.partial_reasons !== undefined && (!Array.isArray(value.partial_reasons) || value.partial_reasons.some((reason) => typeof reason !== 'string'))) {
+    errors.push('partial_reasons must be an array of strings');
+  }
+  if (value.termination !== undefined) validateEnum(value.termination, 'termination', RALLY_TERMINATIONS, errors);
+  if (value.boundary_media_time !== undefined && value.boundary_media_time !== null &&
+      (typeof value.boundary_media_time !== 'number' || !Number.isFinite(value.boundary_media_time) || value.boundary_media_time < 0)) {
+    errors.push('boundary_media_time must be a non-negative finite number or null');
+  }
+  if (value.camera_cut_id !== undefined && value.camera_cut_id !== null && typeof value.camera_cut_id !== 'string') {
+    errors.push('camera_cut_id must be a string or null');
+  }
+  if (value.line_calls !== undefined) {
+    if (!Array.isArray(value.line_calls)) errors.push('line_calls must be an array of objects');
+    else value.line_calls.forEach((call, index) => errors.push(...lineCallErrors(call).map((error) => `line_calls[${index}].${error}`)));
+  }
   return errors;
 }
 
@@ -891,7 +942,7 @@ function createRallyRecord(input) {
   assertObject(input, 'RallyRecord');
   const value = {
     rally_id: input.rally_id,
-    start_media_time: input.start_media_time,
+    start_media_time: input.start_media_time ?? null,
     end_media_time: input.end_media_time ?? null,
     status: input.status ?? 'in_progress',
     stroke_event_ids: input.stroke_event_ids === undefined ? [] : [...input.stroke_event_ids],
@@ -906,6 +957,12 @@ function createRallyRecord(input) {
     source: input.source ?? 'auto',
     correction_provenance: normalizeProvenanceList(input.correction_provenance),
   };
+  for (const field of RALLY_OPTIONAL_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(input, field)) continue;
+    value[field] = field === 'line_calls' && Array.isArray(input[field])
+      ? input[field].map((call) => createLineCallState(call))
+      : deepClone(input[field]);
+  }
   const errors = rallyErrors(value);
   if (errors.length) throw new SchemaValidationError('RallyRecord', errors);
   return finishRecord(value);
@@ -915,10 +972,7 @@ function lineCallErrors(value) {
   const errors = [];
   if (!isRecord(value)) return ['value must be an object'];
   validateEnum(value.state, 'state', LINE_CALL_LABELS, errors);
-  if (value.state !== 'unknown' && (typeof value.relevant_line_id !== 'string' || value.relevant_line_id.trim() === '')) {
-    errors.push('relevant_line_id is required for an IN or OUT call');
-  }
-  if (value.relevant_line_id !== null && value.relevant_line_id !== undefined && typeof value.relevant_line_id !== 'string') {
+  if (value.state !== 'unknown' && value.relevant_line_id !== null && value.relevant_line_id !== undefined && typeof value.relevant_line_id !== 'string') {
     errors.push('relevant_line_id must be a string or null');
   }
   if (value.landing_point !== null && value.landing_point !== undefined) {
@@ -931,8 +985,8 @@ function lineCallErrors(value) {
   if (value.distance_to_line_m !== null && (typeof value.distance_to_line_m !== 'number' || !Number.isFinite(value.distance_to_line_m) || value.distance_to_line_m < 0)) {
     errors.push('distance_to_line_m must be null or a non-negative finite number');
   }
-  if (typeof value.timestamp_media_time !== 'number' || !Number.isFinite(value.timestamp_media_time) || value.timestamp_media_time < 0) {
-    errors.push('timestamp_media_time must be a non-negative finite number');
+  if (value.timestamp_media_time !== null && (typeof value.timestamp_media_time !== 'number' || !Number.isFinite(value.timestamp_media_time) || value.timestamp_media_time < 0)) {
+    errors.push('timestamp_media_time must be a non-negative finite number or null');
   }
   errors.push(...confidenceErrors(value.confidence, 'confidence'));
   validateEnum(value.source, 'source', EVENT_SOURCES, errors);
@@ -960,10 +1014,10 @@ function createLineCallState(input = {}) {
         return createNormalizedPoint(point.x, point.y, { allowOutside: true });
       })(),
     distance_to_line_m: input.distance_to_line_m ?? null,
-    timestamp_media_time: input.timestamp_media_time,
+    timestamp_media_time: input.timestamp_media_time ?? null,
     confidence: createConfidence(input.confidence),
-    source: input.source ?? 'auto',
-    status: input.status ?? (input.state === 'unknown' || input.state === undefined ? 'unclassified' : 'suggested'),
+    source: input.source ?? 'unknown',
+    status: input.status ?? (input.state === 'unknown' || input.state === undefined ? 'unknown' : 'suggested'),
     evidence: input.evidence === undefined ? [] : deepClone(input.evidence),
     correction_provenance: normalizeProvenanceList(input.correction_provenance),
   };
@@ -1093,32 +1147,663 @@ function classifyCoarseShot(input) {
   });
 }
 
+function canonicalOutcomeLabel(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase().replace(/[ -]+/g, '_');
+  if (normalized === 'forcederror') return 'forced_error';
+  if (normalized === 'unforcederror') return 'unforced_error';
+  return OUTCOME_LABELS.includes(normalized) ? normalized : null;
+}
+
+function canonicalEvidenceStatus(value, fallback = 'unknown') {
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim().toLowerCase().replace(/[ -]+/g, '_');
+  if (normalized === 'unknown' || normalized === 'unclassified') return 'unknown';
+  if (['accepted', 'suggested', 'corrected', 'partial'].includes(normalized)) return normalized;
+  return fallback;
+}
+
+function canonicalEventStatus(value, fallback = 'unknown') {
+  const status = canonicalEvidenceStatus(value, fallback);
+  return status === 'unknown' ? (value === 'unclassified' ? 'unclassified' : 'unknown') : status;
+}
+
+function mediaTimeOf(value) {
+  if (!isRecord(value)) return null;
+  const candidate = value.hit_media_time ?? value.media_time ?? value.timestamp_media_time ?? value.start_media_time ?? value.end_media_time ?? value.timestamp ?? value.time;
+  return typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0 ? candidate : null;
+}
+
+function stableIdentifier(value) {
+  if (typeof value === 'string' && value.trim() !== '') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function explicitPlayerId(value) {
+  if (typeof value === 'string' && value.trim() !== '') return value;
+  if (!isRecord(value)) return null;
+  const candidate = value.player_id ?? value.id;
+  return stableIdentifier(candidate);
+}
+
+function coarseFamilyFromValue(value) {
+  if (typeof value !== 'string') return SHOT_FAMILY_UNKNOWN;
+  const normalized = value.trim().toLowerCase().replace(/[ _-]+/g, '');
+  if (normalized === 'clear') return 'clear';
+  if (normalized === 'drop') return 'drop';
+  if (normalized === 'smash' || normalized === 'halfsmash') return 'smash';
+  if (normalized === 'net' || normalized === 'netshot' || normalized === 'netkill') return 'net';
+  return SHOT_FAMILY_UNKNOWN;
+}
+
+function evidenceStatusForChannel(channel) {
+  if (!isRecord(channel)) return 'unknown';
+  return canonicalEvidenceStatus(channel.status ?? channel.state, 'unknown');
+}
+
+function knownPlayerId(value) {
+  const playerId = explicitPlayerId(value);
+  return playerId && playerId.toLowerCase() !== 'unknown' ? playerId : null;
+}
+
+function normalizeOutcomeEvidence(input = {}) {
+  if (!isRecord(input)) return null;
+  const candidate = input.winner_state ?? input.outcome_state ?? input.outcome_evidence;
+  if (!isRecord(candidate)) return null;
+  const label = canonicalOutcomeLabel(candidate.label ?? candidate.outcome);
+  if (!label) return null;
+  return candidate;
+}
+
+function normalizeLineCallEvidence(input, fallbackTime = null, fallbackStatus = 'unknown') {
+  if (input === undefined || input === null) return createLineCallState({ timestamp_media_time: fallbackTime });
+  const raw = typeof input === 'string' ? { state: input } : (isRecord(input) ? input : {});
+  const landingPoint = raw.landing_point ?? raw.point ?? (
+    Number.isFinite(raw.x) && Number.isFinite(raw.y) ? { x: raw.x, y: raw.y } : null
+  );
+  const state = String(raw.state ?? raw.call ?? raw.line_call ?? 'unknown').toLowerCase();
+  const allowedState = LINE_CALL_LABELS.includes(state) ? state : 'unknown';
+  return createLineCallState({
+    state: allowedState,
+    relevant_line_id: raw.relevant_line_id ?? raw.line_id ?? null,
+    landing_point: landingPoint,
+    distance_to_line_m: raw.distance_to_line_m ?? raw.distance_m ?? null,
+    timestamp_media_time: raw.timestamp_media_time ?? raw.media_time ?? fallbackTime,
+    confidence: raw.confidence,
+    source: raw.source ?? 'unknown',
+    status: raw.status ?? (EVIDENCE_STATES.includes(state) ? state : (allowedState === 'unknown' ? fallbackStatus : 'suggested')),
+    evidence: raw.evidence === undefined ? [deepClone(input)] : deepClone(raw.evidence),
+    correction_provenance: raw.correction_provenance,
+  });
+}
+
+function eventConfidence(event) {
+  if (!event) return null;
+  return event.tracking_confidence || event.geometry_confidence || event.classification_confidence || null;
+}
+
+function attributionInputEvents(input) {
+  const values = input?.events ?? input?.stroke_events ?? input?.strokeEvents ?? [];
+  if (!Array.isArray(values)) return [];
+  return values.map((event) => createStrokeEvent(event));
+}
+
+function acceptedEvidenceStatus(status) {
+  return status === 'accepted' || status === 'corrected';
+}
+
+/**
+ * Attribute only what the supplied terminal evidence can establish. In
+ * particular, an OUT call identifies a losing hitter, but does not by itself
+ * establish forced versus unforced error. A suggested/partial/unknown call is
+ * never promoted to an official-looking outcome.
+ */
+function attributeRallyOutcome(input = {}) {
+  assertObject(input, 'RallyOutcomeInput');
+  const events = attributionInputEvents(input)
+    .filter((event) => acceptedEvidenceStatus(event.status))
+    .sort((left, right) => (left.hit_media_time ?? Infinity) - (right.hit_media_time ?? Infinity) ||
+      (left.sequence ?? Infinity) - (right.sequence ?? Infinity) || left.event_id.localeCompare(right.event_id));
+  const finalEvent = input.final_event ? createStrokeEvent(input.final_event) : events[events.length - 1] || null;
+  const finalEventIsAccepted = Boolean(finalEvent && acceptedEvidenceStatus(finalEvent.status));
+  const rawLanding = input.landing_call ?? input.line_call ?? input.landing ?? input.final_landing ??
+    finalEvent?.landing_evidence ?? null;
+  let landing;
+  try {
+    landing = normalizeLineCallEvidence(rawLanding, mediaTimeOf(finalEvent), input.landing_status ?? input.status ?? finalEvent?.status ?? 'unknown');
+  } catch (error) {
+    landing = createLineCallState({ timestamp_media_time: mediaTimeOf(finalEvent), evidence: [{ kind: 'invalid-landing-evidence', message: error.message }] });
+  }
+  const termination = isRecord(input.termination) ? input.termination : { outcome: input.termination };
+  const explicit = normalizeOutcomeEvidence(input) || termination;
+  const explicitLabel = canonicalOutcomeLabel(
+    input.outcome ?? input.label ?? explicit?.label ?? explicit?.outcome ?? explicit?.lose_reason,
+  );
+  const explicitWinner = knownPlayerId(
+    input.winner_player_id ?? input.winner_id ?? explicit?.winner_player_id ?? explicit?.player_id,
+  );
+  const explicitUnknown = explicitLabel === 'unclassified' && (
+    Object.prototype.hasOwnProperty.call(input, 'outcome') ||
+    Object.prototype.hasOwnProperty.call(input, 'label') ||
+    Object.prototype.hasOwnProperty.call(input, 'winner_state') ||
+    Object.prototype.hasOwnProperty.call(input, 'outcome_state') ||
+    Object.prototype.hasOwnProperty.call(input, 'outcome_evidence') ||
+    (isRecord(input.termination) && Object.prototype.hasOwnProperty.call(input.termination, 'outcome'))
+  );
+  const finalPlayer = knownPlayerId(finalEvent?.player_id ?? input.final_player_id);
+  const participants = [...new Set([
+    ...events.map((event) => knownPlayerId(event.player_id)).filter(Boolean),
+    ...((Array.isArray(input.players) ? input.players : []).map(knownPlayerId).filter(Boolean)),
+    knownPlayerId(input.opponent_player_id),
+    finalPlayer,
+  ].filter(Boolean))];
+  const landingAuthoritative = acceptedEvidenceStatus(landing.status) && (landing.state === 'in' || landing.state === 'out');
+  const explicitSource = explicit?.source ?? input.source ?? 'unknown';
+  const explicitStatus = canonicalEventStatus(explicit?.status ?? input.status,
+    explicitSource === 'manual' || explicitSource === 'corrected' ? 'accepted' : 'unknown');
+  const explicitIsTrusted = !['partial', 'unknown', 'unclassified'].includes(explicitStatus) &&
+    (explicitSource === 'manual' || explicitSource === 'corrected' || acceptedEvidenceStatus(explicitStatus));
+  const landingEvidenceError = Array.isArray(rawLanding?.evidence)
+    ? rawLanding.evidence.map((entry) => (isRecord(entry) ? entry.error_type : null)).find(Boolean)
+    : null;
+  const errorType = canonicalOutcomeLabel(input.error_type ?? input.error ?? termination.error_type ?? rawLanding?.error_type ?? landingEvidenceError ?? finalEvent?.landing_evidence?.error_type) ??
+    (explicitLabel === 'forced_error' || explicitLabel === 'unforced_error' ? explicitLabel : null);
+  const rallyEnded = input.completed === true || input.rally_ended === true ||
+    input.type === 'rally_end' || input.event_type === 'rally_end' || input.termination === 'rally_end' ||
+    (isRecord(termination) && (termination.type === 'rally_end' || termination.kind === 'rally_end'));
+  const evidence = [];
+  if (finalEvent) evidence.push({ kind: 'final-stroke', event_id: finalEvent.event_id, player_id: finalEvent.player_id, status: finalEvent.status });
+  evidence.push({ kind: 'landing', state: landing.state, status: landing.status, relevant_line_id: landing.relevant_line_id });
+  if (landing.correction_provenance.length) evidence.push({ kind: 'landing-correction-provenance', provenance: deepClone(landing.correction_provenance) });
+  if (isRecord(input.termination) || input.termination !== undefined) evidence.push({ kind: 'termination', value: deepClone(input.termination) });
+  if (Array.isArray(explicit?.evidence)) evidence.push(...deepClone(explicit.evidence));
+  if (Array.isArray(input.evidence)) evidence.push(...deepClone(input.evidence));
+
+  let label = 'unclassified';
+  let winnerPlayer = null;
+  let reason = 'outcome-uncertain';
+  let confidence = input.confidence;
+  let source = explicitSource;
+  let status = explicitStatus;
+
+  // An explicitly accepted/manual outcome is evidence in its own right. It is
+  // still required to identify the winning player; null is never a placeholder.
+  const explicitCanClassify = explicitLabel && explicitWinner && explicitIsTrusted &&
+    (landingAuthoritative || explicitSource === 'manual' || explicitSource === 'corrected');
+  if (explicitCanClassify) {
+    label = explicitLabel;
+    winnerPlayer = explicitWinner;
+    reason = 'explicit-terminal-outcome';
+  } else if (!explicitUnknown && landingAuthoritative && landing.state === 'out' && finalPlayer && finalEventIsAccepted) {
+    // An OUT call establishes the opponent as winner only when the opponent is
+    // unambiguous. The error class remains unknown unless explicitly supplied.
+    const opponents = participants.filter((playerId) => playerId !== finalPlayer);
+    if (opponents.length === 1) {
+      winnerPlayer = opponents[0];
+      label = errorType === 'forced_error' || errorType === 'unforced_error' ? errorType : 'unclassified';
+      reason = label === 'unclassified' ? 'out-landing-without-error-class' : 'out-landing-and-explicit-error-class';
+    } else {
+      reason = 'out-landing-opponent-ambiguous';
+    }
+  } else if (!explicitUnknown && landingAuthoritative && landing.state === 'in' && finalPlayer && finalEventIsAccepted && rallyEnded) {
+    label = 'winner';
+    winnerPlayer = finalPlayer;
+    reason = 'in-landing-and-rally-end';
+  } else if (explicitLabel && !explicitIsTrusted) {
+    reason = 'terminal-outcome-not-accepted';
+  } else if (!landingAuthoritative) {
+    reason = 'final-landing-unknown';
+  } else if (!finalEventIsAccepted) {
+    reason = 'final-stroke-not-accepted';
+  } else if (!finalPlayer) {
+    reason = 'final-player-unknown';
+  }
+
+  // WinnerState intentionally cannot carry a player for an unclassified label;
+  // retain the losing/final evidence above instead of making a partial winner.
+  if (label === 'unclassified') winnerPlayer = null;
+  const knownConfidences = [landing.confidence, eventConfidence(finalEvent)].filter((value) => value && value.status === 'known');
+  if (confidence === undefined && knownConfidences.length === 2) confidence = Math.min(...knownConfidences.map((value) => value.value));
+  if (!source || !EVENT_SOURCES.includes(source)) source = 'unknown';
+  if (label === 'unclassified' && !explicitLabel) status = 'unclassified';
+  if (label !== 'unclassified' && (status === 'unknown' || status === 'unclassified')) status = 'suggested';
+  if (!EVENT_STATUSES.includes(status)) status = label === 'unclassified' ? 'unclassified' : 'suggested';
+  const winnerState = createWinnerState({
+    label,
+    player_id: winnerPlayer,
+    confidence,
+    source,
+    status,
+    evidence: [...evidence, { kind: 'attribution', reason, supported: label !== 'unclassified' }],
+    correction_provenance: input.correction_provenance ?? explicit?.correction_provenance,
+  });
+  return finishRecord({
+    winner_state: winnerState,
+    winner: winnerState.player_id,
+    lose_reason: label === 'forced_error' || label === 'unforced_error' ? label : null,
+    landing,
+    final_event: finalEvent,
+    reason,
+    evidence: winnerState.evidence,
+  });
+}
+
+function normalizeStateMachineEvent(input, rallyId, sequence) {
+  assertObject(input, 'Rally event');
+  const playerEvidence = input.player_evidence ?? input.player ?? null;
+  const shotEvidence = input.shot_evidence ?? input.shot ?? null;
+  const shuttleEvidence = input.shuttle_evidence ?? input.shuttle ?? null;
+  const landingEvidence = input.landing_evidence ?? input.landing ?? input.line_call ?? null;
+  const channelStatuses = [playerEvidence, shuttleEvidence, shotEvidence, landingEvidence].map(evidenceStatusForChannel);
+  const hasChannelEvidence = channelStatuses.some((status) => status !== 'unknown') ||
+    playerEvidence !== null || shuttleEvidence !== null || shotEvidence !== null || landingEvidence !== null ||
+    Object.prototype.hasOwnProperty.call(input, 'player_id') || Object.prototype.hasOwnProperty.call(input, 'shot_family');
+  const derivedStatus = channelStatuses.includes('partial') ? 'partial' :
+    channelStatuses.includes('corrected') ? 'corrected' :
+      channelStatuses.includes('suggested') ? 'suggested' :
+        channelStatuses.includes('accepted') ? 'accepted' : (hasChannelEvidence ? 'suggested' : 'unknown');
+  const rawShot = isRecord(shotEvidence) ? (shotEvidence.family ?? shotEvidence.shot_family ?? shotEvidence.label) : shotEvidence;
+  const shotFamily = input.shot_family === undefined ? coarseFamilyFromValue(rawShot) : coarseFamilyFromValue(input.shot_family);
+  const label = input.label ?? (isRecord(shotEvidence) ? shotEvidence.label : (typeof shotEvidence === 'string' && !COARSE_SHOT_FAMILIES.includes(coarseFamilyFromValue(shotEvidence)) ? shotEvidence : null));
+  const explicitPlayer = stableIdentifier(input.player_id);
+  const playerId = Object.prototype.hasOwnProperty.call(input, 'player_id')
+    ? (explicitPlayer && explicitPlayer.toLowerCase() !== 'unknown' ? explicitPlayer : null)
+    : knownPlayerId(playerEvidence);
+  const eventInput = {
+    ...deepClone(input),
+    event_id: stableIdentifier(input.event_id ?? input.observation_id) ?? `${rallyId}:event:${sequence + 1}`,
+    rally_id: stableIdentifier(rallyId) ?? rallyId,
+    sequence: input.sequence ?? sequence,
+    player_id: playerId,
+    shot_family: COARSE_SHOT_FAMILIES.includes(shotFamily) ? shotFamily : SHOT_FAMILY_UNKNOWN,
+    label: label && MANUAL_SHOT_LABELS.includes(label) ? label : null,
+    hit_media_time: input.hit_media_time ?? input.media_time ?? input.timestamp_media_time ?? null,
+    source: input.source ?? 'unknown',
+    status: input.status === undefined ? derivedStatus : canonicalEventStatus(input.status),
+    classification_confidence: input.classification_confidence ?? (isRecord(shotEvidence) ? shotEvidence.confidence : null),
+    geometry_confidence: input.geometry_confidence ?? (isRecord(landingEvidence) ? landingEvidence.confidence : null),
+    tracking_confidence: input.tracking_confidence ?? (isRecord(playerEvidence) ? playerEvidence.confidence : null),
+    evidence: input.evidence === undefined ? [] : input.evidence,
+    player_evidence: playerEvidence,
+    shuttle_evidence: shuttleEvidence,
+    shot_evidence: shotEvidence,
+    landing_evidence: landingEvidence,
+  };
+  return createStrokeEvent(eventInput);
+}
+
+function orderEvents(events) {
+  return [...events].sort((left, right) => (left.hit_media_time === null ? Infinity : left.hit_media_time) -
+    (right.hit_media_time === null ? Infinity : right.hit_media_time) ||
+    (left.sequence === null ? Infinity : left.sequence) - (right.sequence === null ? Infinity : right.sequence) ||
+    left.event_id.localeCompare(right.event_id));
+}
+
+function aggregateRallyConfidence(events) {
+  const considered = events.filter((event) => acceptedEvidenceStatus(event.status));
+  if (!considered.length) return createConfidence(null, { reason: 'no-accepted-stroke-evidence' });
+  const values = considered.map(eventConfidence);
+  if (values.some((value) => !value || value.status !== 'known')) return createConfidence(null, { reason: 'partial-stroke-confidence' });
+  return createConfidence(stableNumber(values.reduce((sum, value) => sum + value.value, 0) / values.length));
+}
+
+function stateMachinePartialReasons(context, events, outcome, status) {
+  const reasons = [];
+  if (context.start_media_time === null) reasons.push('rally-start-time-unknown');
+  if (status !== 'completed') reasons.push(context.termination === 'camera_cut' ? 'camera-cut' : 'rally-end-unknown');
+  if (events.some((event) => event.player_id === null)) reasons.push('player-identity-unknown');
+  if (events.some((event) => event.shot_family === SHOT_FAMILY_UNKNOWN || event.status === 'partial' || event.status === 'unknown' || event.status === 'unclassified')) reasons.push('partial-or-unknown-shot-evidence');
+  if (events.some((event) => !acceptedEvidenceStatus(event.status))) reasons.push('unaccepted-stroke-evidence');
+  const acceptedEvents = events.filter((event) => acceptedEvidenceStatus(event.status));
+  if (!acceptedEvents.length) reasons.push('no-accepted-stroke-evidence');
+  if (acceptedEvents.some((event) => {
+    const confidence = eventConfidence(event);
+    return !confidence || confidence.status !== 'known';
+  })) reasons.push('partial-or-unknown-confidence');
+  if (outcome.winner_state.label === 'unclassified') reasons.push(outcome.reason);
+  return [...new Set(reasons)];
+}
+
+function createRallyStateMachine(options = {}) {
+  assertObject(options, 'RallyStateMachineOptions');
+  let rallyCounter = 0;
+  let eventCounter = 0;
+  let segmentCounter = 0;
+  let active = null;
+  let finalized = false;
+  const contexts = [];
+  const eventRecords = new Map();
+  const duplicates = [];
+  const cameraCuts = [];
+  const unassignedEvidence = [];
+
+  function nextRallyId(prefix = options.rally_id_prefix ?? 'rally') {
+    rallyCounter += 1;
+    return `${prefix}-${rallyCounter}`;
+  }
+
+  function uniqueRallyId(candidate) {
+    const normalized = stableIdentifier(candidate);
+    if (!normalized || !contexts.some((context) => context.rally_id === normalized)) return normalized || nextRallyId();
+    segmentCounter += 1;
+    return `${normalized}-segment-${segmentCounter}`;
+  }
+
+  function newContext(input = {}, forcedId = null) {
+    const requestedId = stableIdentifier(forcedId || input.rally_id || input.id);
+    const id = uniqueRallyId(requestedId);
+    const start = mediaTimeOf(input);
+    const context = {
+      rally_id: id,
+      source_rally_id: requestedId,
+      start_media_time: start,
+      end_media_time: null,
+      status: 'in_progress',
+      termination: 'unknown',
+      boundary_media_time: null,
+      camera_cut_id: null,
+      event_ids: [],
+      line_calls: [],
+      evidence: [],
+      score_context: input.score_context,
+      outcome_input: null,
+    };
+    contexts.push(context);
+    return context;
+  }
+
+  function eventForId(eventId) {
+    return eventRecords.get(eventId) || null;
+  }
+
+  function currentEvents(context) {
+    return orderEvents(context.event_ids.map(eventForId).filter(Boolean));
+  }
+
+  function ensureActive(input = {}, rallyId = null) {
+    if (!active) active = newContext(input, rallyId);
+    if (rallyId && active.rally_id !== rallyId && active.source_rally_id !== rallyId) {
+      closeContext(active, { status: 'incomplete', termination: 'implicit', boundary_media_time: mediaTimeOf(input) });
+      active = newContext(input, rallyId);
+    }
+    if (active.start_media_time === null && mediaTimeOf(input) !== null) active.start_media_time = mediaTimeOf(input);
+    return active;
+  }
+
+  function addEvent(input) {
+    const requestedRallyId = stableIdentifier(input.rally_id ?? input.rallyId);
+    const playerEvidence = input.player_evidence ?? input.player ?? null;
+    const shotEvidence = input.shot_evidence ?? input.shot ?? null;
+    const requestedEventId = input.event_id ?? input.observation_id ?? null;
+    const existingRequested = requestedEventId ? eventForId(requestedEventId) : null;
+    const existingContext = existingRequested
+      ? contexts.find((context) => context.event_ids.includes(existingRequested.event_id))
+      : null;
+    const context = existingContext || ensureActive(input, requestedRallyId);
+    eventCounter += 1;
+    const event = normalizeStateMachineEvent(input, context.rally_id, eventCounter - 1);
+    const existing = eventForId(event.event_id);
+    if (existing) {
+      if (event.status === 'corrected' || event.source === 'corrected') {
+        let replacement = event;
+        const completeCorrection = ['rally_id', 'sequence', 'player_id', 'shot_family', 'hit_media_time',
+          'classification_confidence', 'geometry_confidence', 'status'].every((field) => Object.prototype.hasOwnProperty.call(input, field));
+        if (event.correction_provenance.length && completeCorrection) {
+          const provenance = [...existing.correction_provenance];
+          for (const entry of event.correction_provenance) {
+            if (!provenance.some((candidate) => JSON.stringify(candidate) === JSON.stringify(entry))) provenance.push(entry);
+          }
+          replacement = createStrokeEvent({ ...event, correction_provenance: provenance });
+        } else {
+          const patch = {};
+          for (const field of STROKE_EVENT_FIELDS) {
+            if (['event_id', 'rally_id', 'source', 'status', 'correction_provenance'].includes(field)) continue;
+            if (Object.prototype.hasOwnProperty.call(input, field)) patch[field] = event[field];
+          }
+          if (Object.prototype.hasOwnProperty.call(input, 'player_id') || playerEvidence !== null) patch.player_id = event.player_id;
+          if (Object.prototype.hasOwnProperty.call(input, 'shot_family') || shotEvidence !== null) patch.shot_family = event.shot_family;
+          if (Object.prototype.hasOwnProperty.call(input, 'hit_media_time') || Object.prototype.hasOwnProperty.call(input, 'media_time')) patch.hit_media_time = event.hit_media_time;
+          if (Object.prototype.hasOwnProperty.call(input, 'landing_evidence') || Object.prototype.hasOwnProperty.call(input, 'landing')) patch.landing_evidence = event.landing_evidence;
+          replacement = correctStrokeEvent(existing, patch, {
+            reason: input.correction_reason ?? event.correction_provenance.at(-1)?.reason ?? 'rally event correction',
+            corrected_at_media_time: mediaTimeOf(input) ?? event.correction_provenance.at(-1)?.corrected_at_media_time ?? null,
+          });
+          if (event.correction_provenance.length) {
+            const provenance = [...replacement.correction_provenance];
+            for (const entry of event.correction_provenance) {
+              if (!provenance.some((candidate) => JSON.stringify(candidate) === JSON.stringify(entry))) provenance.push(entry);
+            }
+            replacement = createStrokeEvent({ ...replacement, correction_provenance: provenance });
+          }
+        }
+        eventRecords.set(event.event_id, replacement);
+        return replacement;
+      }
+      duplicates.push({ event_id: event.event_id, rally_id: context.rally_id, reason: 'duplicate-event-ignored' });
+      return existing;
+    }
+    eventRecords.set(event.event_id, event);
+    context.event_ids.push(event.event_id);
+    context.evidence.push(...(Array.isArray(event.evidence) ? deepClone(event.evidence) : [deepClone(event.evidence)]));
+    if (context.start_media_time === null && event.hit_media_time !== null) context.start_media_time = event.hit_media_time;
+    if (event.landing_evidence) addLanding(event.landing_evidence, event.hit_media_time, context, event.status);
+    return event;
+  }
+
+  function addLanding(input, fallbackTime = null, context = active, fallbackStatus = 'unknown') {
+    if (!context) {
+      unassignedEvidence.push(deepClone(input));
+      return null;
+    }
+    let call;
+    try {
+      call = normalizeLineCallEvidence(input, fallbackTime, fallbackStatus);
+    } catch (error) {
+      call = createLineCallState({ timestamp_media_time: fallbackTime, evidence: [{ kind: 'invalid-landing-evidence', message: error.message }, deepClone(input)] });
+    }
+    context.line_calls.push(call);
+    context.evidence.push(...(Array.isArray(call.evidence) ? deepClone(call.evidence) : [deepClone(call.evidence)]));
+    return call;
+  }
+
+  function startRally(input = {}) {
+    if (active) {
+      const requestedId = stableIdentifier(input.rally_id ?? input.id);
+      const same = requestedId && requestedId === active.rally_id;
+      if (same && mediaTimeOf(input) === active.start_media_time) return active;
+      closeContext(active, { status: 'incomplete', termination: 'implicit', boundary_media_time: mediaTimeOf(input) });
+    }
+    active = newContext(input);
+    active.score_context = input.score_context;
+    active.evidence.push(...(Array.isArray(input.evidence) ? deepClone(input.evidence) : []));
+    return active;
+  }
+
+  function endRally(input = {}) {
+    const context = ensureActive(input, stableIdentifier(input.rally_id ?? input.rallyId));
+    context.end_media_time = mediaTimeOf(input);
+    context.score_context = input.score_context ?? context.score_context;
+    context.outcome_input = deepClone(input);
+    context.termination = 'rally_end';
+    context.evidence.push(...(Array.isArray(input.evidence) ? deepClone(input.evidence) : []));
+    context.status = context.end_media_time === null ? 'incomplete' : 'completed';
+    active = null;
+    return context;
+  }
+
+  function cameraCut(input = {}) {
+    const time = mediaTimeOf(input);
+    cameraCuts.push(finishRecord({
+      camera_cut_id: input.camera_cut_id ?? input.cut_id ?? `camera-cut-${cameraCuts.length + 1}`,
+      media_time: time,
+      evidence: input.evidence === undefined ? [] : deepClone(input.evidence),
+    }));
+    if (active) {
+      active.termination = 'camera_cut';
+      active.status = 'incomplete';
+      active.boundary_media_time = time;
+      active.camera_cut_id = cameraCuts[cameraCuts.length - 1].camera_cut_id;
+      active.evidence.push({ kind: 'camera-cut', camera_cut_id: active.camera_cut_id, media_time: time });
+      active = null;
+    }
+    return cameraCuts[cameraCuts.length - 1];
+  }
+
+  function closeContext(context, patch = {}) {
+    if (!context) return;
+    context.status = patch.status ?? context.status;
+    context.termination = patch.termination ?? context.termination;
+    if (patch.boundary_media_time !== undefined) context.boundary_media_time = patch.boundary_media_time;
+    if (patch.end_media_time !== undefined) context.end_media_time = patch.end_media_time;
+    if (context.status === 'completed' && context.end_media_time === null) context.status = 'incomplete';
+    if (active === context) active = null;
+  }
+
+  function recordForContext(context) {
+    const events = currentEvents(context);
+    const calls = [...context.line_calls].sort((left, right) => (left.timestamp_media_time ?? Infinity) - (right.timestamp_media_time ?? Infinity));
+    const attributed = attributeRallyOutcome({
+      events,
+      landing_call: calls[calls.length - 1] ?? null,
+      ...(context.outcome_input || {}),
+      events,
+    });
+    const acceptedFamilies = [...new Set(events.filter((event) => acceptedEvidenceStatus(event.status)).map((event) => event.shot_family).filter((family) => COARSE_SHOT_FAMILIES.includes(family)))];
+    const partialReasons = stateMachinePartialReasons(context, events, attributed, context.status);
+    const evidenceState = context.status !== 'completed' || partialReasons.length ? 'partial' : 'accepted';
+    return createRallyRecord({
+      rally_id: context.rally_id,
+      start_media_time: context.start_media_time,
+      end_media_time: context.end_media_time,
+      status: context.status,
+      stroke_event_ids: events.map((event) => event.event_id),
+      shot_count: events.length,
+      coarse_shot_families: acceptedFamilies,
+      winner_state: attributed.winner_state,
+      winner: attributed.winner,
+      lose_reason: attributed.lose_reason,
+      score_context: context.score_context,
+      aggregate_confidence: aggregateRallyConfidence(events),
+      source: 'auto',
+      evidence_state: evidenceState,
+      partial_reasons: partialReasons,
+      termination: context.termination,
+      boundary_media_time: context.boundary_media_time,
+      camera_cut_id: context.camera_cut_id,
+      line_calls: calls,
+      evidence: context.evidence,
+    });
+  }
+
+  function snapshot() {
+    const allContexts = contexts.map(recordForContext);
+    return finishRecord({
+      state: active ? 'in_progress' : (finalized ? 'finalized' : 'ready'),
+      active_rally_id: active?.rally_id ?? null,
+      rallies: allContexts,
+      stroke_events: orderEvents([...eventRecords.values()]),
+      events: orderEvents([...eventRecords.values()]),
+      duplicates: deepClone(duplicates),
+      camera_cuts: deepClone(cameraCuts),
+      unassigned_evidence: deepClone(unassignedEvidence),
+    });
+  }
+
+  function ingest(input) {
+    if (finalized) throw new AnalysisError('rally state machine is finalized', 'state-machine-finalized');
+    if (Array.isArray(input)) {
+      for (const item of input) ingest(item);
+      return snapshot();
+    }
+    assertObject(input, 'Rally observation');
+    const type = String(input.type ?? input.event_type ?? input.kind ?? (input.event_id || input.observation_id ? 'shot' : '')).toLowerCase().replace(/[- ]/g, '_');
+    if (['camera_cut', 'cut', 'camera_change'].includes(type)) cameraCut(input);
+    else if (['rally_start', 'start', 'rallystart'].includes(type)) startRally(input);
+    else if (['rally_end', 'end', 'rallyend'].includes(type)) endRally(input);
+    else if (['landing', 'line_call', 'linecall'].includes(type)) addLanding(input.line_call ?? input.landing ?? input, mediaTimeOf(input));
+    else addEvent(input);
+    return snapshot();
+  }
+
+  function finalize() {
+    if (!finalized) {
+      if (active) {
+        active.status = 'incomplete';
+        active.termination = active.termination === 'unknown' ? 'unknown' : active.termination;
+        active = null;
+      }
+      finalized = true;
+    }
+    return snapshot();
+  }
+
+  return Object.freeze({
+    ingest,
+    consume: ingest,
+    push: ingest,
+    process: ingest,
+    processRallyEvent: ingest,
+    addEvent: ingest,
+    addShot(input) { return ingest({ type: 'shot', ...input }); },
+    addLanding(input) { return ingest({ type: 'landing', ...input }); },
+    startRally(input) { startRally(input); return snapshot(); },
+    endRally(input) { endRally(input); return snapshot(); },
+    closeRally(input) { endRally(input); return snapshot(); },
+    cameraCut(input) { const cut = cameraCut(input); return finishRecord({ ...cut }); },
+    finalize,
+    snapshot,
+    getState: snapshot,
+  });
+}
+
+function analyzeRallyEvents(observations, options = {}) {
+  const machine = createRallyStateMachine(options);
+  const batch = Array.isArray(observations)
+    ? observations
+    : (observations?.observations ?? observations?.events ?? observations?.stroke_events ?? observations);
+  machine.ingest(batch || []);
+  return machine.finalize();
+}
+
+const analyzeRally = analyzeRallyEvents;
+const analyzeRallies = analyzeRallyEvents;
+const processRallyEvents = analyzeRallyEvents;
+const buildRallyAnalysis = analyzeRallyEvents;
+const buildRallyTimeline = analyzeRallyEvents;
+const createRallyAnalyzer = createRallyStateMachine;
+
 function normalizeRallyForHighlight(rally) {
   return rally && rally.rally_id ? createRallyRecord(rally) : rally;
 }
 
 function groupEvents(strokeEvents) {
   const grouped = new Map();
+  const seen = new Set();
+  function add(key, event) {
+    const normalized = createStrokeEvent(event);
+    if (seen.has(normalized.event_id)) throw new AnalysisError(`event ${normalized.event_id} occurs more than once`, 'duplicate-event-id');
+    seen.add(normalized.event_id);
+    const rallyKey = key ?? normalized.rally_id;
+    if (!grouped.has(rallyKey)) grouped.set(rallyKey, []);
+    grouped.get(rallyKey).push(normalized);
+  }
   if (strokeEvents instanceof Map) {
     for (const [key, value] of strokeEvents.entries()) {
       const list = Array.isArray(value) ? value : [value];
-      grouped.set(key, list.map((event) => createStrokeEvent(event)));
+      for (const event of list) add(key, event);
     }
     return grouped;
   }
   if (!strokeEvents) return grouped;
   if (Array.isArray(strokeEvents)) {
-    for (const event of strokeEvents) {
-      const normalized = createStrokeEvent(event);
-      if (!grouped.has(normalized.rally_id)) grouped.set(normalized.rally_id, []);
-      grouped.get(normalized.rally_id).push(normalized);
-    }
+    for (const event of strokeEvents) add(null, event);
     return grouped;
   }
   if (isRecord(strokeEvents)) {
     for (const [key, value] of Object.entries(strokeEvents)) {
       const list = Array.isArray(value) ? value : [value];
-      grouped.set(key, list.map((event) => createStrokeEvent(event)));
+      for (const event of list) add(key, event);
     }
   }
   return grouped;
@@ -1229,6 +1914,7 @@ function calculateHighlightIndex(rallyInput, completedHistoryInput, strokeEvents
     },
     weights: { length_percentile: 0.4, variety: 0.25, outcome_pressure: 0.2, mean_tracking_confidence: 0.15 },
     partial_components: partialComponents,
+    partial: partialComponents.length > 0,
     component_reasons: {
       outcome_pressure: pressure.reason,
       mean_tracking_confidence: currentFeatures.missing_confidence_count > 0
@@ -1302,6 +1988,9 @@ const ANALYSIS_PRIMITIVES = {
   EVENT_STATUSES,
   OUTCOME_LABELS,
   LINE_CALL_LABELS,
+  EVIDENCE_STATES,
+  RALLY_STATUSES,
+  RALLY_TERMINATIONS,
   createNormalizedPoint,
   createCourtPoint,
   normalizeCourtPoint,
@@ -1328,6 +2017,16 @@ const ANALYSIS_PRIMITIVES = {
   createLineCallState,
   createLineCallRecord: createLineCallState,
   validateLineCallState,
+  attributeRallyOutcome,
+  createRallyStateMachine,
+  createRallyEventStateMachine: createRallyStateMachine,
+  createRallyAnalyzer,
+  analyzeRallyEvents,
+  analyzeRally: analyzeRallyEvents,
+  analyzeRallies,
+  processRallyEvents,
+  buildRallyAnalysis: analyzeRallyEvents,
+  buildRallyTimeline: analyzeRallyEvents,
   createCoarseShotFeatures,
   COARSE_RULE_THRESHOLDS,
   classifyCoarseShot,
