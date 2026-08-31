@@ -3,6 +3,7 @@
 This file is the project's committed home for project-intrinsic agent knowledge: build, test, release, architecture, and sharp-edge notes that should travel with the code.
 
 - Add durable project-specific notes here as they are discovered through real work.
+- The public MV3 UI build/test commands and playback boundary are documented in `README.md` §11; keep runtime integration behind `src/runtime.js` and do not add playback mutators to content UI.
 
 ## Maintaining this file
 
