@@ -39,6 +39,8 @@
         "content/runtime.js",
         "runtime.js",
         "analysis.js",
+        "analysis-primitives.js",
+        "calibration.js",
         "fixtures.js",
         "state.js",
         "ui.js",
