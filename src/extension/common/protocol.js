@@ -40,11 +40,28 @@
   // Model-neutral result envelope. A production adapter may populate the
   // players array with zero or more session-local tracks; the fixture probe
   // deliberately leaves it empty and marks tracking unknown/partial.
-  function unknownAnalysisResult() {
+  function unknownAnalysisResult({ sessionId = 'unknown-session', requestId = 'unknown-request', mediaTime = 0 } = {}) {
     return {
       schema: 'bso.analysis.result.v1',
       state: 'partial',
       players: [],
+      tracking: {
+        schema: 'bso.player-tracking.result.v1',
+        version: 1,
+        sessionId,
+        requestId,
+        mediaTime,
+        state: 'unknown',
+        players: [],
+        observations: [],
+        duplicateObservations: [],
+        invalidObservations: [],
+        detector: { id: 'unknown-detector', version: 0, kind: 'pose-detector' },
+        source: { id: 'unknown-source', version: 0, kind: 'frame-source' },
+        association: { method: 'gated-motion-box-keypoint-v1', maxTracks: 4, identityRisk: 'none' },
+        accepted: true,
+        reason: 'no-detector-observations'
+      },
       shuttle: { state: 'unknown', confidence: null },
       strokeEvents: [],
       shotFamily: 'unclassified',
@@ -118,12 +135,13 @@
     inferenceAvailable = false,
     capabilities = {},
     capabilityState = capabilities,
-    result = unknownAnalysisResult()
+    result = null
   }) {
     if (!nonEmptyString(requestId)) throw new TypeError('requestId must be a non-empty string');
     if (!finite(mediaTime) || mediaTime < 0) throw new TypeError('mediaTime must be a non-negative number');
     if (!nonEmptyString(analyzer)) throw new TypeError('analyzer must be a non-empty string');
     const state = isObject(capabilityState) ? capabilityState : {};
+    const analysisResult = result || unknownAnalysisResult({ sessionId, requestId, mediaTime });
     return {
       ...base(TYPES.ANALYZER_RESULT, sessionId),
       requestId,
@@ -138,7 +156,7 @@
       // production-model result after a fallback or session change.
       capabilities: state,
       capabilityState: state,
-      result,
+      result: analysisResult,
       stalePolicy: STALE_RESULT_POLICY
     };
   }
@@ -194,10 +212,22 @@
       Number.isInteger(message.dimensions.height) && message.dimensions.height > 0 && isObject(message.frame);
   }
 
+  function isTrackingEnvelope(value) {
+    const trackingApi = typeof globalThis === 'object' ? globalThis.BSOPlayerTracking : null;
+    if (trackingApi && typeof trackingApi.isTrackingResult === 'function') return trackingApi.isTrackingResult(value);
+    if (!isObject(value) || value.schema !== 'bso.player-tracking.result.v1' || value.version !== 1 ||
+        !nonEmptyString(value.sessionId) || !nonEmptyString(value.requestId) || !finite(value.mediaTime) || value.mediaTime < 0 ||
+        !['tracked', 'partial', 'unknown'].includes(value.state) || !Array.isArray(value.players) ||
+        !Array.isArray(value.observations)) return false;
+    return value.players.every((player) => isObject(player) && nonEmptyString(player.trackId) &&
+      ['tracked', 'partial', 'unknown'].includes(player.state));
+  }
+
   function isAnalyzerResult(message) {
     return hasBase(message, TYPES.ANALYZER_RESULT) && nonEmptyString(message.requestId) &&
       finite(message.mediaTime) && message.mediaTime >= 0 && nonEmptyString(message.analyzer) &&
-      isObject(message.result) && isObject(message.capabilities || message.capabilityState);
+      isObject(message.result) && (message.result.tracking == null || isTrackingEnvelope(message.result.tracking)) &&
+      isObject(message.capabilities || message.capabilityState);
   }
 
   function isCapabilityReport(message) {
@@ -221,6 +251,7 @@
     createCapabilityReport,
     createRuntimeStatus,
     unknownAnalysisResult,
+    isTrackingEnvelope,
     isFrameSample,
     isAnalyzerResult,
     isCapabilityReport,

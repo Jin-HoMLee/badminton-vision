@@ -3,6 +3,34 @@
 
 const ANALYZER_FALLBACK = 'fixture-probe-v1';
 
+function unknownTracking(sample, reason) {
+  if (globalThis.BSOPlayerTracking && typeof globalThis.BSOPlayerTracking.unknownTrackingResult === 'function') {
+    return globalThis.BSOPlayerTracking.unknownTrackingResult({
+      sessionId: sample.sessionId,
+      requestId: sample.requestId,
+      mediaTime: sample.mediaTime,
+      detector: { id: 'mock-compatibility-seam', version: 1, kind: 'compatibility-seam' },
+      source: { id: 'captured-frame', version: 1, kind: 'mv3-offscreen-frame' },
+      reason
+    });
+  }
+  return {
+    schema: 'bso.player-tracking.result.v1',
+    version: 1,
+    sessionId: sample.sessionId,
+    requestId: sample.requestId,
+    mediaTime: sample.mediaTime,
+    state: 'unknown',
+    players: [],
+    observations: [],
+    duplicateObservations: [],
+    invalidObservations: [],
+    association: { method: 'gated-motion-box-keypoint-v1', maxTracks: 4, identityRisk: 'none' },
+    accepted: true,
+    reason
+  };
+}
+
 /**
  * The default analyzer is a committed, deterministic runtime fixture. It
  * proves that an ImageBitmap can cross the MV3 boundary and be read locally;
@@ -30,6 +58,7 @@ class MockAnalyzer {
         state: 'partial',
         // The compatibility seam identifies no player or shuttle.
         players: [],
+        tracking: unknownTracking(sample, 'compatibility-seam-no-detections'),
         shuttle: { state: 'unknown', confidence: null },
         strokeEvents: [],
         shotFamily: 'unclassified',

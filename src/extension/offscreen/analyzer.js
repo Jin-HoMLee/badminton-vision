@@ -19,6 +19,34 @@
   });
   const fixtureModel = model || fallbackModel;
 
+  function unknownTracking(sample, reason) {
+    if (defaultEnvironment.BSOPlayerTracking && typeof defaultEnvironment.BSOPlayerTracking.unknownTrackingResult === 'function') {
+      return defaultEnvironment.BSOPlayerTracking.unknownTrackingResult({
+        sessionId: sample.sessionId,
+        requestId: sample.requestId,
+        mediaTime: sample.mediaTime,
+        detector: { id: fixtureModel.id, version: fixtureModel.version, kind: 'fixture-probe' },
+        source: { id: 'captured-frame', version: 1, kind: 'mv3-offscreen-frame' },
+        reason
+      });
+    }
+    return {
+      schema: 'bso.player-tracking.result.v1',
+      version: 1,
+      sessionId: sample.sessionId,
+      requestId: sample.requestId,
+      mediaTime: sample.mediaTime,
+      state: 'unknown',
+      players: [],
+      observations: [],
+      duplicateObservations: [],
+      invalidObservations: [],
+      association: { method: 'gated-motion-box-keypoint-v1', maxTracks: 4, identityRisk: 'none' },
+      accepted: true,
+      reason
+    };
+  }
+
   function validDimensions(frame) {
     return frame && Number.isInteger(frame.width) && frame.width > 0 &&
       Number.isInteger(frame.height) && frame.height > 0;
@@ -133,6 +161,7 @@
           state: 'partial',
           // The deterministic probe identifies no player or shuttle.
           players: [],
+          tracking: unknownTracking(sample, readable ? 'fixture-no-detections' : 'frame-unavailable'),
           shuttle: { state: 'unknown', confidence: null },
           strokeEvents: [],
           shotFamily: 'unclassified',

@@ -12,5 +12,5 @@ Do not repeat what the codebase already shows; point to the authoritative file o
 Prefer rewriting or pruning existing entries over appending new ones.
 When updating this file, preserve this bar for all agents and keep entries concise.
 
-- The local MV3 runtime slice, fixture analyzer boundary, and Chrome 148 structured-clone prerequisite are documented in `docs/runtime.md`; use `npm run runtime-smoke` for its focused integration gate.
+- The local MV3 runtime slice, fixture analyzer boundary, multi-person pose contract, and Chrome 148 structured-clone prerequisite are documented in `docs/runtime.md`; the implementation is `src/extension/common/player-tracking.js`, and `npm run runtime-smoke` is the focused integration gate.
 - The browser calibration adapter and its normalized video-local state contract are documented in `docs/runtime.md`; keep court fitting in `src/calibration.js` and playback access read-only.

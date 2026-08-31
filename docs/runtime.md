@@ -61,6 +61,68 @@ future entry may carry a session-local `trackId`, confidence, and
 `tracked`/`partial`/`unknown` state. The fixture returns an empty array and
 unknown/partial state rather than inventing a single-person result.
 
+## Multi-person pose contract and association
+
+`common/player-tracking.js` is the model-neutral adapter boundary. It loads no
+model and makes no detector choice. `normalizePoseObservation()` converts a
+candidate detector pose to this versioned shape (pixel coordinates are inferred
+when dimensions are present and a coordinate is greater than 1; adapters may
+instead set `coordinateSpace: "pixel"` explicitly):
+
+```js
+{
+  schema: "bso.pose.observation.v1", version: 1,
+  sessionId, requestId, observationId, mediaTime,
+  detector: { id, version, kind }, source: { id, version, kind },
+  state: "tracked" | "partial" | "unknown", confidence: 0..1 | null,
+  bbox: { x: 0..1, y: 0..1, width: 0..1, height: 0..1 } | null,
+  keypoints: [{ name, x: 0..1, y: 0..1, confidence: 0..1 | null }]
+}
+```
+
+`isPoseObservation()` rejects malformed normalized data at the adapter seam.
+A tracked pose needs a box and confidence; incomplete or low-confidence data is
+partial. Unknown data has no usable pose. Duplicate observation IDs and near-
+identical boxes are deterministically collapsed, retaining the higher
+confidence (then the lexicographically smaller ID), and are reported in
+`duplicateObservations`.
+
+`SessionPlayerTracker` is a deterministic session-local association primitive.
+It defaults to four tracks (and permits 2–4), so court half, image side, or
+player ordering is never an identity. Its documented method is
+`gated-motion-box-keypoint-v1`: an observation must pass the normalized center
+motion gate (`maxCenterDistance: 0.24`), box-size gate (each dimension ratio
+0.25–4), box-or-center gate (IoU or motion), optional common-keypoint gate
+(`keypointGate: 0.45`), and total cost gate (`maxCost: 0.82`). Assignment cost
+is `0.45 * motion + 0.30 * (1 - IoU) + 0.25 * keypoint + confidence penalty`.
+The global assignment is sorted by cost and stable IDs, with
+`ambiguityMargin: 0.08`. A close alternative or a weak-evidence crossing
+quarantines the affected observations: existing IDs remain `unknown` for that
+frame and `association.identityRisk` is
+`likely-id-switch-or-crossover`; the observation is never silently assigned to
+the other player. A later separated frame can recover the old IDs using the
+retained motion hint.
+
+A missed track is `partial` with a bounded predicted box for up to two frames,
+then `unknown`; it is retired only after eight missed frames. A low-confidence
+new pose does not create a track. Empty detections, invalid detector output,
+and a missing detector all remain unknown/partial. `processFrame({stale: true})`,
+a duplicate request, or a media timestamp at/before the watermark is rejected
+without mutating tracks. `reset("camera-cut")` or `cameraCut: true` clears the
+association state and advances the session-local ID generation. Runtime
+session end/video replacement must create a new tracker/session. Request IDs
+and media timestamps are copied into every result, and all of this work is
+synchronous and local to the offscreen analyzer; it never blocks or mutates
+playback.
+
+The offscreen HTML loads this contract before the fixture analyzer. The
+fixture still emits `tracking.state: "unknown"` with `tracking.players: []`
+and an explicit fixture detector/source identity; it never converts pixels into
+production player detections. A future adapter can feed normalized observations
+to the tracker and place its result under the existing model-neutral
+`analysis.result` envelope without changing capture, service-worker relay, or
+the media-time watermark policy.
+
 ## Court calibration boundary
 
 `analysis/index.js` is copied to the browser as `analysis-primitives.js` and
