@@ -41,6 +41,9 @@ const runtimeFiles = [
   ["content/runtime.js", "content/runtime.js"],
   ["offscreen/analyzer.js", "offscreen/analyzer.js"],
   ["offscreen/movenet-adapter.js", "offscreen/movenet-adapter.js"],
+  // Kept packaged but intentionally not loaded by offscreen.html: the local
+  // shuttle adapter is an experimental seam until a later integration pass.
+  ["offscreen/shuttle-tracking-adapter.js", "offscreen/shuttle-tracking-adapter.js"],
   ["offscreen/fixture-model.js", "offscreen/fixture-model.js"],
   ["offscreen/offscreen.html", "offscreen/offscreen.html"],
   ["offscreen/offscreen.js", "offscreen/offscreen.js"]

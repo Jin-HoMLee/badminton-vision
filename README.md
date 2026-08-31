@@ -232,7 +232,9 @@ weights. See `docs/runtime.md` for this concrete release gate. The versioned
 pose shape and deterministic multi-person association gates live in
 `src/extension/common/player-tracking.js`; see
 `docs/runtime.md` for the contract, runtime smoke check, and canonical
-packaging details.
+packaging details. The standalone shuttle candidate/trajectory experiment is
+documented in [`docs/shuttle-tracking.md`](docs/shuttle-tracking.md); it is
+packaged but intentionally not wired into the live offscreen session yet.
 
 `src/runtime.js` is the read-only playback boundary and UI seam. It reads
 `currentTime`, frame metadata, dimensions, and playback state; it does not

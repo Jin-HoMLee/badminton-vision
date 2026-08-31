@@ -39,6 +39,7 @@ const expectedFiles = [
   "offscreen/analyzer.js",
   "offscreen/fixture-model.js",
   "offscreen/movenet-adapter.js",
+  "offscreen/shuttle-tracking-adapter.js",
   "offscreen/offscreen.html",
   "offscreen/offscreen.js",
   "design-system/assets/icon-16.svg",
