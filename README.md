@@ -237,9 +237,12 @@ legacy MoveNet seam, but its uncleared checkpoint is not selected or bundled.
 The versioned pose shape and deterministic multi-person association gates live
 in `src/extension/common/player-tracking.js`; see `docs/runtime.md` for the
 contract, licensing notice, runtime smoke check, and canonical packaging
-details. The standalone shuttle candidate/trajectory experiment is documented
-in [`docs/shuttle-tracking.md`](docs/shuttle-tracking.md); it is packaged but
-intentionally not wired into the live offscreen session yet.
+details. The local shuttle candidate/trajectory adapter is loaded by the same
+offscreen session and composed with pose results. It emits a tracked point and
+trajectory only after its bounded temporal-continuity gate; it does not claim a
+hit, stroke, landing, line call, rally end, or winner. Unknown values stay
+editable through the existing manual labeling and CSV surfaces. Its limitations
+and evidence contract are documented in [`docs/shuttle-tracking.md`](docs/shuttle-tracking.md).
 
 `src/runtime.js` is the read-only playback boundary and UI seam. It reads
 `currentTime`, frame metadata, dimensions, and playback state; it does not

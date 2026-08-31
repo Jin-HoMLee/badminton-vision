@@ -155,6 +155,17 @@
     if (!output) return null;
     if (Array.isArray(output.shape)) return output.shape;
     if (output.shape && typeof output.shape.length === 'number') return Array.from(output.shape);
+    // @litertjs/core exposes Tensor dimensions through its public `type`
+    // descriptor rather than a Tensor.shape property. Keep the direct shape
+    // branch for injected/test runtimes, but use the real descriptor in the
+    // packaged browser path so the model output is decoded instead of being
+    // reported as an unsupported result.
+    const dimensions = output.type?.layout?.dimensions;
+    if (typeof dimensions === 'function') {
+      const value = dimensions();
+      if (value && typeof value.length === 'number') return Array.from(value);
+    }
+    if (dimensions && typeof dimensions.length === 'number') return Array.from(dimensions);
     return null;
   }
 
@@ -385,6 +396,10 @@
       tracking,
       shuttle: { state: 'unknown', confidence: null },
       strokeEvents: [],
+      rally: { state: 'unknown', confidence: null, reason: 'rally-segmentation-not-available' },
+      rallyEnd: { state: 'unknown', confidence: null, reason: 'rally-end-evidence-not-available' },
+      winner: { state: 'unknown', confidence: null, reason: 'winner-evidence-not-available' },
+      outcome: 'unclassified',
       shotFamily: 'unclassified',
       classificationConfidence: 0,
       geometryConfidence: 0,
@@ -504,10 +519,18 @@
     }
 
     resetSession(sessionId, reason = 'session-reset') {
-      const tracker = this.trackers.get(sessionId);
+      const id = sessionId == null ? null : String(sessionId);
+      const tracker = id === null ? null : this.trackers.get(id);
       if (tracker) tracker.reset(reason);
-      this.lastMediaBySession.delete(sessionId);
-      return { sessionId, reason };
+      if (id !== null) this.lastMediaBySession.delete(id);
+      return { sessionId: id, reason };
+    }
+
+    endSession(sessionId, reason = 'session-end') {
+      const id = sessionId == null ? null : String(sessionId);
+      this.resetSession(id, reason);
+      if (id !== null) this.trackers.delete(id);
+      return { sessionId: id, reason };
     }
 
     async infer(frame, context = {}) {
@@ -580,6 +603,10 @@
             tracking,
             shuttle: { state: 'unknown', confidence: null },
             strokeEvents: [],
+            rally: { state: 'unknown', confidence: null, reason: 'rally-segmentation-not-available' },
+            rallyEnd: { state: 'unknown', confidence: null, reason: 'rally-end-evidence-not-available' },
+            winner: { state: 'unknown', confidence: null, reason: 'winner-evidence-not-available' },
+            outcome: 'unclassified',
             shotFamily: 'unclassified',
             classificationConfidence: 0,
             geometryConfidence: 0,

@@ -45,8 +45,8 @@ const runtimeFiles = [
   ["offscreen/movenet-adapter.js", "offscreen/movenet-adapter.js"],
   ["offscreen/lite-runtime-loader.js", "offscreen/lite-runtime-loader.js"],
   ["offscreen/lite-openpose-adapter.js", "offscreen/lite-openpose-adapter.js"],
-  // Kept packaged but intentionally not loaded by offscreen.html: the local
-  // shuttle adapter is an experimental seam until a later integration pass.
+  // The bounded local shuttle adapter is loaded by offscreen.html and composed
+  // with production pose results; it has no model weights or network path.
   ["offscreen/shuttle-tracking-adapter.js", "offscreen/shuttle-tracking-adapter.js"],
   ["offscreen/fixture-model.js", "offscreen/fixture-model.js"],
   ["offscreen/vendor/lite-openpose/pose_256.tflite", "offscreen/vendor/lite-openpose/pose_256.tflite"],
@@ -140,7 +140,7 @@ for (const file of contentScripts) {
   if (!required.includes(file)) throw new Error(`Manifest content script is not packaged: ${file}`);
 }
 const offscreenHtml = await readFile(join(dist, "offscreen/offscreen.html"), "utf8");
-for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "lite-runtime-loader.js", "lite-openpose-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
+for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "lite-runtime-loader.js", "lite-openpose-adapter.js", "shuttle-tracking-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
   if (!offscreenHtml.includes(`src="${script}"`)) throw new Error(`Packed offscreen document is missing ${script}`);
 }
 await assertNoRemoteDependencies(dist);

@@ -24,6 +24,9 @@ test("panel toggles and keyboard shortcuts are explicit and re-render safe", asy
   assert.match(content, /SET_DENSITY/);
   assert.match(content, /if \(state\.panels\.stats\) left\.appendChild/);
   assert.match(content, /if \(state\.panels\.map\)/);
+  assert.match(content, /runtimeEvidenceDrawing/);
+  assert.match(content, /data-bso-player-count/);
+  assert.match(content, /cameraCut/);
   assert.match(content, /TOGGLE_PANEL.*panel: \"stats\"/);
   assert.match(content, /TOGGLE_PANEL.*panel: \"map\"/);
   assert.match(content, /key === "o"/);

@@ -64,6 +64,10 @@
       },
       shuttle: { state: 'unknown', confidence: null },
       strokeEvents: [],
+      rally: { state: 'unknown', confidence: null, reason: 'rally-segmentation-not-available' },
+      rallyEnd: { state: 'unknown', confidence: null, reason: 'rally-end-evidence-not-available' },
+      winner: { state: 'unknown', confidence: null, reason: 'winner-evidence-not-available' },
+      outcome: 'unclassified',
       shotFamily: 'unclassified',
       classificationConfidence: 0,
       geometryConfidence: 0
@@ -172,7 +176,9 @@
     fallbacks = [],
     reason = '',
     transport = 'mv3-runtime-messaging',
-    frameTransport = 'unknown'
+    frameTransport = 'unknown',
+    backend = null,
+    components = null
   }) {
     return {
       ...base(TYPES.CAPABILITY_REPORT, sessionId),
@@ -182,6 +188,8 @@
         offscreen: Boolean(offscreen),
         inference: Boolean(inference),
         analyzer,
+        backend,
+        components,
         transport,
         frameTransport
       },

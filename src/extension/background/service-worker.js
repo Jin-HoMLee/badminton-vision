@@ -7,6 +7,7 @@ const OFFSCREEN_URL = 'offscreen/offscreen.html';
 const sessions = new Map();
 const sessionQueues = new Map();
 let offscreenReady = null;
+let offscreenFailureReason = '';
 
 async function hasOffscreenDocument() {
   if (!chrome.runtime.getContexts) return false;
@@ -39,7 +40,15 @@ async function ensureOffscreenDocument() {
         if (await hasOffscreenDocument()) return true;
         throw error;
       }
-    })().catch(() => false);
+    })().then((ready) => {
+      if (ready) offscreenFailureReason = '';
+      return ready;
+    }).catch((error) => {
+      offscreenFailureReason = error instanceof Error ? error.message : String(error);
+      // Allow a later session to retry after an offscreen startup failure.
+      offscreenReady = null;
+      return false;
+    });
   }
   return offscreenReady;
 }
@@ -69,6 +78,13 @@ function stateCapabilities(state, overrides = {}) {
 function unavailable(state, reason) {
   if (!state || state.fallbackReported) return;
   state.fallbackReported = true;
+  // A frame can arrive while offscreen startup is pending. Do not leave that
+  // coalesced bitmap or a session-end waiter stranded when startup fails.
+  if (state.pendingFrame) {
+    closeFrame(state.pendingFrame);
+    state.pendingFrame = null;
+  }
+  settleFrameWaiters(state);
   send(state.port, BSOProtocol.createCapabilityReport({
     sessionId: state.sessionId,
     capture: state.capabilities?.capture || 'unknown',
@@ -96,6 +112,53 @@ function enqueue(sessionId, task) {
   return next;
 }
 
+function closeFrame(message) {
+  if (message?.frame && typeof message.frame.close === 'function') message.frame.close();
+}
+
+function settleFrameWaiters(state) {
+  if (state.frameBusy || state.pendingFrame) return;
+  const waiters = state.frameWaiters.splice(0);
+  waiters.forEach((resolve) => resolve());
+}
+
+function waitForFrameRelays(state) {
+  if (!state.frameBusy && !state.pendingFrame) return Promise.resolve();
+  return new Promise((resolve) => state.frameWaiters.push(resolve));
+}
+
+function relayFrame(state, message) {
+  // Do not race a frame ahead of the session-start message. The service worker
+  // owns this gate because content can emit a sample while offscreen startup is
+  // still awaiting createDocument; keep only the newest such sample.
+  if (!state || !state.ready || state.starting) {
+    if (state?.pendingFrame) closeFrame(state.pendingFrame);
+    if (state) state.pendingFrame = message;
+    else closeFrame(message);
+    return;
+  }
+  if (state.frameBusy) {
+    if (state.pendingFrame) closeFrame(state.pendingFrame);
+    state.pendingFrame = message;
+    return;
+  }
+  state.frameBusy = true;
+  void forwardToOffscreen(state, message).finally(() => {
+    state.frameBusy = false;
+    if (state.pendingFrame && state.ready) {
+      const next = state.pendingFrame;
+      state.pendingFrame = null;
+      relayFrame(state, next);
+    } else {
+      if (state.pendingFrame && !state.ready) {
+        closeFrame(state.pendingFrame);
+        state.pendingFrame = null;
+      }
+      settleFrameWaiters(state);
+    }
+  });
+}
+
 async function forwardToOffscreen(state, message) {
   if (!state || !state.ready) return false;
   try {
@@ -119,7 +182,8 @@ function setupSession(state, message) {
   return enqueue(state.sessionId, async () => {
     const ready = await ensureOffscreenDocument();
     if (!ready) {
-      unavailable(state, 'offscreen-document-unavailable');
+      state.starting = false;
+      unavailable(state, offscreenFailureReason || 'offscreen-document-unavailable');
       return false;
     }
     state.ready = true;
@@ -130,9 +194,19 @@ function setupSession(state, message) {
       capabilities: stateCapabilities(state, { offscreen: true, analyzer: 'pending', inference: false }),
       reason: 'offscreen-runtime'
     }));
-    // Complete session setup before a frame can be analyzed. The per-session
-    // queue also preserves start -> frames -> end ordering across navigation.
-    return forwardToOffscreen(state, message);
+    // Complete session setup before a frame can be analyzed. Frames that
+    // arrived during startup are coalesced into one newest pending sample.
+    await forwardToOffscreen(state, message);
+    state.starting = false;
+    if (state.pendingFrame && state.ready) {
+      const pending = state.pendingFrame;
+      state.pendingFrame = null;
+      relayFrame(state, pending);
+    } else if (state.pendingFrame) {
+      closeFrame(state.pendingFrame);
+      state.pendingFrame = null;
+    }
+    return true;
   });
 }
 
@@ -148,10 +222,19 @@ chrome.runtime.onConnect.addListener((port) => {
         port,
         capabilities: message.capabilities || {},
         ready: false,
-        fallbackReported: false
+        starting: true,
+        fallbackReported: false,
+        endRequested: false,
+        disconnectCleanupQueued: false,
+        frameBusy: false,
+        pendingFrame: null,
+        frameWaiters: []
       };
       sessions.set(sessionId, state);
-      setupSession(state, message).catch((error) => unavailable(state, String(error)));
+      setupSession(state, message).catch((error) => {
+        state.starting = false;
+        unavailable(state, String(error));
+      });
       return;
     }
     const state = sessions.get(sessionId);
@@ -167,13 +250,18 @@ chrome.runtime.onConnect.addListener((port) => {
         }));
         return;
       }
-      enqueue(sessionId, () => forwardToOffscreen(state, message)).catch((error) => unavailable(state, String(error)));
+      // The offscreen scheduler has the same one-active/one-pending contract;
+      // coalesce here too so a slow relay cannot build an unbounded worker
+      // promise chain before the message reaches it.
+      relayFrame(state, message);
       return;
     }
     if (message.type === BSOProtocol.TYPES.SESSION_END) {
+      state.endRequested = true;
       // Queue end behind all pending frame relays. Keep a ready session until
       // offscreen acknowledges the end, so in-flight results can return.
       enqueue(sessionId, async () => {
+        await waitForFrameRelays(state);
         if (state.ready) await forwardToOffscreen(state, message);
         if (!state.ready) {
           sessions.delete(sessionId);
@@ -186,11 +274,26 @@ chrome.runtime.onConnect.addListener((port) => {
     }
   });
   port.onDisconnect.addListener(() => {
-    if (sessionId && sessions.get(sessionId)?.port === port) {
-      sessions.delete(sessionId);
-      // The content page has gone away; queued frame work is allowed to finish
-      // locally, but no result can be delivered to this disconnected port.
+    const state = sessionId && sessions.get(sessionId);
+    if (!state || state.port !== port || state.disconnectCleanupQueued || state.endRequested) return;
+    // Navigation can disconnect the content port immediately after posting a
+    // frame. Send an explicit end marker behind relays so offscreen analyzers
+    // reset trackers and release per-session state even when no result can be
+    // delivered back to the page.
+    state.disconnectCleanupQueued = true;
+    if (state.pendingFrame) {
+      closeFrame(state.pendingFrame);
+      state.pendingFrame = null;
     }
+    enqueue(sessionId, async () => {
+      await waitForFrameRelays(state);
+      if (state.ready) await forwardToOffscreen(state, BSOProtocol.createSessionEnd({ sessionId, reason: 'content-disconnected' }));
+      sessions.delete(sessionId);
+      sessionQueues.delete(sessionId);
+    }).catch(() => {
+      sessions.delete(sessionId);
+      sessionQueues.delete(sessionId);
+    });
   });
 });
 
