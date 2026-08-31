@@ -19,6 +19,7 @@ const uiFiles = [
   "popup.html",
   "popup.js",
   "runtime.js",
+  "seed-card.js",
   "state.js",
   "styles.css",
   "summary.html",

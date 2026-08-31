@@ -12,6 +12,9 @@
     seedPoints: [],
     // A draft is deliberately separate so Cancel can preserve a prior court.
     seedDraftPoints: [],
+    // The instruction card is video-local UI state, stored as normalized
+    // top-left coordinates so resize/fullscreen can clamp it safely.
+    seedCardPosition: null,
     calibration: null,
     calibrationError: null,
     rally: 14,
@@ -26,11 +29,20 @@
     }) : [];
   }
 
+  function copyCardPosition(position) {
+    if (!position || typeof position !== "object") return null;
+    var x = Number(position.x);
+    var y = Number(position.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
+  }
+
   function initialExtensionState(overrides) {
     var value = Object.assign({}, defaults, overrides || {});
     value.panels = Object.assign({}, defaults.panels, (overrides && overrides.panels) || {});
     value.seedPoints = copyPoints(overrides && overrides.seedPoints);
     value.seedDraftPoints = copyPoints(overrides && overrides.seedDraftPoints);
+    value.seedCardPosition = copyCardPosition(overrides && overrides.seedCardPosition);
     return value;
   }
 
@@ -57,6 +69,7 @@
       videoKey: videoKey == null ? current.videoKey : videoKey,
       seedPoints: [],
       seedDraftPoints: [],
+      seedCardPosition: null,
       calibration: null,
       calibrationError: null
     }));
@@ -68,6 +81,7 @@
       case "ENABLE": return Object.assign(current, { enabled: true, seeding: !current.seeded });
       case "START_SEED": return Object.assign(current, { enabled: true, seeding: true, labeling: false, seedDraftPoints: [], calibrationError: null });
       case "SET_SEED_DRAFT": return Object.assign(current, { seedDraftPoints: copyPoints(action.points), calibrationError: action.error || null });
+      case "SET_SEED_CARD_POSITION": return Object.assign(current, { seedCardPosition: copyCardPosition(action.position) });
       case "LOCK_COURT": return Object.assign(current, {
         enabled: true,
         seeded: true,
@@ -87,6 +101,7 @@
         calibration: null,
         seedPoints: [],
         seedDraftPoints: [],
+        seedCardPosition: null,
         calibrationError: null
       });
       case "OPEN_LABELING": return Object.assign(current, { enabled: true, labeling: true, seeding: false });
@@ -102,6 +117,7 @@
         calibration: null,
         seedPoints: [],
         seedDraftPoints: [],
+        seedCardPosition: null,
         calibrationError: null
       });
       case "VIDEO_RESET": return resetVideoLocalState(current, action.videoKey);

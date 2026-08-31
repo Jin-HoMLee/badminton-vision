@@ -6,6 +6,7 @@
   var ui = window.BVUI;
   var data = window.BVFixtures;
   var calibrationApi = window.BVCalibration;
+  var seedCardApi = window.BVSeedCard;
   var state = window.BVState.initialExtensionState();
   var strokes = data.strokes.slice();
   var suggestion = data.suggestion ? Object.assign({}, data.suggestion) : null;
@@ -32,6 +33,7 @@
   };
   var publishedRuntimeKey = null;
   var lastRuntimeRenderAt = 0;
+  var seedCardDrag = null;
 
   function hasChrome() { return typeof chrome !== "undefined"; }
   function persist() {
@@ -120,6 +122,7 @@
     state = window.BVState.resetVideoLocalState(state, activeVideoKey);
     calibration = null;
     seedPoints = [];
+    seedCardDrag = null;
     strokes = data.strokes.slice();
     suggestion = data.suggestion ? Object.assign({}, data.suggestion) : null;
     persist();
@@ -169,6 +172,7 @@
     host.style.top = rect.top + "px";
     host.style.width = rect.width + "px";
     host.style.height = rect.height + "px";
+    refreshSeedCardPosition();
   }
   function attachVideo() {
     var next = document.querySelector("video");
@@ -209,6 +213,127 @@
     return false;
   }
   function seedPointStyle(point) { return { left: (point.x * 100) + "%", top: (point.y * 100) + "%" }; }
+  function seedClickAllowed(event, layer) {
+    return seedCardApi
+      ? seedCardApi.canSeedFromClick(event.target, layer, seedPoints.length, event.defaultPrevented)
+      : !event.defaultPrevented && event.target === layer && seedPoints.length < 4;
+  }
+  function seedCardMetrics(layer, card) {
+    var layerRect = layer && typeof layer.getBoundingClientRect === "function" ? layer.getBoundingClientRect() : { width: 0, height: 0 };
+    var cardRect = card && typeof card.getBoundingClientRect === "function" ? card.getBoundingClientRect() : { width: 0, height: 0 };
+    return {
+      viewport: { width: Math.max(0, layerRect.width || 0), height: Math.max(0, layerRect.height || 0) },
+      card: { width: Math.max(0, cardRect.width || 0), height: Math.max(0, cardRect.height || 0) }
+    };
+  }
+  function seedCardPositionFromLayout(layer, card) {
+    var metrics = seedCardMetrics(layer, card);
+    var layerRect = layer.getBoundingClientRect();
+    var cardRect = card.getBoundingClientRect();
+    return {
+      x: metrics.viewport.width ? (cardRect.left - layerRect.left) / metrics.viewport.width : 0,
+      y: metrics.viewport.height ? (cardRect.top - layerRect.top) / metrics.viewport.height : 0
+    };
+  }
+  function applySeedCardPosition(layer, card, position) {
+    if (!seedCardApi) return seedCardPositionFromLayout(layer, card);
+    var metrics = seedCardMetrics(layer, card);
+    var result = seedCardApi.pixelSeedCardPosition(position, metrics.viewport, metrics.card);
+    card.style.left = result.left + "px";
+    card.style.top = result.top + "px";
+    card.style.right = "auto";
+    card.style.bottom = "auto";
+    card.style.transform = "none";
+    card.setAttribute("data-bso-seed-card-position", position ? "custom" : "default");
+    card.setAttribute("data-bso-seed-card-bounds", "clamped");
+    return result.position;
+  }
+  function refreshSeedCardPosition() {
+    if (!root || !state.seeding) return;
+    var layer = root.querySelector && root.querySelector("[data-bso-court-seeding]");
+    var card = layer && layer.querySelector("[data-bso-seed-card]");
+    if (layer && card) applySeedCardPosition(layer, card, state.seedCardPosition);
+  }
+  function storeSeedCardPosition(position) {
+    state = window.BVState.reduceExtensionState(state, { type: "SET_SEED_CARD_POSITION", position: position });
+    persist();
+  }
+  function resetSeedCardPosition() {
+    storeSeedCardPosition(null);
+    render();
+    setTimeout(function () {
+      var handle = root && root.querySelector && root.querySelector("[data-bso-seed-card-handle]");
+      if (handle && typeof handle.focus === "function") handle.focus();
+    }, 0);
+  }
+  function installSeedCardMovement(layer, card, handle) {
+    function stop(event) { event.stopPropagation(); }
+    function currentPosition() { return state.seedCardPosition || seedCardPositionFromLayout(layer, card); }
+    function move(event) {
+      if (!seedCardDrag || event.pointerId !== seedCardDrag.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      var metrics = seedCardMetrics(layer, card);
+      var position = seedCardApi
+        ? seedCardApi.moveSeedCardPosition(seedCardDrag.position, { x: event.clientX - seedCardDrag.clientX, y: event.clientY - seedCardDrag.clientY }, metrics.viewport, metrics.card)
+        : currentPosition();
+      applySeedCardPosition(layer, card, position);
+      seedCardDrag.position = position;
+    }
+    function finish(event) {
+      if (!seedCardDrag || event.pointerId !== seedCardDrag.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      var position = seedCardDrag.position;
+      if (handle.releasePointerCapture && handle.hasPointerCapture && handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      seedCardDrag = null;
+      storeSeedCardPosition(position);
+      card.setAttribute("data-bso-seed-card-position", "custom");
+    }
+    handle.addEventListener("pointerdown", function (event) {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      seedCardDrag = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, position: currentPosition() };
+      if (handle.setPointerCapture) handle.setPointerCapture(event.pointerId);
+      handle.setAttribute("aria-grabbed", "true");
+      card.classList.add("is-dragging");
+    });
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", function (event) {
+      handle.setAttribute("aria-grabbed", "false");
+      card.classList.remove("is-dragging");
+      finish(event);
+    });
+    handle.addEventListener("pointercancel", function (event) {
+      handle.setAttribute("aria-grabbed", "false");
+      card.classList.remove("is-dragging");
+      finish(event);
+    });
+    handle.addEventListener("keydown", function (event) {
+      var key = event.key;
+      if (key === "Home") {
+        event.preventDefault();
+        event.stopPropagation();
+        resetSeedCardPosition();
+        return;
+      }
+      if (!seedCardApi || ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].indexOf(key) === -1) return;
+      event.preventDefault();
+      event.stopPropagation();
+      var metrics = seedCardMetrics(layer, card);
+      var position = seedCardApi.nudgeSeedCardPosition(currentPosition(), key, metrics.viewport, metrics.card);
+      storeSeedCardPosition(position);
+      applySeedCardPosition(layer, card, position);
+      handle.setAttribute("aria-grabbed", "false");
+    });
+    // The card is above the seed layer. The layer's click handler also
+    // requires the layer itself as the target, so card gestures cannot seed.
+    card.addEventListener("pointerdown", stop);
+    card.addEventListener("pointermove", stop);
+    card.addEventListener("pointerup", stop);
+    card.addEventListener("click", stop);
+  }
   function seedDrawing(points, fittedCalibration) {
     var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("class", "bv-seed-drawing"); svg.setAttribute("viewBox", "0 0 1 1"); svg.setAttribute("preserveAspectRatio", "none");
@@ -245,6 +370,7 @@
   }
   function resetSeed() {
     state = window.BVState.reduceExtensionState(state, { type: "RESET_COURT" });
+    seedCardDrag = null;
     seedPoints = [];
     calibration = null;
     persist();
@@ -279,21 +405,28 @@
       "aria-label": "Set up court",
       "data-bso-court-seeding": "true",
       "data-bso-seed-count": seedPoints.length,
-      "data-bso-seed-order": corners.slice(0, seedPoints.length).join("|")
+      "data-bso-seed-order": corners.slice(0, seedPoints.length).join("|"),
+      "data-bso-seed-click-policy": "layer-only",
+      "data-bso-seed-lockable": String(Boolean(fitted))
     });
     layer.appendChild(seedDrawing(seedPoints, fitted));
     if (seedPoints.length < 4) layer.appendChild(ui.el("span", { className: "bv-seed-target", style: { left: targets[seedPoints.length].x + "%", top: targets[seedPoints.length].y + "%" } }));
     seedPoints.forEach(function (point, index) { layer.appendChild(ui.el("span", { className: "bv-seed-point", style: seedPointStyle(point) }, [index + 1])); });
-    var card = ui.el("div", { className: "bv-seed-card" });
+    var card = ui.el("div", { className: "bv-seed-card", role: "group", "aria-label": "Court setup instructions", "data-bso-seed-card": "true", "data-bso-contrast": "high" });
     var title = fitted ? "Court ready to lock" : invalid ? "Court needs correction" : "Click the " + corners[seedPoints.length].toLowerCase() + " outer corner";
-    var top = ui.el("div", { className: "bv-seed-card-top" }, [ui.stepDots(Math.min(seedPoints.length, 4), corners), ui.el("span", { className: "bv-seed-card-title" }, [title]), fitted ? ui.badge("homography ok", "in") : invalid ? ui.badge("not accepted", "warn") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); undoSeedPoint(); } }), ui.button("Reset", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0 && !state.seeded, onClick: function (event) { event.stopPropagation(); resetSeed(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); state.seeding = false; state.labeling = true; persist(); render(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !fitted, onClick: function (event) { event.stopPropagation(); lockSeed(); } })])]);
+    var handle = ui.el("button", { className: "bv-seed-card-handle", type: "button", "aria-label": "Move court setup instructions", "aria-describedby": "bv-seed-card-help", "aria-grabbed": "false", "aria-keyshortcuts": "ArrowLeft ArrowRight ArrowUp ArrowDown Home", title: "Drag to move. Use arrow keys to nudge. Home resets the position.", "data-bso-seed-card-handle": "true" }, [ui.icon("grip", 14), ui.el("span", { className: "bv-seed-card-handle-text" }, ["Drag to move"])]);
+    var help = ui.el("span", { className: "bv-sr-only", id: "bv-seed-card-help" }, ["Drag this handle to move the instructions inside the video. Use the arrow keys to nudge it. Press Home to reset its position."]);
+    var top = ui.el("div", { className: "bv-seed-card-top" }, [handle, ui.stepDots(Math.min(seedPoints.length, 4), corners), ui.el("span", { className: "bv-seed-card-title" }, [title]), fitted ? ui.badge("homography ok", "in") : invalid ? ui.badge("not accepted", "warn") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Reset position", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); resetSeedCardPosition(); } }), ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); undoSeedPoint(); } }), ui.button("Reset court", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0 && !state.seeded, onClick: function (event) { event.stopPropagation(); resetSeed(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); state.seeding = false; state.labeling = true; persist(); render(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !fitted, onClick: function (event) { event.stopPropagation(); lockSeed(); } })])]);
+    top.appendChild(help);
     card.appendChild(top);
     if (state.calibrationError) card.appendChild(ui.callout("warn", "Calibration not accepted", state.calibrationError));
     card.appendChild(ui.el("p", {}, ["Your four clicks are the outer doubles corners only. Service lines, centre lines and the net come from the official 13.40 × 6.10 m court and are projected in — they never adapt to the image."]));
     card.appendChild(ui.el("div", { className: "bv-seed-note" }, [ui.icon("info", 13), ui.el("span", {}, ["Playback keeps running. A camera cut past tolerance pauses analysis, not the video."]), ui.button("Cancel", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); cancelSeeding(); } })]));
     layer.appendChild(card);
+    applySeedCardPosition(layer, card, state.seedCardPosition);
+    installSeedCardMovement(layer, card, handle);
     layer.addEventListener("click", function (event) {
-      if (event.target !== layer || seedPoints.length >= 4) return;
+      if (!seedClickAllowed(event, layer)) return;
       var rect = layer.getBoundingClientRect();
       if (!rect.width || !rect.height) {
         state.calibrationError = "The video has no measurable size. Keep playback running and try again.";
@@ -351,7 +484,7 @@
     ]);
     if (state.density !== "minimal" && state.panels.stats) left.appendChild(statsPanel());
     overlay.appendChild(left);
-    if (state.density === "full" && state.panels.map) overlay.appendChild(ui.el("div", { className: "bv-overlay-map" }, [mapPanel()]));
+    if (state.panels.map) overlay.appendChild(ui.el("div", { className: "bv-overlay-map" }, [mapPanel()]));
     if (state.panels.feed) overlay.appendChild(ui.el("div", { className: "bv-overlay-stack right" }, [feedPanel()]));
     var actions = ui.el("div", { className: "bv-overlay-actions" }, [ui.button("Density: " + state.density, { size: "sm", icon: "sliders", onClick: cycleDensity }), ui.button("Summary", { size: "sm", icon: "table", onClick: openSummary })]);
     overlay.appendChild(actions);
@@ -467,6 +600,7 @@
       state = window.BVState.reduceExtensionState(state, { type: "CAMERA_CUT" });
       state.videoKey = activeVideoKey || currentVideoKey();
       calibration = null;
+      seedCardDrag = null;
       seedPoints = [];
       persist(); render();
     }
