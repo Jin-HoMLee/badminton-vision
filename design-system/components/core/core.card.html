@@ -1,0 +1,39 @@
+<!-- @dsCard group="Components" viewport="700x300" name="Core" subtitle="Button, IconButton, Badge, Chip, KeyHint, Panel" -->
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Core</title>
+<link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/lucide@0.446.0/dist/umd/lucide.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{padding:16px;background:radial-gradient(120% 90% at 20% 0%,#16222a 0%,var(--ink-900) 70%)}.row{display:flex;flex-wrap:wrap;align-items:center;gap:12px}.col{display:flex;flex-direction:column;gap:12px}.cap{font:var(--type-label);letter-spacing:var(--ls-caps);text-transform:uppercase;color:var(--text-faint)}</style>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const NS = window.BadmintonVisionDesignSystem_0ab536;
+
+const {Button,IconButton,Badge,Chip,KeyHint,Panel,Icon} = NS;
+function Card(){return (<div className="col" style={{gap:16}}>
+  <div className="row">
+    <Button variant="primary" icon={<Icon name="play"/>}>Enable overlay</Button>
+    <Button variant="secondary" icon={<Icon name="crosshair"/>}>Re-seed court</Button>
+    <Button variant="ghost">Manual only</Button>
+    <Button variant="danger" size="sm" icon={<Icon name="x"/>}>Reject</Button>
+    <Button variant="secondary" size="sm" disabled icon={<Icon name="lock"/>}>Compare to pro</Button>
+    <IconButton label="Collapse" icon={<Icon name="chevron-up"/>}/>
+    <IconButton label="Drag" variant="solid" icon={<Icon name="grip-horizontal"/>}/>
+  </div>
+  <div className="row">
+    <Badge tone="in">IN</Badge><Badge tone="out">OUT</Badge><Badge tone="warn">suggested</Badge>
+    <Badge tone="info">corrected</Badge><Badge tone="unknown">unclassified</Badge><Badge tone="accent">manual</Badge>
+    <Chip selected count={12}>Smash</Chip><Chip count={31}>Clear</Chip><Chip icon={<Icon name="filter" size={12}/>}>Filter</Chip>
+    <span style={{font:'var(--type-ui-sm)',color:'var(--text-faint)',display:'inline-flex',gap:6,alignItems:'center'}}>mark <KeyHint>S</KeyHint><KeyHint>E</KeyHint> accept <KeyHint tone="accent">↵</KeyHint></span>
+  </div>
+  <Panel title="Stroke feed" mediaTime="12:04.320" icon={<Icon name="list" size={13} color="var(--text-faint)"/>}
+    actions={<><IconButton size="sm" label="Pop out" icon={<Icon name="external-link" size={13}/>}/><IconButton size="sm" label="Collapse" icon={<Icon name="chevron-up" size={13}/>}/></>}
+    style={{maxWidth:340}}>
+    <span style={{font:'var(--type-body-sm)',color:'var(--text-faint)'}}>Glass panel · 12px radius · hairline border</span>
+  </Panel>
+</div>);}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Card/>);
+</script></body></html>

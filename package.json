@@ -1,12 +1,16 @@
 {
-  "name": "badminton-stats-overlay-runtime",
+  "name": "badminton-vision-extension",
   "version": "0.1.0",
   "private": true,
-  "description": "Local-first Chrome MV3 runtime foundation for Badminton Stats Overlay",
+  "description": "Local-first, confidence-aware badminton rally review overlay.",
   "scripts": {
-    "build": "node build.mjs",
-    "test": "node --test test/*.test.js",
-    "runtime-smoke": "npm run build && node --test test/runtime-integration.test.js test/capture-backpressure.test.js",
-    "check": "npm run build && npm test"
+    "build": "node scripts/build.mjs",
+    "build-runtime": "node build.mjs",
+    "test": "node --test tests/*.test.mjs test/*.test.js analysis/test/*.test.js",
+    "runtime-smoke": "npm run build-runtime && node --test test/runtime-integration.test.js test/capture-backpressure.test.js",
+    "check": "npm run build && npm test && npm run build-runtime"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

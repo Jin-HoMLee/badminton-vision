@@ -80,7 +80,9 @@ it reads the local bitmap through a canvas and runs a deterministic sampled-RGB
 checksum fixture. Results identify themselves as `runtime-integration-probe`,
 set `runtimeIntegrationTest: true` and `productionModel: false`, and remain
 explicitly unclassified. This is not a production player or shuttle CV model;
-no TrackNet asset is used in the live runtime path.
+no TrackNet asset is used in the live runtime path. The result envelope is
+model-neutral and can carry multiple player instances; this probe intentionally
+identifies no player.
 
 ## Synchronization and stale results
 

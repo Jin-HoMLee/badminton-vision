@@ -101,6 +101,9 @@ async function forwardToOffscreen(state, message) {
     await chrome.runtime.sendMessage(message);
     return true;
   } catch (error) {
+    // Allow a later session to recreate the document after a transient
+    // offscreen crash or a structured-clone transport failure.
+    offscreenReady = null;
     unavailable(state, error instanceof Error ? error.message : String(error));
     state.ready = false;
     return false;

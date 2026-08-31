@@ -36,7 +36,7 @@ class MockAnalyzer {
   }
 }
 
-const DefaultAnalyzer = BSOFixtureAnalyzer && BSOFixtureAnalyzer.FixtureProbeAnalyzer;
+const DefaultAnalyzer = globalThis.BSOFixtureAnalyzer && globalThis.BSOFixtureAnalyzer.FixtureProbeAnalyzer;
 let activeAnalyzer = DefaultAnalyzer ? new DefaultAnalyzer() : new MockAnalyzer();
 const sessions = new Map();
 const sessionQueues = new Map();
