@@ -8,6 +8,7 @@
   var calibrationApi = window.BVCalibration;
   var seedCardApi = window.BVSeedCard;
   var state = window.BVState.initialExtensionState();
+  var videoStates = {};
   // Fixture rows are only rendered after an explicit fixture-probe result is
   // received. A real session starts with no automatic stroke claims; manual
   // labels remain first-class and are merged into the current evidence.
@@ -45,7 +46,13 @@
 
   function hasChrome() { return typeof chrome !== "undefined"; }
   function persist() {
-    if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.set({ bvState: state }, function () { void chrome.runtime.lastError; });
+    var key = state.videoKey || activeVideoKey || currentVideoKey();
+    if (key) {
+      state.videoKey = key;
+      if (!state.videoUrl && window.location && /^https?:/.test(window.location.href)) state.videoUrl = window.location.href;
+      videoStates = window.BVState.setVideoState(videoStates, state);
+    }
+    if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.set({ bvState: state, bvVideoStates: videoStates }, function () { void chrome.runtime.lastError; });
   }
   function send(message) {
     if (hasChrome() && chrome.runtime) chrome.runtime.sendMessage(message, function () { void chrome.runtime.lastError; });
@@ -218,8 +225,10 @@
     if (suggestion && strokes.some(function (stroke) { return String(stroke.eventId) === String(suggestion.eventId); })) suggestion = null;
   }
   function resetVideoLocalState(reason) {
+    persist();
     activeVideoKey = currentVideoKey();
     state = window.BVState.resetVideoLocalState(state, activeVideoKey);
+    state.videoUrl = window.location && /^https?:/.test(window.location.href) ? window.location.href : null;
     calibration = null;
     seedPoints = [];
     seedCardDrag = null;
@@ -627,7 +636,9 @@
   }
   function feedPanel() {
     var rows = ui.el("div", { className: "bv-feed" });
-    strokes.forEach(function (stroke) { rows.appendChild(ui.strokeFeedItem(stroke)); });
+    strokes.forEach(function (stroke) {
+      rows.appendChild(ui.strokeFeedItem(stroke, function () { openLabeling(stroke); }, function () { deleteReviewEvent(stroke); }));
+    });
     if (!strokes.length) rows.appendChild(ui.emptyState("No accepted stroke evidence", "Pose and shuttle signals do not establish a hit, shot family, rally end, or winner. Add a manual label while playback continues.", ui.button("Label current segment", { variant: "ghost", size: "sm", onClick: openLabeling }), "help"));
     var children = [];
     if (state.lastEdit) children.push(ui.el("div", { className: "bv-review-undo", role: "status" }, [ui.el("span", {}, [(state.lastEdit.source === "manual" ? "Saved manual review at " : "Accepted fixture suggestion at ") + (state.lastEdit.time || "the current timestamp") + "."]), ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit })]));
@@ -673,9 +684,23 @@
     return overlay;
   }
 
-  function openLabeling() {
+  function draftForStroke(stroke) {
+    var next = newDraft();
+    if (!stroke) return next;
+    next.eventId = stroke.eventId == null ? null : String(stroke.eventId);
+    next.sequence = stroke.sequence == null ? null : stroke.sequence;
+    next.rallyId = stroke.rallyId == null ? null : stroke.rallyId;
+    next.player = stroke.player || "A";
+    next.shot = stroke.shot && stroke.shot !== "unclassified" ? stroke.shot : null;
+    if (stroke.time) next.start = stroke.time;
+    if (stroke.endSec != null) next.end = formatMediaTime(Number(stroke.endSec));
+    else if (stroke.startSec != null) next.end = formatMediaTime(Number(stroke.startSec) + .4);
+    next.axes = Object.assign(next.axes, stroke.axes || {});
+    return next;
+  }
+  function openLabeling(stroke) {
     state = window.BVState.reduceExtensionState(state, { type: "OPEN_LABELING" });
-    draft = newDraft();
+    draft = draftForStroke(stroke);
     persist();
     render();
   }
@@ -728,6 +753,24 @@
     send({ type: "UNDO_LABEL", eventId: edit.eventId });
     render();
   }
+  function deleteReviewEvent(stroke) {
+    if (!stroke || !stroke.eventId || !window.BVReview) return;
+    var previousLabel = (state.manualLabels || []).find(function (label) { return String(label.eventId) === String(stroke.eventId); });
+    if (!previousLabel) return;
+    state.lastEdit = {
+      eventId: stroke.eventId,
+      source: "manual-delete",
+      time: stroke.time,
+      previousStroke: window.BVReview.clone(stroke),
+      previousLabel: window.BVReview.clone(previousLabel),
+      previousSuggestion: null
+    };
+    state.manualLabels = window.BVReview.without(state.manualLabels, stroke.eventId);
+    strokes = reviewStrokes();
+    persist();
+    send({ type: "DELETE_LABEL", eventId: stroke.eventId });
+    render();
+  }
   function cycleDensity() {
     var values = ["minimal", "balanced", "full"];
     var next = values[(values.indexOf(state.density) + 1) % values.length];
@@ -776,9 +819,9 @@
     var endSec = window.BVReview.mediaSeconds(draft.end);
     var record = {
       eventId: eventId,
-      rallyId: suggestion ? suggestion.rallyId : state.rally,
-      sequence: (strokes.find(function (stroke) { return String(stroke.eventId) === String(eventId); }) || {}).sequence || strokes.length + 1,
-      player: "A",
+      rallyId: suggestion ? suggestion.rallyId : (draft.rallyId == null ? state.rally : draft.rallyId),
+      sequence: draft.sequence || (strokes.find(function (stroke) { return String(stroke.eventId) === String(eventId); }) || {}).sequence || strokes.length + 1,
+      player: draft.player || "A",
       shot: shot,
       time: draft.start,
       startSec: startSec,
@@ -849,25 +892,27 @@
     else root.appendChild(liveOverlay());
     if (state.labeling && !state.seeding) root.appendChild(ui.el("div", { className: "bv-overlay-label" }, [manualPanel()]));
   }
-  function applyStoredState(nextState) {
-    state = window.BVState.initialExtensionState(nextState);
-    restoreReviewState();
+  function applyStoredState(nextState, fromStorage) {
     var key = currentVideoKey();
-    if (state.videoKey && key && state.videoKey !== key) {
-      state = window.BVState.resetVideoLocalState(state, key);
-    } else {
-      state.videoKey = state.videoKey || key;
+    state = fromStorage
+      ? window.BVState.stateForVideo(videoStates, key, nextState)
+      : window.BVState.initialExtensionState(nextState);
+    if (key) {
+      state.videoKey = key;
+      if (!state.videoUrl && window.location && /^https?:/.test(window.location.href)) state.videoUrl = window.location.href;
     }
     if (state.seeded && !state.calibration) {
       var savedLabels = state.manualLabels;
       var savedLastEdit = state.lastEdit;
       state = window.BVState.resetVideoLocalState(state, key);
+      state.videoUrl = window.location && /^https?:/.test(window.location.href) ? window.location.href : null;
       state.manualLabels = savedLabels;
       state.lastEdit = savedLastEdit;
       state.calibrationError = "This saved court has no fitted calibration. Please seed the four outer corners again.";
       restoreReviewState();
     }
     activeVideoKey = key;
+    restoreReviewState();
     restoreCalibrationState();
     persist();
   }
@@ -931,8 +976,14 @@
     domObserver = new MutationObserver(attachVideo); domObserver.observe(document.documentElement, { childList: true, subtree: true }); attachVideo();
     startRuntime();
     if (hasChrome() && chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(handleMessage);
-    if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState"], function (result) { applyStoredState(result && result.bvState ? result.bvState : state); render(); });
-    else { applyStoredState(state); render(); }
+    if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvVideoStates"], function (result) {
+      videoStates = window.BVState.copyVideoStates(result && result.bvVideoStates);
+      var key = currentVideoKey();
+      var legacy = result && result.bvState && (!key || !result.bvState.videoKey || result.bvState.videoKey === key) ? result.bvState : null;
+      applyStoredState(legacy || state, true);
+      render();
+    });
+    else { applyStoredState(state, false); render(); }
   }
   init();
 })();

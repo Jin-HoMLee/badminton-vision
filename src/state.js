@@ -8,6 +8,7 @@
     stale: false,
     cameraCut: false,
     videoKey: null,
+    videoUrl: null,
     // Manual and accepted fixture events are video-local and survive popup /
     // summary navigation without pretending to be production inference.
     manualLabels: [],
@@ -118,6 +119,7 @@
       stale: false,
       cameraCut: false,
       videoKey: videoKey == null ? current.videoKey : videoKey,
+      videoUrl: videoKey == null || videoKey === current.videoKey ? current.videoUrl : null,
       seedPoints: [],
       seedDraftPoints: [],
       seedCardPosition: null,
@@ -201,10 +203,38 @@
     }
   }
 
+  function copyVideoStates(videoStates) {
+    var result = {};
+    if (!videoStates || typeof videoStates !== "object" || Array.isArray(videoStates)) return result;
+    Object.keys(videoStates).forEach(function (key) {
+      if (!key || !videoStates[key] || typeof videoStates[key] !== "object") return;
+      result[key] = initialExtensionState(videoStates[key]);
+    });
+    return result;
+  }
+
+  function stateForVideo(videoStates, videoKey, fallback) {
+    var states = copyVideoStates(videoStates);
+    if (videoKey && states[videoKey]) return states[videoKey];
+    var candidate = fallback && typeof fallback === "object" ? initialExtensionState(fallback) : initialExtensionState();
+    if (videoKey && candidate.videoKey && candidate.videoKey !== videoKey) return initialExtensionState({ videoKey: videoKey });
+    return initialExtensionState(Object.assign({}, candidate, videoKey ? { videoKey: videoKey } : {}));
+  }
+
+  function setVideoState(videoStates, state) {
+    var result = copyVideoStates(videoStates);
+    var value = initialExtensionState(state);
+    if (value.videoKey) result[value.videoKey] = value;
+    return result;
+  }
+
   root.BVState = {
     defaults: defaults,
     initialExtensionState: initialExtensionState,
     videoKeyForUrl: videoKeyForUrl,
+    copyVideoStates: copyVideoStates,
+    stateForVideo: stateForVideo,
+    setVideoState: setVideoState,
     resetVideoLocalState: resetVideoLocalState,
     reduceExtensionState: reduceExtensionState
   };
