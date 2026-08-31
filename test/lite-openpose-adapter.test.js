@@ -107,7 +107,9 @@ test('analyzer loads local cleared artifact, tracks two players, resets camera I
           assert.equal(input.shape.join(','), '1,256,256,3');
           const index = outputs.shift();
           const tensor = {
-            shape: [1, 32, 32, 19],
+            // The packaged @litertjs/core Tensor exposes dimensions through
+            // type.layout, not a Tensor.shape property.
+            type: { layout: { dimensions: Int32Array.from([1, 32, 32, 19]) } },
             async moveTo() {
               return { toTypedArray: () => index, delete() { deleted.push('host-output'); } };
             },

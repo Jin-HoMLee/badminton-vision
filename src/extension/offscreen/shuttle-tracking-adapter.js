@@ -7,9 +7,9 @@
 }(typeof globalThis === 'object' ? globalThis : self, function shuttleAdapterFactory(protocol, defaultEnvironment) {
   'use strict';
 
-  // This is a bounded pixel heuristic, not a learned model. It deliberately
-  // has no model weights or network path and is kept separate from the pose
-  // and offscreen orchestration seams until its evidence is validated.
+  // This is a bounded pixel heuristic, not a learned model. It has no model
+  // weights or network path and is composed with pose only as shuttle evidence;
+  // it never upgrades a candidate into an event claim.
   const MODEL = Object.freeze({
     schema: 'bso.shuttle.local-adapter.v1',
     id: 'local-shuttle-frame-difference-v1',
@@ -435,6 +435,10 @@
       tracking: null,
       shuttle: unknownShuttle(reason, evidence),
       strokeEvents: [],
+      rally: { state: 'unknown', confidence: null, reason: 'rally-segmentation-not-available' },
+      rallyEnd: { state: 'unknown', confidence: null, reason: 'rally-end-evidence-not-available' },
+      winner: { state: 'unknown', confidence: null, reason: 'winner-evidence-not-available' },
+      outcome: 'unclassified',
       shotFamily: 'unclassified',
       classificationConfidence: 0,
       geometryConfidence: 0,
@@ -560,6 +564,13 @@
       return this.reset(reason);
     }
 
+    endSession(sessionId, reason = 'session-end') {
+      const id = sessionId == null ? null : String(sessionId);
+      const result = this.reset(reason);
+      if (id === null || this.sessionId === id) this.sessionId = null;
+      return { sessionId: id, reason, generation: result.generation };
+    }
+
     unknown(sample, reason, status = 'fallback', inferenceAvailable = false, evidence = {}) {
       const envelope = unknownEnvelope(sample, reason, this.identity, status, inferenceAvailable, evidence);
       this.status({ type: 'shuttle-result', status: 'unknown', reason, requestId: sample?.requestId, mediaTime: sample?.mediaTime });
@@ -580,6 +591,10 @@
         tracking: null,
         shuttle,
         strokeEvents: [],
+        rally: { state: 'unknown', confidence: null, reason: 'rally-segmentation-not-available' },
+        rallyEnd: { state: 'unknown', confidence: null, reason: 'rally-end-evidence-not-available' },
+        winner: { state: 'unknown', confidence: null, reason: 'winner-evidence-not-available' },
+        outcome: 'unclassified',
         shotFamily: 'unclassified',
         classificationConfidence: 0,
         geometryConfidence: 0,

@@ -8,8 +8,11 @@
   var calibrationApi = window.BVCalibration;
   var seedCardApi = window.BVSeedCard;
   var state = window.BVState.initialExtensionState();
-  var strokes = data.strokes.slice();
-  var suggestion = data.suggestion ? Object.assign({}, data.suggestion) : null;
+  // Fixture rows are only rendered after an explicit fixture-probe result is
+  // received. A real session starts with no automatic stroke claims; manual
+  // labels remain first-class and are merged into the current evidence.
+  var strokes = [];
+  var suggestion = null;
   var mediaTime = 0;
   var editingEventId = null;
   var draft = newDraft();
@@ -21,6 +24,9 @@
     var start = record && record.startSec != null ? record.startSec : currentMediaTimestamp();
     var end = record && record.endSec != null ? record.endSec : null;
     var next = {
+      eventId: record && record.eventId != null ? String(record.eventId) : null,
+      sequence: record && record.sequence != null ? record.sequence : null,
+      rallyId: record && record.rallyId != null ? record.rallyId : null,
       shot: record && (record.shot || record.label) || null,
       start: start == null ? "" : formatMediaTime(start),
       end: end == null ? "" : formatMediaTime(end),
@@ -67,6 +73,11 @@
 
   function hasChrome() { return typeof chrome !== "undefined"; }
   function persist() {
+    var key = state.videoKey || activeVideoKey || currentVideoKey();
+    if (key) {
+      state.videoKey = key;
+      if (!state.videoUrl && window.location && /^https?:/.test(window.location.href)) state.videoUrl = window.location.href;
+    }
     if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.set({ bvState: state }, function () { void chrome.runtime.lastError; });
   }
   function send(message) {
@@ -93,14 +104,27 @@
     host.setAttribute("data-bso-analysis-state", result && result.state ? result.state : "unknown");
     host.setAttribute("data-bso-player-state", result && result.tracking && result.tracking.state || "unknown");
     host.setAttribute("data-bso-shuttle-state", result && result.shuttle && result.shuttle.state || "unknown");
+    host.setAttribute("data-bso-player-count", String(result && Array.isArray(result.players) ? result.players.filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length : 0));
+    host.setAttribute("data-bso-shuttle-confidence", String(result && result.shuttle && result.shuttle.confidence != null ? result.shuttle.confidence : "unknown"));
     host.setAttribute("data-bso-frame-transport", runtimeView.capabilities && runtimeView.capabilities.frameTransport || "unknown");
+    host.setAttribute("data-bso-backend", runtimeView.capabilities && runtimeView.capabilities.backend || "unknown");
     host.setAttribute("data-bso-fallback", fallbackReasons.filter(Boolean).join(",") || "none");
   }
   function publishRuntimeView(view) {
     runtimeView = view;
+    if (view && view.result && view.result.cameraCut && !state.cameraCut && (state.seeded || calibration)) {
+      state = window.BVState.reduceExtensionState(state, { type: "CAMERA_CUT" });
+      calibration = null;
+      seedPoints = [];
+      seedCardDrag = null;
+      persist();
+    }
+    restoreReviewState();
     updateDiagnosticsMarkers();
     var result = view.result;
-    var playerCount = result && Array.isArray(result.players) ? result.players.length : null;
+    var playerCount = result && Array.isArray(result.players)
+      ? result.players.filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length
+      : null;
     var status = {
       phase: view.phase,
       message: view.message,
@@ -114,10 +138,28 @@
       ageSeconds: Number.isFinite(view.ageSeconds) ? view.ageSeconds : null,
       resultKind: result && result.kind ? result.kind : null,
       resultState: result && result.state ? result.state : "unknown",
+      // Keep only the model-neutral latest result needed by the summary; no
+      // frame pixels or account/page content cross the local storage seam.
+      result: result ? {
+        kind: result.kind || null,
+        state: result.state || "unknown",
+        cameraCut: Boolean(result.cameraCut),
+        players: Array.isArray(result.players) ? result.players : [],
+        tracking: result.tracking || null,
+        shuttle: result.shuttle || null,
+        strokeEvents: Array.isArray(result.strokeEvents) ? result.strokeEvents : [],
+        rally: result.rally || { state: "unknown" },
+        rallyEnd: result.rallyEnd || { state: "unknown" },
+        winner: result.winner || { state: "unknown" }
+      } : null,
       playerCount: playerCount,
+      playerState: result && result.tracking ? result.tracking.state : "unknown",
+      shuttleState: result && result.shuttle ? result.shuttle.state : "unknown",
+      shuttleConfidence: result && result.shuttle && result.shuttle.confidence != null ? result.shuttle.confidence : null,
+      backend: view.capabilities && view.capabilities.backend || null,
       sessionId: runtimeController && runtimeController.sessionId ? runtimeController.sessionId : null
     };
-    var key = JSON.stringify([status.phase, status.analyzer, status.inference, status.reason, status.frameTransport, status.stale, status.resultKind, status.playerCount]);
+    var key = JSON.stringify([status.phase, status.analyzer, status.inference, status.reason, status.frameTransport, status.backend, status.stale, status.resultKind, status.playerCount, status.playerState, status.shuttleState, status.shuttleConfidence]);
     var now = Date.now();
     var statusChanged = key !== publishedRuntimeKey;
     if (hasChrome() && chrome.storage && chrome.storage.local && statusChanged) {
@@ -132,11 +174,64 @@
     }
   }
   function runtimeIsStale() { return Boolean(state.stale || runtimeView.stale); }
+  function isFixtureRuntime() {
+    return Boolean(runtimeView.result && runtimeView.result.kind === "runtime-integration-probe" || runtimeView.analyzer === "fixture-probe-v1");
+  }
+  function runtimeResult() { return runtimeView && runtimeView.result && typeof runtimeView.result === "object" ? runtimeView.result : null; }
+  function runtimeTracking() { var result = runtimeResult(); return result && result.tracking || null; }
+  function runtimeShuttle() { var result = runtimeResult(); return result && result.shuttle || null; }
   function runtimeCaption() {
-    if (runtimeView.result && runtimeView.result.kind === "runtime-integration-probe") return "fixture result observed · not production CV";
-    if (runtimeView.analyzer === "fixture-probe-v1") return "local integration probe · not production CV";
-    if (runtimeView.phase === "fallback") return "local analysis unavailable · playback unaffected";
-    return "local runtime · awaiting analyzer";
+    if (isFixtureRuntime()) return "fixture result observed · not production CV";
+    if (runtimeView.phase === "fallback") return "local production analysis unavailable · playback unaffected";
+    var shuttle = runtimeShuttle();
+    var shuttleState = shuttle && shuttle.state === "tracked" ? "shuttle candidate tracked" : "shuttle unknown";
+    return runtimeView.inference ? "local pose + shuttle runtime · " + shuttleState : "local runtime · awaiting analyzer";
+  }
+  function evidenceState(value) { return value && value.state ? value.state : "unknown"; }
+  function imagePointToCourt(point) {
+    if (!point || !calibration || !calibrationApi || typeof calibrationApi.projectImagePoint !== "function") return null;
+    try {
+      var projected = calibrationApi.projectImagePoint(calibration, { x: Number(point.x), y: Number(point.y) });
+      if (!projected || !Number.isFinite(projected.x) || !Number.isFinite(projected.y) || projected.x < 0 || projected.x > 1 || projected.y < 0 || projected.y > 1) return null;
+      return { x: projected.x * 6.1, y: projected.y * 13.4 };
+    } catch (_) { return null; }
+  }
+  function playerCourtPoints() {
+    var tracking = runtimeTracking();
+    if (!tracking || !Array.isArray(tracking.players)) return [];
+    return tracking.players.map(function (player, index) {
+      if (!player || !player.bbox || player.state === "unknown") return null;
+      var imagePoint = { x: player.bbox.x + player.bbox.width / 2, y: player.bbox.y + player.bbox.height / 2 };
+      var court = imagePointToCourt(imagePoint);
+      return court ? Object.assign(court, { side: index % 2 ? "b" : "a", state: player.state, trackId: player.trackId }) : null;
+    }).filter(Boolean);
+  }
+  function shuttleCourtTrajectory() {
+    var shuttle = runtimeShuttle();
+    if (!shuttle || !Array.isArray(shuttle.trajectory)) return [];
+    return shuttle.trajectory.map(imagePointToCourt).filter(Boolean);
+  }
+  function shuttleCourtCandidate() {
+    var shuttle = runtimeShuttle();
+    if (!shuttle || shuttle.state !== "tracked" || !shuttle.candidate || shuttle.candidate.accepted !== true) return null;
+    return imagePointToCourt(shuttle.candidate);
+  }
+  function evidenceStrokes() {
+    var result = runtimeResult();
+    if (isFixtureRuntime()) return data.strokes.slice();
+    if (!result || !Array.isArray(result.strokeEvents)) return [];
+    return result.strokeEvents.filter(function (stroke) { return stroke && typeof stroke === "object"; }).map(function (stroke, index) {
+      return Object.assign({}, stroke, {
+        eventId: stroke.eventId || "auto-" + (stroke.hit_media_time == null ? index : stroke.hit_media_time),
+        sequence: stroke.sequence == null ? index + 1 : stroke.sequence,
+        player: stroke.player || stroke.player_id || "?",
+        shot: stroke.shot || stroke.shot_family || "unclassified",
+        time: stroke.time || formatMediaTime(Number(stroke.hit_media_time) || mediaTime),
+        status: stroke.status || "unclassified",
+        source: stroke.source || "auto",
+        confidence: stroke.classification_confidence == null ? null : stroke.classification_confidence
+      });
+    });
   }
   function formatMediaTime(seconds) {
     var minutes = Math.floor(seconds / 60);
@@ -148,7 +243,7 @@
     return window.BVState.videoKeyForUrl(window.location && window.location.href);
   }
   function reviewStrokes() {
-    var merged = window.BVReview ? window.BVReview.mergeStrokes(data.strokes, state.manualLabels) : data.strokes.slice();
+    var merged = window.BVReview ? window.BVReview.mergeStrokes(evidenceStrokes(), state.manualLabels) : evidenceStrokes();
     return merged.map(function (stroke) {
       var isFixture = data.strokes.some(function (fixture) { return String(fixture.eventId) === String(stroke.eventId); });
       var hasSavedReview = labelForEvent(stroke.eventId);
@@ -157,17 +252,20 @@
   }
   function restoreReviewState() {
     strokes = reviewStrokes();
+    suggestion = isFixtureRuntime() && data.suggestion ? Object.assign({}, data.suggestion) : null;
     if (suggestion && strokes.some(function (stroke) { return String(stroke.eventId) === String(suggestion.eventId); })) suggestion = null;
   }
   function resetVideoLocalState(reason) {
+    persist();
     activeVideoKey = currentVideoKey();
     state = window.BVState.resetVideoLocalState(state, activeVideoKey);
+    state.videoUrl = window.location && /^https?:/.test(window.location.href) ? window.location.href : null;
     calibration = null;
     seedPoints = [];
     seedCardDrag = null;
     editingEventId = null;
-    strokes = reviewStrokes();
-    suggestion = data.suggestion ? Object.assign({}, data.suggestion) : null;
+    strokes = [];
+    suggestion = null;
     draft = newDraft();
     persist();
     render();
@@ -247,19 +345,38 @@
 
   function startRuntime() {
     if (runtimeController || !window.BVRuntime || !window.BVRuntime.startIntegratedRuntime) return;
-    var session = window.BVRuntime.startIntegratedRuntime({
-      documentRef: document,
-      windowRef: window,
-      chromeApi: window.chrome,
-      onChange: publishRuntimeView,
-      onMediaTime: function (currentMediaTime) {
-        if (Number.isFinite(currentMediaTime)) {
-          mediaTime = currentMediaTime;
-          if (!state.stale && Math.abs(mediaTime) > .001) state.time = formatMediaTime(mediaTime);
+    try {
+      var session = window.BVRuntime.startIntegratedRuntime({
+        documentRef: document,
+        windowRef: window,
+        chromeApi: window.chrome,
+        onChange: publishRuntimeView,
+        onMediaTime: function (currentMediaTime) {
+          if (Number.isFinite(currentMediaTime)) {
+            mediaTime = currentMediaTime;
+            if (!state.stale && Math.abs(mediaTime) > .001) state.time = formatMediaTime(mediaTime);
+          }
         }
-      }
-    });
-    if (session) runtimeController = session.controller;
+      });
+      if (session) runtimeController = session.controller;
+    } catch (error) {
+      // A page/runtime integration problem must remain visible without
+      // preventing the content UI from serving manual labels.
+      runtimeView = {
+        phase: "fallback",
+        message: "Local runtime unavailable",
+        reason: error && error.message ? error.message : String(error),
+        analyzer: "none",
+        inference: false,
+        fallbacks: ["content-runtime-initialization-failed"],
+        capabilities: {},
+        result: null,
+        currentMediaTime: null,
+        ageSeconds: null,
+        stale: true
+      };
+      updateDiagnosticsMarkers();
+    }
   }
 
   function fitSeedPoints() {
@@ -422,6 +539,38 @@
     drawing.setAttribute("class", "bv-calibration-court");
     return drawing;
   }
+  function runtimeEvidenceDrawing() {
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "bv-runtime-evidence");
+    svg.setAttribute("viewBox", "0 0 1 1");
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.setAttribute("aria-label", "Live local player and shuttle evidence");
+    svg.setAttribute("data-bso-production-evidence", String(!isFixtureRuntime()));
+    function add(tag, attrs) {
+      var node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      Object.keys(attrs).forEach(function (key) { node.setAttribute(key, attrs[key]); });
+      svg.appendChild(node);
+    }
+    var tracking = runtimeTracking();
+    (tracking && Array.isArray(tracking.players) ? tracking.players : []).forEach(function (player, index) {
+      if (!player || !player.bbox || player.state === "unknown") return;
+      add("rect", {
+        x: player.bbox.x, y: player.bbox.y, width: player.bbox.width, height: player.bbox.height,
+        class: "bv-player-box " + (index % 2 ? "b" : "a"),
+        "stroke-dasharray": player.state === "partial" ? ".012 .008" : "none",
+        "data-track-id": player.trackId || "unknown-track",
+        "data-player-state": player.state
+      });
+    });
+    var shuttle = runtimeShuttle();
+    if (shuttle && Array.isArray(shuttle.trajectory) && shuttle.trajectory.length > 1) {
+      add("polyline", { points: shuttle.trajectory.map(function (point) { return point.x + "," + point.y; }).join(" "), class: "bv-shuttle-trajectory", "data-shuttle-state": shuttle.state || "unknown" });
+    }
+    if (shuttle && shuttle.state === "tracked" && shuttle.candidate && shuttle.candidate.accepted === true) {
+      add("circle", { cx: shuttle.candidate.x, cy: shuttle.candidate.y, r: ".012", class: "bv-shuttle-point", "data-shuttle-state": "tracked" });
+    }
+    return svg;
+  }
   function undoSeedPoint() {
     seedPoints.pop();
     calibration = null;
@@ -510,10 +659,30 @@
   }
 
   function statsPanel() {
-    return ui.panel("Stats", { icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", actions: [ui.iconButton("chevron-up", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, [ui.el("div", { className: "bv-stat-grid" }, [ui.stat("Rally", state.rally), ui.stat("Shots", strokes.length), ui.stat("Length", "28.4", "s")]), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", margin: "var(--sp-5) 0" } }, [ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-12)", color: "var(--text-muted)" } }, ["21–18 · 14–11"]), ui.badge("score OCR partial", "warn")]), ui.mixBar([{ label: "Clear", value: 5, color: "var(--player-a)" }, { label: "Drop", value: 4, color: "var(--court-fill)" }, { label: "Smash", value: 3, color: "var(--lime-500)" }, { label: "Net", value: 3, color: "var(--player-b)" }, { label: "Unclassified", value: 2, color: "var(--signal-unknown)" }]), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-5)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border-hairline)" } }, [ui.el("span", { className: "bv-muted", style: { fontSize: "var(--fs-11)" } }, ["Last rally end"]), ui.badge("unclassified", "unknown"), ui.confidence(null, { showWord: true })])]);
+    var result = runtimeResult();
+    var tracking = runtimeTracking();
+    var shuttle = runtimeShuttle();
+    var rally = result && result.rally && result.rally.state !== "unknown" ? result.rally.id || state.rally : "unknown";
+    var shotCount = strokes.length || "unknown";
+    return ui.panel("Stats", { icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", actions: [ui.iconButton("chevron-up", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, [
+      ui.el("div", { className: "bv-stat-grid" }, [ui.stat("Rally", rally), ui.stat("Shots", shotCount), ui.stat("Length", "unknown", "s")]),
+      ui.el("div", { className: "bv-evidence-grid" }, [ui.el("span", {}, ["Players", ui.badge(evidenceState(tracking), evidenceState(tracking) === "tracked" ? "in" : "unknown")]), ui.el("span", {}, ["Shuttle", ui.badge(evidenceState(shuttle), evidenceState(shuttle) === "tracked" ? "in" : "unknown")]), ui.el("span", {}, ["Winner", ui.badge(result && result.winner ? evidenceState(result.winner) : "unknown", "unknown")])]),
+      ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", margin: "var(--sp-5) 0" } }, [ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-12)", color: "var(--text-muted)" } }, ["score unknown"]), ui.badge("score OCR unavailable", "warn")]),
+      ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-5)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border-hairline)" } }, [ui.el("span", { className: "bv-muted", style: { fontSize: "var(--fs-11)" } }, ["Rally end"]), ui.badge(result && result.rallyEnd ? evidenceState(result.rallyEnd) : "unknown", "unknown"), ui.confidence(null, { showWord: true })])
+    ]);
   }
   function mapPanel() {
-    return ui.panel("Court", { icon: "crosshair", mediaTime: state.time, className: "bv-court-panel", bodyStyle: { padding: "10px" }, actions: [ui.iconButton("chevron-down", "Hide court map", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "map", value: false }); persist(); render(); } })] }, [ui.courtDiagram({ renderWidth: 154, players: [{ x: 3.1, y: 9.7 }, { x: 2.5, y: 4.1, side: "b" }], trajectory: [{ x: 2.5, y: 4.3 }, { x: 3.5, y: 8.4 }, { x: 4.8, y: 12.9 }], landing: { x: 4.8, y: 12.9 }, call: "IN", ariaLabel: "Current court map" }), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-4)" } }, [ui.badge("IN", "in"), ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-10)", color: "var(--text-faint)" } }, ["0.11 m inside"])]), ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.confidence(.52, { label: "geo", showWord: true })])]);
+    var players = playerCourtPoints();
+    var trajectory = shuttleCourtTrajectory();
+    var landing = shuttleCourtCandidate();
+    var shuttle = runtimeShuttle();
+    var shuttleState = evidenceState(shuttle);
+    var mapNote = !calibration ? "Seed the court to project live coordinates." : shuttleState === "tracked" && landing ? "Candidate shown; line call remains unknown." : "No accepted shuttle landing evidence.";
+    return ui.panel("Court", { icon: "crosshair", mediaTime: state.time, className: "bv-court-panel", bodyStyle: { padding: "10px" }, actions: [ui.iconButton("chevron-down", "Hide court map", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "map", value: false }); persist(); render(); } })] }, [
+      ui.courtDiagram({ renderWidth: 154, players: players, trajectory: trajectory, landing: landing, call: "UNKNOWN", ariaLabel: "Current court map; unknown values are not inferred" }),
+      ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-4)" } }, [ui.badge(shuttleState === "tracked" ? "candidate" : "UNKNOWN", shuttleState === "tracked" ? "info" : "unknown"), ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-10)", color: "var(--text-faint)" } }, [mapNote])]),
+      ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.confidence(null, { label: "geo", showWord: true })])
+    ]);
   }
   function labelForEvent(eventId) {
     return (state.manualLabels || []).find(function (label) { return label && String(label.eventId) === String(eventId); }) || null;
@@ -526,11 +695,13 @@
   function feedPanel() {
     var rows = ui.el("div", { className: "bv-feed" });
     strokes.forEach(function (stroke) { rows.appendChild(ui.strokeFeedItem(stroke, function () { openExistingLabel(stroke); })); });
+    if (!strokes.length) rows.appendChild(ui.emptyState("No accepted stroke evidence", "Pose and shuttle signals do not establish a hit, shot family, rally end, or winner. Add a manual label while playback continues.", ui.button("Label current segment", { variant: "ghost", size: "sm", onClick: openLabeling }), "help"));
     var children = [];
     if (state.lastEdit) children.push(ui.el("div", { className: "bv-review-undo", role: "status" }, [ui.el("span", {}, [(state.lastEdit.source === "manual" ? "Saved manual label at " : "Saved review suggestion at ") + (state.lastEdit.time || "the current timestamp") + "."]), ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit })]));
     children.push(rows);
     if (suggestion) children.push(ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.suggestionRow(suggestion, acceptSuggestion, function () { openLabeling(); })]));
-    var footer = ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.badge("rally 13 · index 74", "accent", false), ui.el("span", { className: "bv-runtime-footnote" }, [runtimeView.result && runtimeView.result.kind === "runtime-integration-probe" ? "fixture result · not production CV" : "analysis unknown"]), ui.button("Older rallies", { variant: "ghost", size: "sm", iconRight: "chevron-right", style: { marginLeft: "auto" }, onClick: openSummary })]);
+    var footerLabel = isFixtureRuntime() ? "rally 13 · index 74" : "rally unknown · index unavailable";
+    var footer = ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.badge(footerLabel, isFixtureRuntime() ? "accent" : "unknown", false), ui.el("span", { className: "bv-runtime-footnote" }, [isFixtureRuntime() ? "fixture result · not production CV" : "automatic event evidence unknown"]), ui.button("Older rallies", { variant: "ghost", size: "sm", iconRight: "chevron-right", style: { marginLeft: "auto" }, onClick: openSummary })]);
     return ui.panel("Stroke feed", { icon: "list", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", bodyStyle: { padding: "6px" }, footer: footer, actions: [ui.iconButton("pencil", "Open manual labeling (O)", { size: "sm", onClick: openLabeling }), ui.iconButton("chevron-up", "Hide stroke feed", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "feed", value: false }); persist(); render(); } })] }, children);
   }
   function liveOverlay() {
@@ -544,6 +715,9 @@
       "data-bso-court-state": courtDiagnosticState()
     });
     if (calibration) overlay.appendChild(calibrationDrawing());
+    // Evidence is drawn in normalized video coordinates and never intercepts
+    // pointer input, so player/shuttle rendering cannot block playback or seed clicks.
+    overlay.appendChild(runtimeEvidenceDrawing());
     var stale = runtimeIsStale();
     var statusState = runtimeView.phase === "fallback" ? "stale" : stale ? "stale" : "live";
     var statusLabel = runtimeView.phase === "fallback" ? "Analysis fallback" : stale ? "Analysis behind" : "Rally " + state.rally;
@@ -552,7 +726,8 @@
       : state.time;
     var left = ui.el("div", { className: "bv-overlay-stack left" }, [
       ui.statusChip(statusState, statusLabel, statusDetail, openLabeling),
-      ui.el("div", { className: "bv-runtime-note", role: "status" }, [ui.icon("info", 11), runtimeCaption()])
+      ui.el("div", { className: "bv-runtime-note", role: "status" }, [ui.icon("info", 11), runtimeCaption()]),
+      ui.el("div", { className: "bv-runtime-signal", role: "status" }, ["players ", ui.badge(String((runtimeTracking() && runtimeTracking().players || []).filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length), "info"), " · shuttle ", ui.badge(evidenceState(runtimeShuttle()), evidenceState(runtimeShuttle()) === "tracked" ? "in" : "unknown")])
     ]);
     // Panel switches are independent controls: density sets the default
     // presentation, while an explicit toggle always wins and reopens a panel.
@@ -632,6 +807,24 @@
     send({ type: "UNDO_LABEL", eventId: edit.eventId });
     render();
   }
+  function deleteReviewEvent(stroke) {
+    if (!stroke || !stroke.eventId || !window.BVReview) return;
+    var previousLabel = (state.manualLabels || []).find(function (label) { return String(label.eventId) === String(stroke.eventId); });
+    if (!previousLabel) return;
+    state.lastEdit = {
+      eventId: stroke.eventId,
+      source: "manual-delete",
+      time: stroke.time,
+      previousStroke: window.BVReview.clone(stroke),
+      previousLabel: window.BVReview.clone(previousLabel),
+      previousSuggestion: null
+    };
+    state.manualLabels = window.BVReview.without(state.manualLabels, stroke.eventId);
+    strokes = reviewStrokes();
+    persist();
+    send({ type: "DELETE_LABEL", eventId: stroke.eventId });
+    render();
+  }
   function cycleDensity() {
     var values = ["minimal", "balanced", "full"];
     var next = values[(values.indexOf(state.density) + 1) % values.length];
@@ -699,8 +892,8 @@
     var eventId = editingEventId || (activeSuggestion && activeSuggestion.eventId) || window.BVState.createManualEventId(activeVideoKey, startSec, state.manualLabels);
     var record = {
       eventId: eventId,
-      rallyId: activeSuggestion ? activeSuggestion.rallyId : existing && existing.rallyId != null ? existing.rallyId : state.rally,
-      sequence: (strokes.find(function (stroke) { return String(stroke.eventId) === String(eventId); }) || {}).sequence || strokes.length + 1,
+      rallyId: activeSuggestion ? activeSuggestion.rallyId : draft.rallyId != null ? draft.rallyId : existing && existing.rallyId != null ? existing.rallyId : state.rally,
+      sequence: draft.sequence || (strokes.find(function (stroke) { return String(stroke.eventId) === String(eventId); }) || {}).sequence || strokes.length + 1,
       shot: shot,
       time: startSec == null ? draft.start : formatMediaTime(startSec),
       startSec: startSec,
@@ -811,9 +1004,14 @@
   function applyStoredState(nextState) {
     var key = currentVideoKey();
     state = window.BVState.stateForVideo(nextState, key);
+    if (key) {
+      state.videoKey = key;
+      if (!state.videoUrl && window.location && /^https?:/.test(window.location.href)) state.videoUrl = window.location.href;
+    }
     restoreReviewState();
     if (state.seeded && !state.calibration) {
       state = window.BVState.resetVideoLocalState(state, key);
+      state.videoUrl = window.location && /^https?:/.test(window.location.href) ? window.location.href : null;
       state.calibrationError = "This saved court has no fitted calibration. Please seed the four outer corners again.";
       restoreReviewState();
     }
@@ -872,6 +1070,9 @@
     shadow = host.attachShadow({ mode: "open" });
     var link = document.createElement("link"); link.rel = "stylesheet"; link.href = hasChrome() && chrome.runtime ? chrome.runtime.getURL("styles.css") : "styles.css"; shadow.appendChild(link);
     root = document.createElement("div"); root.className = "bv-overlay-root"; shadow.appendChild(root); document.documentElement.appendChild(host);
+    // Publish a base diagnostic state before asynchronous discovery/storage so
+    // a runtime fault cannot leave an indistinguishable empty host behind.
+    updateDiagnosticsMarkers();
     window.addEventListener("resize", positionToVideo, { passive: true }); window.addEventListener("scroll", positionToVideo, { passive: true, capture: true });
     window.addEventListener("keydown", handleKeyboardShortcuts);
     ["yt-navigate-start", "yt-navigate-finish", "popstate", "hashchange"].forEach(function (name) {
@@ -884,7 +1085,10 @@
     // Manual/offline labeling intentionally does not start the runtime. It
     // reads the media clock only; live inference begins on ENABLE/OPEN_OVERLAY.
     if (hasChrome() && chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(handleMessage);
-    if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState"], function (result) { applyStoredState(result && result.bvState ? result.bvState : state); render(); });
+    if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState"], function (result) {
+      applyStoredState(result && result.bvState ? result.bvState : state);
+      render();
+    });
     else { applyStoredState(state); render(); }
   }
   init();

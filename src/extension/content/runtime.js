@@ -112,7 +112,8 @@
       bridge = null,
       onRuntimeMessage = () => {},
       onRuntimeStatus = () => {},
-      onRuntimeView = () => {}
+      onRuntimeView = () => {},
+      onSessionReset = () => {}
     } = {}) {
       this.document = documentRef;
       this.window = windowRef;
@@ -121,6 +122,7 @@
       this.onRuntimeMessage = onRuntimeMessage;
       this.onRuntimeStatus = onRuntimeStatus;
       this.onRuntimeView = onRuntimeView;
+      this.onSessionReset = onSessionReset;
       this.bridge = bridge || new RuntimeBridge({
         chromeApi,
         // Stable Chrome receives the serializable RGBA frame selected by the
@@ -159,6 +161,7 @@
     handleNavigation(reason) {
       if (this.synchronizer) this.synchronizer.reset(this.sessionId, reason);
       this.lastMediaTime = null;
+      this.onSessionReset(reason || 'navigation');
       if (this.overlay) this.overlay.setStatus('Navigating', 'waiting for video');
     }
 
@@ -238,6 +241,7 @@
       this.sessionId = null;
       this.synchronizer = null;
       this.lastMediaTime = null;
+      this.onSessionReset(reason || 'video-detached');
       if (this.overlay) this.overlay.detach();
     }
 

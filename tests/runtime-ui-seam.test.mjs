@@ -29,6 +29,9 @@ test("runtime UI seam exposes capabilities, model-neutral player arrays, and ana
     result: {
       kind: "runtime-integration-probe",
       state: "partial",
+      rally: { state: "unknown" },
+      rallyEnd: { state: "unknown" },
+      winner: { state: "unknown" },
       players: [
         { trackId: "session-a:player-1", confidence: 0.81, state: "tracked" },
         { trackId: "session-a:player-2", confidence: null, state: "unknown" }
@@ -45,4 +48,9 @@ test("runtime UI seam exposes capabilities, model-neutral player arrays, and ana
   assert.equal(view.result.players.length, 2);
   assert.equal(view.result.players[1].state, "unknown");
   assert.ok(views.length >= 2);
+  seam.reset("video-replaced");
+  const reset = seam.snapshot();
+  assert.equal(reset.phase, "resyncing");
+  assert.equal(reset.result, null);
+  assert.equal(reset.reason, "video-replaced");
 });

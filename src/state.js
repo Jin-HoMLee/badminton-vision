@@ -12,6 +12,7 @@
     stale: false,
     cameraCut: false,
     videoKey: null,
+    videoUrl: null,
     // manualLabels is the active-video compatibility projection. The durable
     // source of truth is manualLabelsByVideo below.
     manualLabels: [],
@@ -334,6 +335,7 @@
       stale: false,
       cameraCut: false,
       videoKey: key,
+      videoUrl: videoKey == null || key === current.videoKey ? current.videoUrl : null,
       seedPoints: [],
       seedDraftPoints: [],
       seedCardPosition: null,

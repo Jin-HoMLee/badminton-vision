@@ -7,9 +7,9 @@
   var runtimeStatus = null;
   var trackers = [
     { id: "court", label: "Court", health: "degraded", note: "not seeded", on: true },
-    { id: "players", label: "Players", health: "degraded", note: "unknown · fixture probe", on: true },
+    { id: "players", label: "Players", health: "degraded", note: "unknown · awaiting local runtime", on: true },
     { id: "body", label: "Body pose", health: "degraded", note: "starting · local pose model", on: true, disabled: false },
-    { id: "shuttle", label: "Shuttle", health: "degraded", note: "unknown · fixture probe", on: true },
+    { id: "shuttle", label: "Shuttle", health: "degraded", note: "unknown · awaiting local runtime", on: true },
     { id: "score", label: "Score OCR", health: "degraded", note: "partial", on: true },
     { id: "racket", label: "Racket", health: "unavailable", note: "not in MVP", on: false, disabled: true }
   ];
@@ -73,6 +73,10 @@
   function render() {
     var fixture = window.BVFixtures;
     var poseTracker = trackers.find(function (tracker) { return tracker.id === "body"; });
+    var playerTracker = trackers.find(function (tracker) { return tracker.id === "players"; });
+    var shuttleTracker = trackers.find(function (tracker) { return tracker.id === "shuttle"; });
+    var productionReady = Boolean(runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer && runtimeStatus.analyzer !== "fixture-probe-v1");
+    var fixtureReady = Boolean(runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer === "fixture-probe-v1");
     if (poseTracker) {
       poseTracker.disabled = false;
       poseTracker.health = "degraded";
@@ -81,14 +85,25 @@
         poseTracker.disabled = true;
         poseTracker.on = false;
         poseTracker.note = "unavailable · local pose runtime fallback";
-      } else if (runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer === "fixture-probe-v1") {
+      } else if (fixtureReady) {
         poseTracker.disabled = true;
         poseTracker.on = false;
         poseTracker.note = "unavailable · fixture has no pose model";
-      } else if (runtimeStatus && runtimeStatus.inference) {
+      } else if (productionReady) {
         poseTracker.health = "ok";
-        poseTracker.note = "local pose model";
+        poseTracker.note = runtimeStatus.backend ? "local pose model · " + runtimeStatus.backend : "local pose model";
       }
+    }
+    if (playerTracker) {
+      playerTracker.disabled = !productionReady;
+      playerTracker.on = productionReady;
+      playerTracker.health = productionReady && runtimeStatus.playerState === "tracked" ? "ok" : "degraded";
+      playerTracker.note = productionReady ? ((runtimeStatus.playerCount || 0) + " visible · " + (runtimeStatus.playerState || "unknown")) : fixtureReady ? "unknown · fixture probe" : "unknown · local runtime";
+    }
+    if (shuttleTracker) {
+      shuttleTracker.disabled = false;
+      shuttleTracker.health = productionReady && runtimeStatus.shuttleState === "tracked" ? "ok" : "degraded";
+      shuttleTracker.note = productionReady ? (runtimeStatus.shuttleState || "unknown") + " · bounded local candidate" : fixtureReady ? "unknown · fixture probe" : "unknown · awaiting local runtime";
     }
     trackers.forEach(function (tracker) {
       if (state.trackerSettings && state.trackerSettings[tracker.id] != null && !tracker.disabled) tracker.on = Boolean(state.trackerSettings[tracker.id]);
@@ -97,7 +112,7 @@
     var degraded = trackers.some(function (t) { return t.on && t.health === "degraded"; });
     var runtimeFallback = runtimeStatus && (runtimeStatus.phase === "fallback" || runtimeStatus.inference === false && runtimeStatus.analyzer === "none");
     var runtimeStale = Boolean(state.stale || runtimeStatus && runtimeStatus.stale);
-    var runtimeReady = Boolean(runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer === "fixture-probe-v1");
+    var runtimeReady = Boolean(runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer && runtimeStatus.analyzer !== "none");
     var courtSeeded = Boolean(state.seeded && state.calibration && state.seedPoints && state.seedPoints.length === 4);
     root.setAttribute("data-bso-popup", "true");
     root.setAttribute("data-bso-youtube-detected", String(Boolean(detected)));
@@ -107,27 +122,30 @@
     root.setAttribute("data-bso-runtime-analyzer", runtimeStatus && runtimeStatus.analyzer || "none");
     root.setAttribute("data-bso-inference", String(Boolean(runtimeStatus && runtimeStatus.inference)));
     root.setAttribute("data-bso-frame-transport", runtimeStatus && runtimeStatus.frameTransport || "unknown");
+    root.setAttribute("data-bso-backend", runtimeStatus && runtimeStatus.backend || "unknown");
     root.setAttribute("data-bso-fallback", runtimeFallback ? (runtimeStatus.reason || "runtime-fallback") : "none");
     trackers[0].note = courtSeeded ? "seeded" : "not seeded";
     trackers[0].health = courtSeeded ? "ok" : "degraded";
     var header = ui.el("header", { className: "bv-popup-header" }, [ui.el("span", { className: "bv-logo" }, [ui.el("img", { src: "design-system/assets/logo-mark.svg", alt: "" }), ui.el("strong", { className: "bv-logo-name" }, ["Badminton Vision"])]), ui.el("span", { className: "bv-popup-head-actions" }, [ui.iconButton("settings", "Settings unavailable in local demo", { size: "sm", disabled: true }), ui.iconButton("x", "Close", { size: "sm", onClick: closePopup })])]);
     var statusState = state.enabled ? (runtimeFallback || runtimeStale ? "stale" : "live") : "ready";
     var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : "Rally " + state.rally) : detected ? "Badminton match found" : "No YouTube match";
-    var statusDetail = state.enabled ? (runtimeStale && runtimeStatus && Number.isFinite(runtimeStatus.ageSeconds) ? "+" + runtimeStatus.ageSeconds.toFixed(1) + "s" : runtimeReady ? "fixture probe · not production CV" : state.time) : null;
+    var statusDetail = state.enabled ? (runtimeStale && runtimeStatus && Number.isFinite(runtimeStatus.ageSeconds) ? "+" + runtimeStatus.ageSeconds.toFixed(1) + "s" : productionReady ? (runtimeStatus.backend || "local") : fixtureReady ? "fixture probe · not production CV" : state.time) : null;
     var backendNotice = runtimeFallback
       ? ui.callout("warn", "Production inference unavailable", "This build could not start its local computer-vision runtime. Playback is unaffected and manual labeling remains available.")
-      : runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer !== "fixture-probe-v1"
-        ? ui.callout("guide", "Local pose runtime active", "Pose tracking stays on-device. Rally shots, shuttle paths, and this fixture summary remain a local integration/demo experience, not production CV.")
-        : ui.callout("guide", "Local fixture demo", "Any fixture result is an integration probe, not production CV. Nothing is uploaded; labels and corrections stay local.");
+      : productionReady
+        ? ui.callout("guide", "Local pose + shuttle runtime active", "Pose tracking stays on-device. The shuttle signal is a bounded candidate proposal; shot, rally-end, and winner fields remain unknown until evidence supports them.")
+        : fixtureReady
+          ? ui.callout("guide", "Local fixture demo", "Any fixture result is an integration probe, not production CV. Nothing is uploaded; labels and corrections stay local.")
+          : ui.callout("guide", "Local runtime pending", "The local pose model is starting. Until evidence arrives, player, shuttle, shot, rally-end, and winner fields remain unknown.");
     var intro = ui.el("div", { className: "bv-popup-intro" }, [ui.statusChip(statusState, statusLabel, statusDetail), ui.el("div", { className: "bv-detected" }, [ui.el("span", { className: "bv-detected-icon" }, [ui.icon(detected ? "check" : "info", 15)]), ui.el("span", { className: "bv-detected-copy" }, [ui.el("strong", {}, [detected ? fixture.video.title : "Open a YouTube match"]), ui.el("span", {}, [detected ? fixture.video.channel + " · " + fixture.video.duration : "Badminton Vision runs on youtube.com/watch pages only."])])]), !detected ? ui.callout("info", "Overlay unavailable here", "Open a youtube.com/watch page to use live overlay, court setup, or manual labeling. The summary remains available locally.") : backendNotice, !state.enabled && detected ? ui.callout("guide", "Three steps to get going", "Turn the overlay on, click the four court corners once, then keep watching — the video is never paused or moved.") : null, state.cameraCut ? ui.callout("warn", "Camera cut", "The court projection is stale. Re-seed the court; analysis stays paused while the video keeps playing.") : null]);
 
     var barNodes = trackers.map(function (t) { return ui.el("i", { className: t.on ? (t.health === "degraded" ? "warn" : "") : "off" }); });
     var trackerHeader = ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-4)" } }, ["What's being tracked", ui.el("span", { className: "bv-tracker-bars" }, barNodes)]);
     var trackerAside = ui.el("button", { className: "bv-link-button", type: "button", onClick: function () { expanded = !expanded; render(); } }, [trackerCount + " of " + trackers.length + " on", ui.icon(expanded ? "chevron-up" : "chevron-down", 12)]);
-    var runtimeSummary = runtimeStatus && runtimeStatus.resultKind === "runtime-integration-probe"
+    var runtimeSummary = fixtureReady || runtimeStatus && runtimeStatus.resultKind === "runtime-integration-probe"
       ? "fixture result observed · not production CV"
-      : runtimeReady ? "local fixture integration probe · not production CV" : runtimeFallback ? "local analysis unavailable · playback unaffected" : "local runtime starting · nothing uploaded";
-    var trackerBody = expanded ? ui.el("div", { className: "bv-tracker-list" }, trackers.map(trackerRow).concat([ui.el("p", { className: "bv-helper" }, ["Fixture output stays editable. If a tracker is off, dependent values stay blank rather than being guessed."])])) : ui.el("div", { className: "bv-tracker-summary" }, [ui.badge(degraded ? "some parts unsure" : "all working", degraded ? "warn" : "in"), ui.el("small", {}, [runtimeSummary]) ]);
+      : productionReady ? "local pose + bounded shuttle candidate · " + (runtimeStatus.backend || "backend pending") : runtimeFallback ? "local analysis unavailable · playback unaffected" : "local runtime starting · nothing uploaded";
+    var trackerBody = expanded ? ui.el("div", { className: "bv-tracker-list" }, trackers.map(trackerRow).concat([ui.el("p", { className: "bv-helper" }, ["Automatic output stays evidence-aware. If a signal is unknown, dependent values stay blank rather than being guessed."])])) : ui.el("div", { className: "bv-tracker-summary" }, [ui.badge(degraded ? "some parts unsure" : "all working", degraded ? "warn" : "in"), ui.el("small", {}, [runtimeSummary]) ]);
     var trackerSection = section(trackerHeader, trackerBody, trackerAside);
 
     var densitySection = section(ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-3)" } }, ["How much to show", ui.infoTip("How much to show", "Changes only what appears on the video. Everything is still analysed either way.")]), ui.segmented([{ value: "minimal", label: "Minimal" }, { value: "balanced", label: "Balanced" }, { value: "full", label: "Full" }], state.density, function (value) { dispatch({ type: "SET_DENSITY", value: value }, { type: "SET_DENSITY", value: value }); }, true));

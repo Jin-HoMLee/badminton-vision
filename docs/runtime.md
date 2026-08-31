@@ -1,11 +1,14 @@
 # Runtime contract and local integration slice
 
-This repository contains a local-first Chrome MV3 runtime foundation and a
-local player-pose inference slice. Shuttle, stroke, court, and rally computer
-vision remain outside this slice. The canonical offscreen analyzer is the
-bundled Apache-2.0 Lightweight OpenPose LiteRT conversion; its local artifact
-and runtime are versioned under `src/extension/offscreen/vendor/`. The
-committed deterministic fixture remains only an explicit plumbing fallback.
+This repository contains the public local-first Chrome MV3 runtime and the
+MVP pose/shuttle composition. The canonical offscreen analyzer is the bundled
+Apache-2.0 Lightweight OpenPose LiteRT conversion composed with the bounded
+local shuttle candidate/trajectory adapter; their local artifacts and runtime
+are versioned under `src/extension/offscreen/vendor/`. Stroke, rally, and
+winner computer vision remain unknown until a later event adapter or manual
+review supplies evidence. The committed deterministic fixture remains only an
+explicit plumbing diagnostic path (`BSO_DIAGNOSTIC_FIXTURE` is set only by
+Node harnesses); the public browser package always has the production script.
 
 ## Canonical build and load
 
@@ -25,11 +28,13 @@ canonical build only when referenced by the root manifest.
 Requires Node.js 20 or newer and Chrome 148 or newer with MV3
 offscreen-document support. Stable Chrome uses the serializable RGBA frame
 fallback described below; structured-clone messaging is an optional channel
-capability and is not declared in the public manifest. In Chrome, open
-`chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and
-select this repository's `dist/` directory. Navigate to a YouTube `watch`
-page. The extension discovers a video automatically; no player control is
-required.
+capability and is not declared in the public manifest. The manifest explicitly
+allows `'wasm-unsafe-eval'` for the local LiteRT WebAssembly executor; without
+that extension-page CSP permission, model initialization fails and the UI must
+report unknown/fallback state. In Chrome, open `chrome://extensions`, enable
+**Developer mode**, choose **Load unpacked**, and select this repository's
+`dist/` directory. Navigate to a YouTube `watch` page. The extension discovers a
+video automatically; no player control is required.
 
 The focused runtime round-trip check is:
 
@@ -119,8 +124,8 @@ synchronous and local to the offscreen analyzer; it never blocks or mutates
 playback.
 
 The offscreen HTML loads this contract before the LiteRT runtime loader,
-Lightweight OpenPose adapter, MoveNet seam, and fixture analyzer.
-`offscreen/lite-openpose-adapter.js` decodes the cleared model's
+Lightweight OpenPose adapter, local shuttle adapter, MoveNet seam, and fixture
+analyzer. `offscreen/lite-openpose-adapter.js` decodes the cleared model's
 `[1, 32, 32, 19]` heatmap output, groups torso-anchored local peaks into up to
 four normalized candidates, and feeds them to `SessionPlayerTracker`; its
 result is placed under the existing model-neutral `analysis.result` envelope.
@@ -145,17 +150,18 @@ an explicit weight redistribution grant or a model package with a clear license
 and attribution notice, adding `model.json` or weight shards would violate the
 launch brief's licensing gate. Do not replace this gate with a CDN URL.
 
-## Shuttle candidate experiment
+## Shuttle candidate composition
 
-`offscreen/shuttle-tracking-adapter.js` is a packaged but intentionally
-unwired, model-neutral frame-difference experiment. It uses a bounded RGBA
-scan, compactness/contrast rejection, confidence scoring, and temporal
-continuity; it emits `unknown` instead of extrapolating through cuts, stale or
-invalid samples, missing/ambiguous candidates, and backpressure. It does not
-modify the pose adapter or offscreen session orchestrator. See
-[`docs/shuttle-tracking.md`](shuttle-tracking.md) for the result shape,
-state-safety rules, latency budget, and accuracy limitations. It is not
-TrackNet or a validated production shuttle tracker.
+`offscreen/shuttle-tracking-adapter.js` is the bounded model-neutral shuttle
+component in the public offscreen composition. It uses a bounded RGBA scan,
+compactness/contrast rejection, confidence scoring, and temporal continuity;
+it emits `unknown` instead of extrapolating through cuts, stale or invalid
+samples, missing/ambiguous candidates, and backpressure. It never upgrades a
+shuttle candidate into a hit, stroke, landing, line call, rally end, or winner.
+The composition runs it before pose on each accepted frame so an automatic
+global cut can reset player association too. It is not TrackNet or a validated
+production shuttle tracker; see [`docs/shuttle-tracking.md`](shuttle-tracking.md)
+for the result shape, state-safety rules, latency budget, and limitations.
 
 ## Court calibration boundary
 
@@ -225,15 +231,19 @@ MV3 JSON messaging, avoiding the silent `{}` conversion that would otherwise
 make the offscreen frame unreadable. A channel that explicitly reports
 `message_serialization: "structured_clone"` may send the bitmap with the
 existing `transferables` contract. The service-worker relay preserves
-the message shape across the offscreen boundary. The canonical offscreen analyzer is the local
-`lightweight-openpose-lite-256-v1` pose path. It reads the local frame pixels,
+the message shape across the offscreen boundary. The canonical offscreen
+analyzer is the local `lightweight-openpose-lite-256-v1` pose path composed
+with `local-shuttle-frame-difference-v1`. It reads the local frame pixels,
 creates the model's bounded 256x256 RGB input, runs LiteRT locally, and returns
-normalized two-player-capable pose observations with session-local IDs. Its
-result identifies `productionModel: true` only when inference succeeds; an
-artifact/backend failure returns unknown observations and
-`inferenceAvailable: false`. The explicit `fixture-probe-v1` fallback reads
-local pixels only to prove plumbing, identifies itself as
+normalized two-player-capable pose observations plus the shuttle adapter's
+accepted candidate/trajectory. Its result identifies `productionModel: true`
+only when pose inference succeeds; an artifact/backend failure returns unknown
+pose observations and `inferenceAvailable: false` without selecting the
+fixture. The shuttle may still return a separately accepted bounded candidate,
+but never a stroke or rally claim. The explicit `fixture-probe-v1` diagnostic
+reads local pixels only to prove plumbing, identifies itself as
 `runtime-integration-probe`, and never produces player/shuttle/shot claims.
+It is not selected when production initialization or inference fails.
 No TrackNet asset is used in the live runtime path.
 
 ## Synchronization and stale results
@@ -255,10 +265,11 @@ analyzer name, inference availability, and fallback reasons. The expected
 stable ready state is `frameTransport: "rgba-array-v1"`,
 `analyzer: "lightweight-openpose-lite-256-v1"`, and `inference: true`, with
 backend status identifying WebGPU or WASM. LiteRT's WebGL path is explicitly
-reported as unsupported rather than mislabeled. If the local artifact/runtime
-or backend is unavailable, capability state reports `inference: false` and
-`analyzer: "none"`; results carry an unavailable identity and unknown pose
-state. The fixture's explicit diagnostics state uses
+reported as unsupported rather than mislabeled. The capability snapshot also
+carries the selected shuttle component and backend fallbacks. If the local
+artifact/runtime or backend is unavailable, capability state reports
+`inference: false` and `analyzer: "none"`; results carry an unavailable identity
+and unknown pose state without a fixture substitution. The fixture's explicit diagnostics state uses
 `runtime-integration-probe-not-production-cv`. Missing frame-copy support,
 serialization canvas support, disconnected runtime ports, invalid protocol
 messages, and analyzer errors are visible in the UI status surfaces while

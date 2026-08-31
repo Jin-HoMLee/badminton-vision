@@ -123,8 +123,9 @@
             : message.status === "fallback" && !message.inferenceAvailable
               ? (message.result && message.result.reason) || "local-inference-unavailable"
               : "",
-          analyzer: message.analyzer || resultCapabilities.analyzer || "none",
+          analyzer: message.inferenceAvailable ? (message.analyzer || resultCapabilities.analyzer || "none") : (resultCapabilities.analyzer || "none"),
           inference: Boolean(message.inferenceAvailable),
+          fallbacks: Array.isArray(resultCapabilities.fallbacks) ? resultCapabilities.fallbacks.slice() : view.fallbacks,
           capabilities: resultCapabilities,
           result: message.result || null,
           currentMediaTime: Number.isFinite(currentMediaTime) ? currentMediaTime : view.currentMediaTime,
@@ -139,6 +140,7 @@
           reason: message.reason || view.reason,
           analyzer: statusCapabilities.analyzer || view.analyzer,
           inference: statusCapabilities.inference == null ? view.inference : Boolean(statusCapabilities.inference),
+          fallbacks: Array.isArray(statusCapabilities.fallbacks) ? statusCapabilities.fallbacks.slice() : view.fallbacks,
           capabilities: Object.keys(statusCapabilities).length ? statusCapabilities : view.capabilities
         });
       }
@@ -173,10 +175,18 @@
         stale: sync.stale == null ? view.stale : Boolean(sync.stale)
       });
     }
+    function reset(reason) {
+      view = runtimeViewDefaults();
+      view.phase = "resyncing";
+      view.message = "Local runtime session reset";
+      view.reason = reason || "session-reset";
+      publish();
+    }
     return {
       acceptMessage: acceptMessage,
       acceptStatus: acceptStatus,
       acceptSynchronization: acceptSynchronization,
+      reset: reset,
       snapshot: function () { return Object.assign({}, view, { fallbacks: view.fallbacks.slice() }); }
     };
   }
@@ -199,7 +209,8 @@
       onRuntimeView: function (view, currentMediaTime) {
         if (typeof options.onMediaTime === "function") options.onMediaTime(currentMediaTime);
         seam.acceptSynchronization(view, currentMediaTime);
-      }
+      },
+      onSessionReset: function (reason) { seam.reset(reason); }
     });
     controller.start();
     return { controller: controller, seam: seam };

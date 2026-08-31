@@ -12,6 +12,7 @@ const analyzerSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension
 const modelSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/fixture-model.js'), 'utf8');
 const moveNetSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/movenet-adapter.js'), 'utf8');
 const liteOpenPoseSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/lite-openpose-adapter.js'), 'utf8');
+const shuttleSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/shuttle-tracking-adapter.js'), 'utf8');
 const offscreenSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/offscreen.js'), 'utf8');
 const workerSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/background/service-worker.js'), 'utf8');
 
@@ -44,6 +45,8 @@ function loadOffscreen(chrome, { withProduction = false } = {}) {
     setTimeout,
     clearTimeout,
     chrome,
+    // Node-only plumbing harnesses opt into the explicit fixture diagnostic.
+    BSO_DIAGNOSTIC_FIXTURE: true,
   });
   vm.runInContext(protocolSource, context, { filename: 'protocol.js' });
   vm.runInContext(trackingSource, context, { filename: 'player-tracking.js' });
@@ -52,6 +55,7 @@ function loadOffscreen(chrome, { withProduction = false } = {}) {
   if (withProduction) {
     context.BSOLiteRuntimeReady = Promise.resolve({ loaded: true });
     vm.runInContext(liteOpenPoseSource, context, { filename: 'lite-openpose-adapter.js' });
+    vm.runInContext(shuttleSource, context, { filename: 'shuttle-tracking-adapter.js' });
   }
   vm.runInContext(analyzerSource, context, { filename: 'analyzer.js' });
   vm.runInContext(offscreenSource, context, { filename: 'offscreen.js' });
@@ -62,7 +66,7 @@ function waitForWork() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-function createServiceWorkerHarness({ withOffscreen = true } = {}) {
+function createServiceWorkerHarness({ withOffscreen = true, createDocument = null } = {}) {
   const swConnect = event();
   const swMessages = event();
   const offscreenMessages = event();
@@ -87,7 +91,7 @@ function createServiceWorkerHarness({ withOffscreen = true } = {}) {
         offscreenMessages.emit(message);
       }
     },
-    offscreen: withOffscreen ? { createDocument: async () => {} } : undefined
+    offscreen: withOffscreen ? { createDocument: createDocument || (async () => {}) } : undefined
   };
   const context = vm.createContext({
     console,
@@ -125,6 +129,7 @@ test('packed source includes a local offscreen document and fixture analyzer', (
   assert.match(html, /movenet-adapter\.js/);
   assert.match(html, /lite-runtime-loader\.js/);
   assert.match(html, /lite-openpose-adapter\.js/);
+  assert.match(html, /shuttle-tracking-adapter\.js/);
   assert.match(html, /player-tracking\.js/);
   assert.match(html, /analyzer\.js/);
   assert.match(html, /offscreen\.js/);
@@ -140,6 +145,7 @@ test('packed source includes a local offscreen document and fixture analyzer', (
   assert.equal(manifest.permissions.includes('offscreen'), true);
   assert.equal(Object.hasOwn(manifest, 'message_serialization'), false);
   assert.equal(manifest.minimum_chrome_version, '148');
+  assert.equal(manifest.content_security_policy.extension_pages, "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'");
   assert.equal(manifest.content_scripts[0].js.includes('content.js'), true);
   assert.equal(manifest.content_scripts[0].js.includes('content/runtime.js'), true);
   assert.equal(manifest.content_scripts[0].js.includes('common/frame-transport.js'), true);
@@ -162,6 +168,140 @@ test('offscreen selects the cleared local analyzer when its package script is pr
   const analyzer = context.BSOOffscreenAnalyzer.getActiveAnalyzer();
   assert.equal(analyzer.identity.id, 'lightweight-openpose-lite-256-v1');
   assert.equal(analyzer.identity.productionModel, true);
+});
+
+test('offscreen composes production pose tracks with accepted shuttle evidence without event claims', async () => {
+  const context = loadOffscreen({ runtime: {} }, { withProduction: true });
+  const resets = [];
+  const poseIdentity = { id: 'lightweight-openpose-lite-256-v1', version: 1, kind: 'local-litert-tflite-multipose', productionModel: true };
+  const shuttleIdentity = { id: 'local-shuttle-frame-difference-v1', version: 1, kind: 'bounded-temporal-pixel-heuristic', productionModel: false };
+  const poseTracker = new tracking.SessionPlayerTracker({ sessionId: 'composition' });
+  const pose = {
+    identity: poseIdentity,
+    async initialize() { return { available: true, backend: 'wasm', fallbacks: ['backend-webgpu-unavailable'] }; },
+    resetSession(sessionId, reason) { resets.push(['pose', sessionId, reason]); poseTracker.reset(reason); },
+    async analyze(sample) {
+      const tracked = poseTracker.processFrame({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, cameraCut: sample.cameraCut, observations: [
+        { observationId: `${sample.requestId}:a`, sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, coordinateSpace: 'normalized', bbox: { x: .1, y: .2, width: .2, height: .4 }, keypoints: [], confidence: .9, state: 'tracked', detector: poseIdentity, source: { id: 'captured-frame', version: 1, kind: 'mv3-offscreen-frame' } },
+        { observationId: `${sample.requestId}:b`, sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, coordinateSpace: 'normalized', bbox: { x: .7, y: .2, width: .2, height: .4 }, keypoints: [], confidence: .9, state: 'tracked', detector: poseIdentity, source: { id: 'captured-frame', version: 1, kind: 'mv3-offscreen-frame' } }
+      ] }).result;
+      return protocol.createAnalyzerResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, analyzer: poseIdentity.id, analyzerIdentity: poseIdentity, inferenceAvailable: true, result: { kind: 'lightweight-openpose', productionModel: true, state: tracked.state, players: tracked.players, tracking: tracked, strokeEvents: [], shotFamily: 'unclassified', classificationConfidence: 0, geometryConfidence: 0 } });
+    }
+  };
+  const shuttle = {
+    identity: shuttleIdentity,
+    async analyze(sample) {
+      return protocol.createAnalyzerResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, analyzer: shuttleIdentity.id, analyzerIdentity: shuttleIdentity, inferenceAvailable: true, result: { kind: 'bounded-temporal-pixel-heuristic', state: 'tracked', shuttle: { state: 'tracked', confidence: .71, candidate: { x: .5, y: .5, accepted: true }, trajectory: [{ x: .4, y: .4 }, { x: .5, y: .5 }], accepted: true, reason: 'temporal-continuity', evidence: { continuity: .9 } } } });
+    },
+    resetSession(sessionId, reason) { resets.push(['shuttle', sessionId, reason]); }
+  };
+  const composite = new context.BSOOffscreenAnalyzer.LocalPoseShuttleAnalyzer({ poseAnalyzer: pose, shuttleAnalyzer: shuttle });
+  assert.equal((await composite.initialize()).available, true);
+  const first = await composite.analyze({ sessionId: 'composition', requestId: 'r1', mediaTime: 1, frame: frame() });
+  assert.equal(first.analyzer, poseIdentity.id);
+  assert.equal(first.inferenceAvailable, true);
+  assert.equal(first.result.composition, 'pose-plus-shuttle-v1');
+  assert.equal(first.result.players.length, 2);
+  assert.equal(first.result.shuttle.state, 'tracked');
+  assert.equal(first.result.rally.state, 'unknown');
+  assert.equal(first.result.rallyEnd.state, 'unknown');
+  assert.equal(first.result.winner.state, 'unknown');
+  const afterCut = await composite.analyze({ sessionId: 'composition', requestId: 'r2', mediaTime: 2, cameraCut: true, frame: frame() });
+  assert.equal(afterCut.result.players.length, 2);
+  assert.deepEqual(resets.map((entry) => entry[0]), ['pose', 'shuttle']);
+  const afterJump = await composite.analyze({ sessionId: 'composition', requestId: 'r3', mediaTime: 1, frame: frame() });
+  assert.equal(afterJump.result.players.length, 2);
+  assert.ok(resets.some((entry) => entry[2] === 'media-time-reset'));
+});
+
+test('production composition stays unknown and never switches to fixture on pose initialization failure', async () => {
+  const context = loadOffscreen({ runtime: {} }, { withProduction: true });
+  const poseIdentity = { id: 'lightweight-openpose-lite-256-v1', version: 1, kind: 'local-litert-tflite-multipose', productionModel: true };
+  const pose = { identity: poseIdentity, async initialize() { return { available: false, reason: 'local-model-artifact-unavailable' }; }, async analyze(sample) { return protocol.createAnalyzerResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, analyzer: poseIdentity.id, analyzerIdentity: { ...poseIdentity, productionModel: false }, inferenceAvailable: false, status: 'fallback', result: { state: 'unknown', players: [], tracking: tracking.unknownTrackingResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, detector: poseIdentity, reason: 'local-model-artifact-unavailable' }), strokeEvents: [] } }); } };
+  const shuttle = { identity: { id: 'local-shuttle-frame-difference-v1', version: 1, kind: 'bounded-temporal-pixel-heuristic' }, async analyze(sample) { return protocol.createAnalyzerResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, analyzer: 'local-shuttle-frame-difference-v1', analyzerIdentity: this.identity, inferenceAvailable: true, result: { shuttle: { state: 'unknown', confidence: null, accepted: false, reason: 'no-candidate' } } }); } };
+  const composite = new context.BSOOffscreenAnalyzer.LocalPoseShuttleAnalyzer({ poseAnalyzer: pose, shuttleAnalyzer: shuttle });
+  assert.equal((await composite.initialize()).available, false);
+  const result = await composite.analyze({ sessionId: 'unknown', requestId: 'r1', mediaTime: 1, frame: frame() });
+  assert.equal(result.inferenceAvailable, false);
+  assert.ok(result.capabilities);
+  assert.equal(result.analyzer, poseIdentity.id);
+  assert.equal(result.result.players.length, 0);
+  assert.equal(result.result.shuttle.state, 'unknown');
+  assert.notEqual(result.analyzer, 'fixture-probe-v1');
+});
+
+test('offscreen capability report preserves selected backend and explicit fallbacks', async () => {
+  const sent = [];
+  const onMessage = event();
+  const context = loadOffscreen({ runtime: { onMessage, sendMessage: async (message) => { sent.push(message); } } }, { withProduction: true });
+  const identity = { id: 'lightweight-openpose-lite-256-v1', version: 1, kind: 'local-litert-tflite-multipose', productionModel: true };
+  context.BSOOffscreenAnalyzer.setAnalyzer({
+    identity,
+    async initialize() { return { available: true, backend: 'wasm', fallbacks: ['backend-webgpu-unavailable', 'backend-webgl-unavailable'] }; },
+    async analyze(sample) { return protocol.createAnalyzerResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, analyzer: identity.id, analyzerIdentity: identity, inferenceAvailable: true, result: { state: 'unknown', players: [], tracking: tracking.unknownTrackingResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, detector: identity, reason: 'no-pose-evidence' }), shuttle: { state: 'unknown', confidence: null }, strokeEvents: [], rally: { state: 'unknown' }, rallyEnd: { state: 'unknown' }, winner: { state: 'unknown' } } }); }
+  });
+  onMessage.emit(protocol.createSessionStart({ sessionId: 'capability', capabilities: { capture: 'request-video-frame-callback', frameTransport: 'rgba-array-v1' } }));
+  await waitForWork();
+  const report = sent.find((message) => message.type === protocol.TYPES.CAPABILITY_REPORT);
+  const status = sent.find((message) => message.type === protocol.TYPES.RUNTIME_STATUS && message.phase === 'ready');
+  assert.equal(report.capabilities.inference, true);
+  assert.equal(report.capabilities.analyzer, identity.id);
+  assert.equal(report.capabilities.backend, 'wasm');
+  assert.deepEqual(Array.from(report.fallbacks), ['backend-webgpu-unavailable', 'backend-webgl-unavailable']);
+  assert.equal(status.capabilities.backend, 'wasm');
+  assert.deepEqual(Array.from(status.capabilities.fallbacks), Array.from(report.fallbacks));
+});
+
+test('offscreen holds one newest frame until session initialization completes', async () => {
+  const sent = [];
+  const onMessage = event();
+  const context = loadOffscreen({
+    runtime: {
+      onMessage,
+      sendMessage: async (message) => { sent.push(message); }
+    }
+  });
+  let releaseInitialization;
+  const initialization = new Promise((resolve) => { releaseInitialization = resolve; });
+  const analyzed = [];
+  const identity = { id: 'test-start-gated-analyzer', version: 1, kind: 'test', runtimeIntegrationTest: true, productionModel: false };
+  context.BSOOffscreenAnalyzer.setAnalyzer({
+    identity,
+    async initialize() {
+      await initialization;
+      return { available: true, backend: 'test' };
+    },
+    async analyze(sample) {
+      analyzed.push(sample.requestId);
+      return protocol.createAnalyzerResult({
+        sessionId: sample.sessionId,
+        requestId: sample.requestId,
+        mediaTime: sample.mediaTime,
+        analyzer: identity.id,
+        analyzerIdentity: identity,
+        inferenceAvailable: true,
+        result: { state: 'unknown', players: [], tracking: tracking.unknownTrackingResult({
+          sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, reason: 'test'
+        }) }
+      });
+    }
+  });
+  onMessage.emit(protocol.createSessionStart({ sessionId: 'start-gated', capabilities: { capture: 'timer-fallback', frameTransport: 'rgba-array-v1' } }));
+  await waitForWork();
+  const held = frame();
+  onMessage.emit(protocol.createFrameSample({
+    sessionId: 'start-gated', requestId: 'start-gated:1', mediaTime: 1, capturedAt: 1,
+    width: 2, height: 2, frame: held, frameFormat: 'rgba-array-v1'
+  }).message);
+  assert.deepEqual(analyzed, []);
+  assert.equal(held.closed, undefined);
+  releaseInitialization();
+  await waitForWork();
+  await waitForWork();
+  assert.deepEqual(analyzed, ['start-gated:1']);
+  assert.equal(held.closed, true);
+  onMessage.emit(protocol.createSessionEnd({ sessionId: 'start-gated', reason: 'test-complete' }));
+  await waitForWork();
 });
 
 test('offscreen fixture probe returns deterministic local results with capability state', async () => {
@@ -330,4 +470,31 @@ test('service worker reports explicit fallback when offscreen is unavailable', a
   assert.equal(report[0].capabilities.analyzer, 'none');
   assert.equal(status[0].phase, 'fallback');
   assert.match(status[0].reason, /offscreen/);
+});
+
+test('service worker closes frames held during failed offscreen startup', async () => {
+  let releaseStartup;
+  const startup = new Promise((resolve) => { releaseStartup = resolve; });
+  const harness = createServiceWorkerHarness({
+    createDocument: async () => {
+      await startup;
+      throw new Error('offscreen-startup-failed');
+    }
+  });
+  harness.port.onMessage.emit(protocol.createSessionStart({ sessionId: 'startup-failure', capabilities: { capture: 'timer-fallback', frameTransport: 'rgba-array-v1' } }));
+  await waitForWork();
+  const held = frame();
+  harness.port.onMessage.emit(protocol.createFrameSample({
+    sessionId: 'startup-failure', requestId: 'startup-failure:1', mediaTime: 1,
+    capturedAt: 1, width: 2, height: 2, frame: held, frameFormat: 'rgba-array-v1'
+  }).message);
+  assert.equal(held.closed, undefined);
+  releaseStartup();
+  await waitForWork();
+  await waitForWork();
+  assert.equal(held.closed, true);
+  const status = harness.portMessages.find(([message]) => message.type === protocol.TYPES.RUNTIME_STATUS && message.phase === 'fallback');
+  assert.match(status[0].reason, /offscreen-startup-failed/);
+  harness.port.onMessage.emit(protocol.createSessionEnd({ sessionId: 'startup-failure', reason: 'test-complete' }));
+  await waitForWork();
 });

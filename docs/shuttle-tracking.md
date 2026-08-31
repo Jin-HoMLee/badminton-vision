@@ -4,10 +4,9 @@
 model-neutral seam for a live MVP experiment. It consumes the same captured
 frame sample shape used by the MV3 runtime and produces the existing
 `analysis.result` envelope. It contains no model weights, TrackNet code, CDN
-path, or network request. The file is packaged as a local runtime asset, but is
-**not loaded by `offscreen.html` and is not selected by the offscreen
-orchestrator in this branch**. That keeps this experiment out of the current
-pose/runtime integration path.
+path, or network request. The canonical offscreen session loads this adapter
+alongside the cleared LiteRT pose analyzer and composes both results without
+coupling their evidence or identities.
 
 ## Contract
 
@@ -26,7 +25,10 @@ is useful for deterministic tests. The adapter returns a
 `bso.runtime.v1` `analysis.result` envelope. Its model-neutral result retains
 the normal top-level `players`, `tracking`, `strokeEvents`, shot-family, and
 confidence fields; this shuttle-only adapter leaves player tracking as `null`
-and does not invent stroke or player claims. The shuttle payload is:
+and does not invent stroke or player claims. The offscreen composition copies
+this payload into the pose result while preserving the pose tracks and adds
+explicit unknown `rally`, `rallyEnd`, and `winner` evidence until a later event
+adapter supplies the required observations. The shuttle payload is:
 
 ```js
 {
