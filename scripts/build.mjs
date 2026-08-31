@@ -32,6 +32,7 @@ const runtimeDesignSystemFiles = [
   "tokens/spacing.css",
   "tokens/typography.css",
   "assets/icon-16.svg",
+  "assets/icon-32.svg",
   "assets/icon.svg",
   "assets/logo-mark.svg"
 ];
@@ -101,6 +102,7 @@ const required = [
   "design-system/tokens/motion.css",
   "design-system/tokens/base.css",
   "design-system/assets/icon-16.svg",
+  "design-system/assets/icon-32.svg",
   "design-system/assets/icon.svg",
   "design-system/assets/logo-mark.svg"
 ];

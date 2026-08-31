@@ -26,6 +26,7 @@ const expectedFiles = [
   "summary.js",
   "ui.js",
   "design-system/assets/icon-16.svg",
+  "design-system/assets/icon-32.svg",
   "design-system/assets/icon.svg",
   "design-system/assets/logo-mark.svg",
   "design-system/tokens/base.css",
@@ -51,7 +52,12 @@ test("production build contains only local runtime design-system assets", async 
   await execFileAsync(process.execPath, ["scripts/build.mjs"], { cwd: projectRoot });
 
   assert.deepEqual((await listFiles(dist)).sort(), expectedFiles.sort());
-  assert.equal((await readFile(join(dist, "manifest.json"), "utf8")).includes('"manifest_version": 3'), true);
+  const manifest = JSON.parse(await readFile(join(dist, "manifest.json"), "utf8"));
+  assert.equal(manifest.manifest_version, 3);
+  assert.equal(manifest.action.default_icon["16"], "design-system/assets/icon-16.svg");
+  assert.equal(manifest.action.default_icon["32"], "design-system/assets/icon-32.svg");
+  assert.equal(manifest.icons["16"], "design-system/assets/icon-16.svg");
+  assert.equal(manifest.icons["32"], "design-system/assets/icon-32.svg");
 
   const cssFiles = (await listFiles(dist)).filter((file) => file.endsWith(".css"));
   const textFiles = await Promise.all((await listFiles(dist)).map(async (file) => ({

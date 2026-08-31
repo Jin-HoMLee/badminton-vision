@@ -1,12 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
 <g stroke="#c8f04a" stroke-width="5" stroke-linecap="round">
-<path d="M4 17V7.5A3.5 3.5 0 0 1 7.5 4H17"></path><path d="M47 4h9.5A3.5 3.5 0 0 1 60 7.5V17"></path>
-<path d="M60 47v9.5a3.5 3.5 0 0 1-3.5 3.5H47"></path><path d="M17 60H7.5A3.5 3.5 0 0 1 4 56.5V47"></path>
+<path d="M6 19v-9a4 4 0 0 1 4-4h9"></path><path d="M45 6h9a4 4 0 0 1 4 4v9"></path>
+<path d="M58 45v9a4 4 0 0 1-4 4h-9"></path><path d="M19 58h-9a4 4 0 0 1-4-4v-9"></path>
 </g>
-<g transform="translate(-7.04 -6.93) scale(1.22)" stroke="#c8f04a" stroke-linejoin="round" stroke-linecap="round">
-<path d="M27.1 36.6c-2.3-5.9-5-13-6.6-18.2-.4-1.3.75-2.35 1.95-1.9 3.2 1.2 6.45 1.8 9.55 1.8s6.35-.6 9.55-1.8c1.2-.45 2.35.6 1.95 1.9-1.6 5.2-4.3 12.3-6.6 18.2z" fill="#c8f04a" fill-opacity=".2" stroke-width="2.9"></path>
-<g stroke-width="1.9" opacity=".62"><path d="M32 19.4v17.2"></path><path d="m26.2 18.6 2.7 18"></path><path d="m37.8 18.6-2.7 18"></path></g>
-<path d="M25.1 27.6c4.6 1.35 9.2 1.35 13.8 0" stroke-width="1.9" opacity=".62"></path>
+<g transform="translate(-3.84 -3.81) scale(1.12)">
+<path d="M27.05 38.65 20 17.58c.55-3.2 4.25-3.2 4.8 0 c.55-3.2 4.25-3.2 4.8 0 c.55-3.2 4.25-3.2 4.8 0 c.55-3.2 4.25-3.2 4.8 0 c.55-3.2 4.25-3.2 4.8 0l-7.05 21.07v4.2a4.95 4.95 0 0 1-9.9 0Z" fill="#c8f04a"></path>
+<g stroke="#0a0e11" fill="none" stroke-width="0.5" stroke-linecap="round">
+<path d="M32 16.4v20.4"></path>
+<path d="m27.2 16.4 2.57 20.4"></path><path d="m36.8 16.4-2.57 20.4"></path>
+<path d="m22.4 16.4 5.14 20.4"></path><path d="m41.6 16.4-5.14 20.4"></path>
 </g>
-<path d="M27.05 35.3h9.9c.75 0 1.35.6 1.35 1.35v2.6c0 3.9-2.75 7-6.3 7s-6.3-3.1-6.3-7v-2.6c0-.75.6-1.35 1.35-1.35" fill="#c8f04a"></path>
+<g stroke="#0a0e11" fill="none" stroke-width="0.35" stroke-linecap="round">
+<path d="M24 27.98Q32 29.48 40 27.98"></path><path d="M25.3 31.79Q32 33.19 38.7 31.79"></path>
+</g>
+</g>
 </svg>

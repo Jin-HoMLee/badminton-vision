@@ -101,7 +101,7 @@ Lockup: mark at cap-height × 1.35, 14px gap, name in Space Grotesk Bold `-0.03e
 
 | Path | What's there |
 | --- | --- |
-| `styles.css` | Source/preview stylesheet for the design-system materials; not copied to the MV3 package |
+| `styles.css` | The one file consumers link — `@import`s only |
 | `tokens/` | `fonts.css` · `colors.css` · `typography.css` · `spacing.css` · `elevation.css` · `motion.css` · `base.css` |
 | `assets/` | `logo-mark.svg` · `icon.svg` · `icon-16.svg` |
 | `guidelines/` | 17 specimen cards: colour ramps, type, spacing, radii, elevation, scrims, motion, wordmark |
@@ -109,10 +109,6 @@ Lockup: mark at cap-height × 1.35, 14px gap, name in Space Grotesk Bold `-0.03e
 | `ui_kits/extension/` | The Chrome-extension UI kit: full click-through plus popup and summary screens |
 | `SKILL.md` | Agent-skill entry point |
 | `github.md` | Source-repo association for upstream sync |
-
-## Packaging boundary
-
-This complete tree is retained as repository source and preview material. It is intentionally larger than the production package: preview HTML/cards, JSX source, guidelines, documentation, generated metadata, and `tokens/fonts.css` (which contains the source-only Google Fonts import) stay here for design maintenance. `scripts/build.mjs` packages the runtime's local `tokens/{base,colors,elevation,motion,spacing,typography}.css` files and the three local SVG assets only. The extension runtime uses `src/styles.css` and `src/ui.js`, so no preview dependency or network-hosted font/script is needed in `dist/`.
 
 ### Components
 

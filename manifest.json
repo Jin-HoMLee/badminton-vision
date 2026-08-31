@@ -10,14 +10,14 @@
     "default_popup": "popup.html",
     "default_icon": {
       "16": "design-system/assets/icon-16.svg",
-      "32": "design-system/assets/icon-16.svg",
+      "32": "design-system/assets/icon-32.svg",
       "48": "design-system/assets/icon.svg",
       "128": "design-system/assets/icon.svg"
     }
   },
   "icons": {
     "16": "design-system/assets/icon-16.svg",
-    "32": "design-system/assets/icon-16.svg",
+    "32": "design-system/assets/icon-32.svg",
     "48": "design-system/assets/icon.svg",
     "128": "design-system/assets/icon.svg"
   },
