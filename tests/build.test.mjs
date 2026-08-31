@@ -13,6 +13,8 @@ const dist = join(projectRoot, "dist");
 
 const expectedFiles = [
   "analysis.js",
+  "analysis-primitives.js",
+  "calibration.js",
   "content.js",
   "fixtures.js",
   "manifest.json",

@@ -1277,7 +1277,7 @@ function isPointInsideCourt(point, format = 'doubles') {
   return x >= minX && x <= maxX && y >= 0 && y <= COURT_LENGTH_M;
 }
 
-module.exports = {
+const ANALYSIS_PRIMITIVES = {
   AnalysisError,
   SchemaValidationError,
   COURT_LENGTH_M,
@@ -1337,3 +1337,9 @@ module.exports = {
   scoreRallyHighlights,
   isPointInsideCourt,
 };
+
+// The analysis package remains CommonJS for Node consumers. The same
+// dependency-free primitives are also exposed as a browser global for the MV3
+// calibration adapter; there is no second geometry implementation to drift.
+if (typeof module === 'object' && module.exports) module.exports = ANALYSIS_PRIMITIVES;
+if (typeof globalThis === 'object') globalThis.BVAnalysisPrimitives = ANALYSIS_PRIMITIVES;

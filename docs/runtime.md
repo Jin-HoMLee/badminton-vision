@@ -61,6 +61,26 @@ future entry may carry a session-local `trackId`, confidence, and
 `tracked`/`partial`/`unknown` state. The fixture returns an empty array and
 unknown/partial state rather than inventing a single-person result.
 
+## Court calibration boundary
+
+`analysis/index.js` is copied to the browser as `analysis-primitives.js` and
+exposes the same BWF geometry and homography implementation as
+`BVAnalysisPrimitives`. `src/calibration.js` is the small browser adapter used
+by the content UI. It fits the four normalized video-image points in the
+README §8 order (near-left, near-right, far-right, far-left) to the canonical
+normalized court, validates the quadrilateral/conditioning, and projects all
+13 generated lines while retaining their dimensions and line ownership
+metadata.
+
+A locked result stores `videoKey`, normalized committed `seedPoints`, and the
+serializable calibration matrices in the existing `bvState` local-storage
+record. The content UI refits from stored seeds rather than trusting stored
+matrices. Navigation, video replacement, and `CAMERA_CUT` clear this
+video-local result; the overlay can only return to live court display after a
+new four-click fit. Normalized coordinates are rendered through the existing
+video client-rect anchor, so resize, theater, and fullscreen do not alter the
+physical court or touch playback.
+
 ## Playback boundary
 
 `common/capabilities.js`, `content/video-discovery.js`, and `content/capture.js`

@@ -63,8 +63,9 @@
     var runtimeFallback = runtimeStatus && (runtimeStatus.phase === "fallback" || runtimeStatus.inference === false && runtimeStatus.analyzer === "none");
     var runtimeStale = Boolean(state.stale || runtimeStatus && runtimeStatus.stale);
     var runtimeReady = Boolean(runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer === "fixture-probe-v1");
-    trackers[0].note = state.seeded ? "seeded" : "not seeded";
-    trackers[0].health = state.seeded ? "ok" : "degraded";
+    var courtSeeded = Boolean(state.seeded && state.calibration && state.seedPoints && state.seedPoints.length === 4);
+    trackers[0].note = courtSeeded ? "seeded" : "not seeded";
+    trackers[0].health = courtSeeded ? "ok" : "degraded";
     var header = ui.el("header", { className: "bv-popup-header" }, [ui.el("span", { className: "bv-logo" }, [ui.el("img", { src: "design-system/assets/logo-mark.svg", alt: "" }), ui.el("strong", { className: "bv-logo-name" }, ["Badminton Vision"])]), ui.el("span", { className: "bv-popup-head-actions" }, [ui.iconButton("settings", "Settings", { size: "sm", disabled: true }), ui.iconButton("x", "Close", { size: "sm", onClick: closePopup })])]);
     var statusState = state.enabled ? (runtimeFallback || runtimeStale ? "stale" : "live") : "ready";
     var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : "Rally " + state.rally) : detected ? "Badminton match found" : "No YouTube match";
@@ -85,19 +86,36 @@
 
     var primaryLabel = state.enabled ? "Back to the match" : "Turn on — step 1 of 3";
     var primary = ui.button(primaryLabel, { variant: "primary", full: true, icon: state.enabled ? "layout" : "play", disabled: !detected, onClick: function () { if (state.enabled) { closePopup(); return; } dispatch({ type: "ENABLE" }, { type: "ENABLE" }); closePopup(); } });
-    var actions = ui.el("div", { className: "bv-footer-actions" }, [primary, ui.el("div", { className: "bv-footer-row" }, [ui.button(state.seeded ? "Set up court again" : "Set up court", { icon: "crosshair", onClick: function () { dispatch({ type: "START_SEED" }, { type: "START_SEED" }); closePopup(); } }), ui.button("Label it myself", { icon: "pencil", onClick: function () { dispatch({ type: "OPEN_LABELING" }, { type: "OPEN_LABELING" }); closePopup(); } })]), ui.button("See match summary · download data", { variant: "ghost", icon: "table", onClick: function () { openSummary(); closePopup(); } })]);
+    var actions = ui.el("div", { className: "bv-footer-actions" }, [primary, ui.el("div", { className: "bv-footer-row" }, [ui.button(courtSeeded ? "Set up court again" : "Set up court", { icon: "crosshair", onClick: function () { dispatch({ type: "START_SEED" }, { type: "START_SEED" }); closePopup(); } }), ui.button("Label it myself", { icon: "pencil", onClick: function () { dispatch({ type: "OPEN_LABELING" }, { type: "OPEN_LABELING" }); closePopup(); } })]), ui.button("See match summary · download data", { variant: "ghost", icon: "table", onClick: function () { openSummary(); closePopup(); } })]);
     root.replaceChildren(header, intro, trackerSection, densitySection, panelSection, actions);
   }
 
   function load() {
     if (!chromeAvailable() || !chrome.tabs) { detected = true; render(); return; }
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      detected = isWatchPage(tabs && tabs[0] && tabs[0].url);
+      var tabUrl = tabs && tabs[0] && tabs[0].url;
+      detected = isWatchPage(tabUrl);
+      var activeVideoKey = window.BVState.videoKeyForUrl(tabUrl);
       if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvRuntimeStatus"], function (result) {
-        if (result && result.bvState) state = window.BVState.initialExtensionState(result.bvState);
+        if (result && result.bvState) {
+          state = window.BVState.initialExtensionState(result.bvState);
+          if (detected) {
+            if (state.videoKey && activeVideoKey && state.videoKey !== activeVideoKey) {
+              state = window.BVState.resetVideoLocalState(state, activeVideoKey);
+            } else if (!state.videoKey) {
+              state.videoKey = activeVideoKey;
+            }
+            if (state.seeded && !state.calibration) {
+              state = window.BVState.resetVideoLocalState(state, activeVideoKey);
+            }
+          }
+        } else if (detected) {
+          state.videoKey = activeVideoKey;
+        }
         if (result && result.bvRuntimeStatus) runtimeStatus = result.bvRuntimeStatus;
+        persist();
         render();
-      }); else render();
+      }); else { state.videoKey = activeVideoKey; render(); }
     });
   }
   render();

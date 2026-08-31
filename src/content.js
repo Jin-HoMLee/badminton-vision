@@ -5,17 +5,24 @@
 (function () {
   var ui = window.BVUI;
   var data = window.BVFixtures;
+  var calibrationApi = window.BVCalibration;
   var state = window.BVState.initialExtensionState();
   var strokes = data.strokes.slice();
   var suggestion = data.suggestion ? Object.assign({}, data.suggestion) : null;
   var draft = { shot: null, start: "12:03.980", end: "12:04.420", axes: {} };
   data.axes.forEach(function (axis) { draft.axes[axis.label] = axis.value; });
+  // Draft points are normalized to the current video rectangle. The fitted
+  // result is also normalized, so a resize/theater/fullscreen only requires
+  // the existing anchor to move; no refit or player mutation is needed.
   var seedPoints = [];
+  var calibration = null;
+  var activeVideoKey = null;
   var host = null;
   var shadow = null;
   var root = null;
   var video = null;
   var domObserver = null;
+  var navigationListeners = [];
   var mediaTime = 0;
   var runtimeController = null;
   var runtimeView = {
@@ -79,6 +86,52 @@
     return String(minutes).padStart(2, "0") + ":" + remaining.toFixed(3).padStart(6, "0");
   }
   function updateState(next) { state = window.BVState.initialExtensionState(next); persist(); render(); }
+  function currentVideoKey() {
+    return window.BVState.videoKeyForUrl(window.location && window.location.href);
+  }
+  function resetVideoLocalState(reason) {
+    activeVideoKey = currentVideoKey();
+    state = window.BVState.resetVideoLocalState(state, activeVideoKey);
+    calibration = null;
+    seedPoints = [];
+    strokes = data.strokes.slice();
+    suggestion = data.suggestion ? Object.assign({}, data.suggestion) : null;
+    persist();
+    render();
+  }
+  function restoreCalibrationState() {
+    calibration = null;
+    if (state.calibration && calibrationApi && calibrationApi.restoreCalibration) {
+      try {
+        calibration = calibrationApi.restoreCalibration(state.calibration);
+      } catch (error) {
+        // Corrupt storage must not become a silently accepted court.
+        state = window.BVState.initialExtensionState(Object.assign({}, state, {
+          seeded: false,
+          calibration: null,
+          seedPoints: [],
+          calibrationError: calibrationApi.errorMessage(error)
+        }));
+      }
+    }
+    seedPoints = state.seeding ? state.seedDraftPoints.slice() : [];
+    if (state.seeding) {
+      // A re-seed draft must never accidentally reuse the previously
+      // committed projection, especially after a reload with four bad clicks.
+      calibration = null;
+      if (seedPoints.length === 4) fitSeedPoints();
+    }
+  }
+  function bindVideoState() {
+    var key = currentVideoKey();
+    if (activeVideoKey !== null && key !== activeVideoKey) resetVideoLocalState("navigation");
+    else if (state.videoKey && key && state.videoKey !== key) resetVideoLocalState("video-replacement");
+    else {
+      activeVideoKey = key;
+      if (!state.videoKey) state.videoKey = key;
+      restoreCalibrationState();
+    }
+  }
 
   function positionToVideo() {
     if (!host || !video || typeof video.getBoundingClientRect !== "function") return;
@@ -94,14 +147,9 @@
   function attachVideo() {
     var next = document.querySelector("video");
     if (next === video) { positionToVideo(); return; }
-    if (video && next && next !== video) {
-      state = window.BVState.initialExtensionState({ density: state.density, panels: state.panels });
-      strokes = data.strokes.slice();
-      suggestion = data.suggestion ? Object.assign({}, data.suggestion) : null;
-      seedPoints = [];
-      persist();
-    }
+    if (video && next !== video) resetVideoLocalState("video-replacement");
     video = next;
+    bindVideoState();
     positionToVideo();
   }
 
@@ -122,32 +170,114 @@
     if (session) runtimeController = session.controller;
   }
 
-  function seedDrawing(points, done) {
+  function fitSeedPoints() {
+    if (seedPoints.length !== 4 || !calibrationApi) return false;
+    var result = calibrationApi.tryFitCourtCalibration(seedPoints);
+    if (result.ok) {
+      calibration = result.calibration;
+      state.calibrationError = null;
+      return true;
+    }
+    calibration = null;
+    state.calibrationError = calibrationApi.errorMessage(result.error);
+    return false;
+  }
+  function seedPointStyle(point) { return { left: (point.x * 100) + "%", top: (point.y * 100) + "%" }; }
+  function seedDrawing(points, fittedCalibration) {
     var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("class", "bv-seed-drawing"); svg.setAttribute("viewBox", "0 0 100 100"); svg.setAttribute("preserveAspectRatio", "none");
+    svg.setAttribute("class", "bv-seed-drawing"); svg.setAttribute("viewBox", "0 0 1 1"); svg.setAttribute("preserveAspectRatio", "none");
     function add(tag, attrs) { var node = document.createElementNS("http://www.w3.org/2000/svg", tag); Object.keys(attrs).forEach(function (key) { node.setAttribute(key, attrs[key]); }); svg.appendChild(node); }
-    if (points.length > 1) add("polyline", { points: points.map(function (point) { return point.x + "," + point.y; }).join(" ") + (done ? " " + points[0].x + "," + points[0].y : ""), fill: done ? "rgba(200,240,74,.1)" : "none", stroke: "var(--lime-500)", "stroke-width": ".25", "vector-effect": "non-scaling-stroke" });
-    if (done) {
-      [0.07, 0.35, 0.5, 0.65, 0.93].forEach(function (t) { var left = { x: points[0].x + (points[3].x - points[0].x) * t, y: points[0].y + (points[3].y - points[0].y) * t }; var right = { x: points[1].x + (points[2].x - points[1].x) * t, y: points[1].y + (points[2].y - points[1].y) * t }; add("line", { x1: left.x, y1: left.y, x2: right.x, y2: right.y, stroke: "rgba(233,245,240,.7)", "stroke-width": t === .5 ? ".3" : ".15", "vector-effect": "non-scaling-stroke" }); });
-      [0.075, 0.5, 0.925].forEach(function (t) { var a = { x: points[0].x + (points[1].x - points[0].x) * t, y: points[0].y + (points[1].y - points[0].y) * t }; var b = { x: points[3].x + (points[2].x - points[3].x) * t, y: points[3].y + (points[2].y - points[3].y) * t }; add("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: "rgba(233,245,240,.7)", "stroke-width": ".15", "vector-effect": "non-scaling-stroke" }); });
+    if (points.length > 1) add("polyline", { points: points.map(function (item) { return item.x + "," + item.y; }).join(" ") + (points.length === 4 ? " " + points[0].x + "," + points[0].y : ""), fill: "none", stroke: "var(--lime-500)", "stroke-width": ".25", "vector-effect": "non-scaling-stroke" });
+    if (fittedCalibration && Array.isArray(fittedCalibration.lines)) {
+      fittedCalibration.lines.forEach(function (line) {
+        var attrs = {
+          x1: line.start.x, y1: line.start.y, x2: line.end.x, y2: line.end.y,
+          stroke: line.role === "net" ? "var(--court-net)" : "var(--court-line)",
+          "stroke-width": line.role === "net" ? ".3" : line.boundary ? ".25" : ".15",
+          "vector-effect": "non-scaling-stroke",
+          "data-court-line-id": line.id,
+          "data-court-line-role": line.role,
+          "data-line-ownership": line.line_ownership
+        };
+        add("line", attrs);
+      });
     }
     return svg;
+  }
+  function calibrationDrawing() {
+    var drawing = seedDrawing([], calibration);
+    drawing.setAttribute("class", "bv-calibration-court");
+    return drawing;
+  }
+  function undoSeedPoint() {
+    seedPoints.pop();
+    calibration = null;
+    state.seedDraftPoints = seedPoints.map(function (point) { return { x: point.x, y: point.y }; });
+    state.calibrationError = null;
+    persist();
+    render();
+  }
+  function resetSeed() {
+    state = window.BVState.reduceExtensionState(state, { type: "RESET_COURT" });
+    seedPoints = [];
+    calibration = null;
+    persist();
+    render();
+  }
+  function cancelSeeding() {
+    state.seedDraftPoints = [];
+    state.calibrationError = null;
+    state.seeding = false;
+    // Re-show the previously committed calibration if this was a re-seed.
+    restoreCalibrationState();
+    state.enabled = Boolean(state.seeded);
+    persist();
+    render();
+  }
+  function lockSeed() {
+    if (!calibration && !fitSeedPoints()) return render();
+    state = window.BVState.reduceExtensionState(state, { type: "LOCK_COURT", calibration: calibration, seedPoints: seedPoints });
+    state.videoKey = activeVideoKey || currentVideoKey();
+    persist();
+    send({ type: "COURT_SEEDED", calibration: calibration });
+    render();
   }
   function seedFlow() {
     var corners = ["Near left", "Near right", "Far right", "Far left"];
     var targets = [{ x: 22, y: 82 }, { x: 78, y: 82 }, { x: 63, y: 33 }, { x: 37, y: 33 }];
-    var done = seedPoints.length === 4;
+    var fitted = seedPoints.length === 4 && calibration;
+    var invalid = seedPoints.length === 4 && !fitted;
     var layer = ui.el("div", { className: "bv-seed-layer", role: "dialog", "aria-label": "Set up court" });
-    layer.appendChild(seedDrawing(seedPoints, done));
-    if (!done) layer.appendChild(ui.el("span", { className: "bv-seed-target", style: { left: targets[seedPoints.length].x + "%", top: targets[seedPoints.length].y + "%" } }));
-    seedPoints.forEach(function (point, index) { layer.appendChild(ui.el("span", { className: "bv-seed-point", style: { left: point.x + "%", top: point.y + "%" } }, [index + 1])); });
+    layer.appendChild(seedDrawing(seedPoints, fitted));
+    if (seedPoints.length < 4) layer.appendChild(ui.el("span", { className: "bv-seed-target", style: { left: targets[seedPoints.length].x + "%", top: targets[seedPoints.length].y + "%" } }));
+    seedPoints.forEach(function (point, index) { layer.appendChild(ui.el("span", { className: "bv-seed-point", style: seedPointStyle(point) }, [index + 1])); });
     var card = ui.el("div", { className: "bv-seed-card" });
-    var top = ui.el("div", { className: "bv-seed-card-top" }, [ui.stepDots(seedPoints.length, corners), ui.el("span", { className: "bv-seed-card-title" }, [done ? "Court locked" : "Click the " + corners[seedPoints.length].toLowerCase() + " outer corner"]), done ? ui.badge("homography ok", "in") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); seedPoints.pop(); render(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); state.seeding = false; state.labeling = true; persist(); render(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !done, onClick: function (event) { event.stopPropagation(); if (!done) return; state.seeded = true; state.enabled = true; state.seeding = false; state.cameraCut = false; state.stale = false; persist(); send({ type: "COURT_SEEDED" }); render(); } })])]);
+    var title = fitted ? "Court ready to lock" : invalid ? "Court needs correction" : "Click the " + corners[seedPoints.length].toLowerCase() + " outer corner";
+    var top = ui.el("div", { className: "bv-seed-card-top" }, [ui.stepDots(Math.min(seedPoints.length, 4), corners), ui.el("span", { className: "bv-seed-card-title" }, [title]), fitted ? ui.badge("homography ok", "in") : invalid ? ui.badge("not accepted", "warn") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); undoSeedPoint(); } }), ui.button("Reset", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0 && !state.seeded, onClick: function (event) { event.stopPropagation(); resetSeed(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); state.seeding = false; state.labeling = true; persist(); render(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !fitted, onClick: function (event) { event.stopPropagation(); lockSeed(); } })])]);
     card.appendChild(top);
+    if (state.calibrationError) card.appendChild(ui.callout("warn", "Calibration not accepted", state.calibrationError));
     card.appendChild(ui.el("p", {}, ["Your four clicks are the outer doubles corners only. Service lines, centre lines and the net come from the official 13.40 × 6.10 m court and are projected in — they never adapt to the image."]));
-    card.appendChild(ui.el("div", { className: "bv-seed-note" }, [ui.icon("info", 13), ui.el("span", {}, ["Playback keeps running. A camera cut past tolerance pauses analysis, not the video."]), ui.button("Cancel", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); state.seeding = false; state.enabled = Boolean(state.seeded); persist(); render(); } })]));
+    card.appendChild(ui.el("div", { className: "bv-seed-note" }, [ui.icon("info", 13), ui.el("span", {}, ["Playback keeps running. A camera cut past tolerance pauses analysis, not the video."]), ui.button("Cancel", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); cancelSeeding(); } })]));
     layer.appendChild(card);
-    layer.addEventListener("click", function (event) { if (event.target !== layer || done) return; var rect = layer.getBoundingClientRect(); seedPoints.push({ x: (event.clientX - rect.left) / rect.width * 100, y: (event.clientY - rect.top) / rect.height * 100 }); render(); });
+    layer.addEventListener("click", function (event) {
+      if (event.target !== layer || seedPoints.length >= 4) return;
+      var rect = layer.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        state.calibrationError = "The video has no measurable size. Keep playback running and try again.";
+        persist(); render(); return;
+      }
+      var next = { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height };
+      if (!Number.isFinite(next.x) || !Number.isFinite(next.y) || next.x < 0 || next.x > 1 || next.y < 0 || next.y > 1) {
+        state.calibrationError = "That click was outside the video. Click the visible outer court corner.";
+        persist(); render(); return;
+      }
+      seedPoints.push(next);
+      state.seedDraftPoints = seedPoints.map(function (point) { return { x: point.x, y: point.y }; });
+      state.calibrationError = null;
+      if (seedPoints.length === 4) fitSeedPoints();
+      persist();
+      render();
+    });
     return layer;
   }
 
@@ -167,6 +297,7 @@
   }
   function liveOverlay() {
     var overlay = ui.el("div", { className: "bv-overlay-root" });
+    if (calibration) overlay.appendChild(calibrationDrawing());
     var stale = runtimeIsStale();
     var statusState = runtimeView.phase === "fallback" ? "stale" : stale ? "stale" : "live";
     var statusLabel = runtimeView.phase === "fallback" ? "Analysis fallback" : stale ? "Analysis behind" : "Rally " + state.rally;
@@ -248,15 +379,55 @@
     else root.appendChild(liveOverlay());
     if (state.labeling && !state.seeding) root.appendChild(ui.el("div", { className: "bv-overlay-label" }, [manualPanel()]));
   }
+  function applyStoredState(nextState) {
+    state = window.BVState.initialExtensionState(nextState);
+    var key = currentVideoKey();
+    if (state.videoKey && key && state.videoKey !== key) {
+      state = window.BVState.resetVideoLocalState(state, key);
+    } else {
+      state.videoKey = state.videoKey || key;
+    }
+    if (state.seeded && !state.calibration) {
+      state = window.BVState.resetVideoLocalState(state, key);
+      state.calibrationError = "This saved court has no fitted calibration. Please seed the four outer corners again.";
+    }
+    activeVideoKey = key;
+    restoreCalibrationState();
+    persist();
+  }
+  function handleNavigation() {
+    // Navigation is a hard video-local boundary even if YouTube reuses the
+    // same HTMLVideoElement for its next watch page.
+    resetVideoLocalState("navigation");
+  }
   function handleMessage(message) {
     if (!message) return;
-    if (message.type === "START_SEED") { state.enabled = true; state.seeding = true; state.labeling = false; seedPoints = []; persist(); render(); }
-    else if (message.type === "ENABLE") { state.enabled = true; state.seeding = !state.seeded; persist(); render(); }
+    if (message.type === "START_SEED") {
+      state = window.BVState.reduceExtensionState(state, { type: "START_SEED" });
+      state.videoKey = activeVideoKey || currentVideoKey();
+      seedPoints = [];
+      calibration = null;
+      persist(); render();
+    }
+    else if (message.type === "ENABLE") {
+      bindVideoState();
+      state = window.BVState.reduceExtensionState(state, { type: "ENABLE" });
+      state.videoKey = activeVideoKey || currentVideoKey();
+      seedPoints = state.seeding ? state.seedDraftPoints.slice() : [];
+      if (state.seeded && state.calibration && !calibration) restoreCalibrationState();
+      persist(); render();
+    }
     else if (message.type === "OPEN_LABELING") openLabeling();
     else if (message.type === "SET_DENSITY") { state.density = message.value; persist(); render(); }
     else if (message.type === "SET_PANELS") { state.panels = Object.assign({}, state.panels, message.panels); persist(); render(); }
-    else if (message.type === "STATE_UPDATE" && message.state) { state = window.BVState.initialExtensionState(message.state); render(); }
-    else if (message.type === "CAMERA_CUT") { state.cameraCut = true; state.stale = true; state.seeding = true; seedPoints = []; persist(); render(); }
+    else if (message.type === "STATE_UPDATE" && message.state) { applyStoredState(message.state); render(); }
+    else if (message.type === "CAMERA_CUT") {
+      state = window.BVState.reduceExtensionState(state, { type: "CAMERA_CUT" });
+      state.videoKey = activeVideoKey || currentVideoKey();
+      calibration = null;
+      seedPoints = [];
+      persist(); render();
+    }
   }
   function init() {
     host = document.createElement("div"); host.className = "bv-overlay-anchor"; host.setAttribute("data-badminton-vision", "overlay");
@@ -265,12 +436,17 @@
     var link = document.createElement("link"); link.rel = "stylesheet"; link.href = hasChrome() && chrome.runtime ? chrome.runtime.getURL("styles.css") : "styles.css"; shadow.appendChild(link);
     root = document.createElement("div"); root.className = "bv-overlay-root"; shadow.appendChild(root); document.documentElement.appendChild(host);
     window.addEventListener("resize", positionToVideo, { passive: true }); window.addEventListener("scroll", positionToVideo, { passive: true, capture: true });
+    ["yt-navigate-start", "yt-navigate-finish", "popstate", "hashchange"].forEach(function (name) {
+      var listener = handleNavigation;
+      window.addEventListener(name, listener);
+      navigationListeners.push([name, listener]);
+    });
     if (typeof ResizeObserver !== "undefined") new ResizeObserver(positionToVideo).observe(document.documentElement);
     domObserver = new MutationObserver(attachVideo); domObserver.observe(document.documentElement, { childList: true, subtree: true }); attachVideo();
     startRuntime();
     if (hasChrome() && chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(handleMessage);
-    if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState"], function (result) { if (result && result.bvState) state = window.BVState.initialExtensionState(result.bvState); render(); });
-    else render();
+    if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState"], function (result) { applyStoredState(result && result.bvState ? result.bvState : state); render(); });
+    else { applyStoredState(state); render(); }
   }
   init();
 })();
