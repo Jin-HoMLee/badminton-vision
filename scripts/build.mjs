@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -76,9 +76,47 @@ const designSystemFiles = [
   "assets/logo-mark.svg"
 ];
 
+const contentBundleSources = [
+  "src/extension/common/protocol.js",
+  "src/extension/common/player-tracking.js",
+  "src/extension/common/frame-transport.js",
+  "src/extension/common/capabilities.js",
+  "src/extension/common/synchronization.js",
+  "src/extension/content/capture.js",
+  "src/extension/content/video-discovery.js",
+  "src/extension/content/runtime.js",
+  "src/runtime.js",
+  "src/analysis.js",
+  "analysis/index.js",
+  "src/calibration.js",
+  "src/seed-card.js",
+  "src/fixtures.js",
+  "src/review.js",
+  "src/state.js",
+  "src/ui.js",
+  "src/content.js"
+];
+
 async function copyFile(source, destination) {
   await mkdir(dirname(destination), { recursive: true });
   await cp(source, destination);
+}
+
+async function writeContentBundle(destination) {
+  const sources = await Promise.all(contentBundleSources.map(async (file) => {
+    const source = await readFile(join(root, file), "utf8");
+    return `/* ${file} */\n${source}`;
+  }));
+  const bundle = [
+    "/* Generated single-entry MV3 content script. Do not edit dist directly. */",
+    "(function (root) {",
+    "  if (root.__BV_CONTENT_BUNDLE_LOADED__) return;",
+    "  root.__BV_CONTENT_BUNDLE_LOADED__ = true;",
+    ...sources.map((source) => source.replace(/^/gm, "  ")),
+    "})(typeof globalThis === \"object\" ? globalThis : self);",
+    ""
+  ].join("\n");
+  await writeFile(destination, bundle, "utf8");
 }
 
 async function listFiles(directory) {
@@ -119,6 +157,7 @@ for (const [source, destination] of browserPrimitiveFiles) await copyFile(join(r
 await copyFile(join(root, "manifest.json"), join(dist, "manifest.json"));
 for (const [source, destination] of runtimeFiles) await copyFile(join(extension, source), join(dist, destination));
 for (const file of designSystemFiles) await copyFile(join(designSystem, file), join(dist, "design-system", file));
+await writeContentBundle(join(dist, "content.bundle.js"));
 
 const manifest = JSON.parse(await readFile(join(dist, "manifest.json"), "utf8"));
 if (manifest.manifest_version !== 3 || manifest.background?.service_worker !== "background/service-worker.js" ||
@@ -127,6 +166,7 @@ if (manifest.manifest_version !== 3 || manifest.background?.service_worker !== "
 }
 const required = [
   ...uiFiles,
+  "content.bundle.js",
   "manifest.json",
   ...browserPrimitiveFiles.map(([, destination]) => destination),
   ...runtimeFiles.map(([, destination]) => destination),
@@ -136,6 +176,9 @@ for (const file of required) {
   try { await stat(join(dist, file)); } catch { throw new Error(`Missing build output: ${file}`); }
 }
 const contentScripts = manifest.content_scripts?.flatMap((entry) => entry.js || []) || [];
+if (contentScripts.length !== 1 || contentScripts[0] !== "content.bundle.js" || new Set(contentScripts).size !== contentScripts.length) {
+  throw new Error("Manifest must inject exactly one singleton content bundle");
+}
 for (const file of contentScripts) {
   if (!required.includes(file)) throw new Error(`Manifest content script is not packaged: ${file}`);
 }

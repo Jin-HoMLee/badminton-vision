@@ -146,9 +146,7 @@ test('packed source includes a local offscreen document and fixture analyzer', (
   assert.equal(Object.hasOwn(manifest, 'message_serialization'), false);
   assert.equal(manifest.minimum_chrome_version, '148');
   assert.equal(manifest.content_security_policy.extension_pages, "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'");
-  assert.equal(manifest.content_scripts[0].js.includes('content.js'), true);
-  assert.equal(manifest.content_scripts[0].js.includes('content/runtime.js'), true);
-  assert.equal(manifest.content_scripts[0].js.includes('common/frame-transport.js'), true);
+  assert.deepEqual(manifest.content_scripts[0].js, ['content.bundle.js']);
   const packedHtmlPath = path.join(__dirname, '..', 'dist/offscreen/offscreen.html');
   if (fs.existsSync(packedHtmlPath)) {
     assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /fixture-model\.js/);

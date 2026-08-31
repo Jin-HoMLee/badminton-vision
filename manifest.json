@@ -28,26 +28,7 @@
   "content_scripts": [
     {
       "matches": ["*://www.youtube.com/watch*", "*://youtube.com/watch*"],
-      "js": [
-        "common/protocol.js",
-        "common/player-tracking.js",
-        "common/frame-transport.js",
-        "common/capabilities.js",
-        "common/synchronization.js",
-        "content/capture.js",
-        "content/video-discovery.js",
-        "content/runtime.js",
-        "runtime.js",
-        "analysis.js",
-        "analysis-primitives.js",
-        "calibration.js",
-        "seed-card.js",
-        "fixtures.js",
-        "review.js",
-        "state.js",
-        "ui.js",
-        "content.js"
-      ],
+      "js": ["content.bundle.js"],
       "run_at": "document_start",
       "all_frames": false
     }
