@@ -31,6 +31,48 @@ worktree's `dist/` directory in Chrome's file picker, and confirm **Open**.
 Do not use a second browser or a filesystem/automation workaround. For a
 package already loaded from this worktree, click its **Reload** button instead.
 
+### CDP boundary and agent procedure
+
+`chrome-devtools-axi` can automate page targets in the dedicated instance,
+including `chrome://extensions`, `chrome://inspect/#extensions`, and the
+YouTube watch page. Use the bridge session attached to the supervisor's
+explicit dedicated CDP endpoint; never use auto-connect to the operator's
+browser:
+
+```sh
+export CHROME_DEVTOOLS_AXI_SESSION=badminton-live-integration
+export CHROME_DEVTOOLS_AXI_BROWSER_URL=http://127.0.0.1:<dedicated-cdp-port>
+$AXI pages
+```
+
+Select the reported extensions-manager and YouTube page ids, then use
+`$AXI snapshot --full` or `$AXI run` with read-only `page.eval(...)` checks.
+The YouTube page exposes the content-script host
+`[data-badminton-vision]` and its sanitized `data-bso-*` status attributes;
+querying those attributes and the video playback invariants is automatable
+without touching playback.
+
+Chrome's extensions manager also exposes **Reload**, enabled state, and
+inspect-view links through its page UI. The `chrome://inspect/#extensions` page
+can open a DevTools inspection view for an extension page or worker, but that
+is a DevTools surface, not the extension's popup. `chrome-devtools-axi pages`
+does not make `chrome-extension://` pages or service-worker targets selectable,
+so an agent must not replace the YouTube tab with an extension URL or invoke
+extension internals from a page console.
+
+The toolbar action and native action popup are outside page CDP. They cannot
+be clicked by `chrome-devtools-axi`; use the normal toolbar action as the one
+manual step. The experimental CDP `Extensions.triggerAction` path is a
+separate test setup: the Chrome DevTools MCP extension category requires a
+pipe-launched isolated browser with `--categoryExtensions` (and unsafe
+extension debugging enabled), while the current dedicated browser is a
+`--remote-debugging-port` session. If a supervisor supplies that separate
+isolated test browser, MCP's `trigger_extension_action` or Puppeteer's
+`Extensions.triggerAction({ id, targetId })` can exercise the action; do not
+change the product or attach that setup to the operator's browser. The
+current port session is therefore sufficient for manager/content-script
+verification but not for native toolbar automation.
+
 After either action, take another full snapshot. A warning mentioning
 `message_serialization` or `structured_clone` is a failure: the stable build
 must not declare that Canary-only manifest key. A stale `Extension context
