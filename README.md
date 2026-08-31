@@ -206,17 +206,32 @@ The existing shuttle-insights extension is the reuse foundation for the manual p
 - `data/badminton-statistics-technical-research/report.md` — empirical YouTube frame capture, synchronization architecture, offscreen inference, court/homography, and TrackNet risk.
 - `.lavish/board.html` — final captain-reviewed playable wireframe prototype (session ended after the requested feedback pass).
 
-## 11. Public extension UI implementation
+## 11. Public extension build and UI/runtime integration
 
-The dependency-free MV3 frontend lives in `src/` and is built into `dist/`:
+The dependency-free MV3 frontend and local runtime foundation share one public
+package. The repository-root `manifest.json` is the canonical source manifest
+and `scripts/build.mjs` is the only build entrypoint:
 
 ```sh
-npm test
 npm run build
+npm test
+npm run check
 ```
 
-Load `dist/` from `chrome://extensions` with **Developer mode → Load unpacked**. The action popup is the 360px control center. On a YouTube watch page it sends explicit messages to the sibling content overlay, which provides the four-corner court seed, Minimal-first live panels, inline suggestion correction, keyboard-first manual labeling, and the summary/export tab.
+Load `dist/` from `chrome://extensions` with **Developer mode → Load unpacked**. The action popup is the 360px control center. On a YouTube watch page it sends explicit messages to the sibling content overlay, which provides the four-corner court seed, Minimal-first live panels, inline suggestion correction, keyboard-first manual labeling, and the summary/export tab. The same content UI receives runtime capability/result messages through the small seam in `src/runtime.js`.
 
-`src/runtime.js` is the read-only playback boundary. It reads `currentTime`, frame metadata, dimensions, and playback state; it does not assign playback properties, call player controls, or style the video. Inference is intentionally unavailable in this public UI build, so fixture results remain editable and the popup says so. `src/analysis.js` contains the deterministic highlights-index and CSV adapters used by fixtures and later runtime messages.
+The default analyzer is the deterministic `fixture-probe-v1`: a local runtime
+integration probe, not production CV. It proves capture → service-worker →
+offscreen messaging and leaves player/shuttle/shot values unknown or editable.
+Its model-neutral result envelope has room for an array of session-local player
+tracks with confidence and partial/unknown states; no production model or
+weight is bundled. See `docs/runtime.md` for the runtime smoke check and
+canonical packaging details.
+
+`src/runtime.js` is the read-only playback boundary and UI seam. It reads
+`currentTime`, frame metadata, dimensions, and playback state; it does not
+assign playback properties, call player controls, or style the video.
+`src/analysis.js` contains the deterministic highlights-index and CSV adapters
+used by fixtures, manual labels, and later runtime messages.
 
 The supplied design system is copied to `design-system/`; see `design-system/PROVENANCE.md` for source and exclusions. `src/styles.css` imports its local color, type, spacing, elevation, motion, and base tokens. No server, credentials, model binary, or private endpoint is included.

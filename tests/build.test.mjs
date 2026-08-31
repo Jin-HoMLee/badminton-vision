@@ -13,7 +13,6 @@ const dist = join(projectRoot, "dist");
 
 const expectedFiles = [
   "analysis.js",
-  "background.js",
   "content.js",
   "fixtures.js",
   "manifest.json",
@@ -25,6 +24,18 @@ const expectedFiles = [
   "summary.html",
   "summary.js",
   "ui.js",
+  "background/service-worker.js",
+  "common/capabilities.js",
+  "common/protocol.js",
+  "common/synchronization.js",
+  "content/capture.js",
+  "content/overlay.js",
+  "content/runtime.js",
+  "content/video-discovery.js",
+  "offscreen/analyzer.js",
+  "offscreen/fixture-model.js",
+  "offscreen/offscreen.html",
+  "offscreen/offscreen.js",
   "design-system/assets/icon-16.svg",
   "design-system/assets/icon-32.svg",
   "design-system/assets/icon.svg",
@@ -54,6 +65,9 @@ test("production build contains only local runtime design-system assets", async 
   assert.deepEqual((await listFiles(dist)).sort(), expectedFiles.sort());
   const manifest = JSON.parse(await readFile(join(dist, "manifest.json"), "utf8"));
   assert.equal(manifest.manifest_version, 3);
+  assert.equal(manifest.background.service_worker, "background/service-worker.js");
+  assert.equal(manifest.permissions.includes("offscreen"), true);
+  assert.equal(manifest.message_serialization, "structured_clone");
   assert.equal(manifest.action.default_icon["16"], "design-system/assets/icon-16.svg");
   assert.equal(manifest.action.default_icon["32"], "design-system/assets/icon-32.svg");
   assert.equal(manifest.icons["16"], "design-system/assets/icon-16.svg");
@@ -77,6 +91,8 @@ test("production build contains only local runtime design-system assets", async 
   }
 
   assert.ok(cssFiles.includes("styles.css"));
+  assert.equal((await listFiles(dist)).includes("background.js"), false);
+  assert.equal((await listFiles(dist)).includes("manifest.runtime.json"), false);
   assert.match(await readFile(join(dist, "design-system/tokens/typography.css"), "utf8"), /Space Grotesk/);
   assert.doesNotMatch(await readFile(join(dist, "design-system/tokens/typography.css"), "utf8"), /@import/i);
 });

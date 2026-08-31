@@ -47,3 +47,12 @@ test('analyzer result carries media time and the explicit stale policy', () => {
   assert.equal(result.stalePolicy.name, 'media-time-watermark');
   assert.equal(protocol.isAnalyzerResult(result), true);
 });
+
+test('default analyzer result is model-neutral and multi-person capable', () => {
+  const result = protocol.createAnalyzerResult({ sessionId: 'session-1', requestId: 'request-2', mediaTime: 4 });
+  assert.equal(result.result.schema, 'bso.analysis.result.v1');
+  assert.equal(Array.isArray(result.result.players), true);
+  assert.equal(result.result.players.length, 0);
+  assert.equal(result.result.state, 'partial');
+  assert.equal(result.result.shuttle.state, 'unknown');
+});

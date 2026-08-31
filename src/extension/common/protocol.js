@@ -37,6 +37,22 @@
     return typeof value === 'string' && value.length > 0;
   }
 
+  // Model-neutral result envelope. A production adapter may populate the
+  // players array with zero or more session-local tracks; the fixture probe
+  // deliberately leaves it empty and marks tracking unknown/partial.
+  function unknownAnalysisResult() {
+    return {
+      schema: 'bso.analysis.result.v1',
+      state: 'partial',
+      players: [],
+      shuttle: { state: 'unknown', confidence: null },
+      strokeEvents: [],
+      shotFamily: 'unclassified',
+      classificationConfidence: 0,
+      geometryConfidence: 0
+    };
+  }
+
   function base(type, sessionId) {
     if (!Object.values(TYPES).includes(type)) throw new TypeError(`Unknown BSO message type: ${type}`);
     if (!nonEmptyString(sessionId)) throw new TypeError('sessionId must be a non-empty string');
@@ -102,7 +118,7 @@
     inferenceAvailable = false,
     capabilities = {},
     capabilityState = capabilities,
-    result = { shotFamily: 'unclassified', confidence: 0, geometryConfidence: 0 }
+    result = unknownAnalysisResult()
   }) {
     if (!nonEmptyString(requestId)) throw new TypeError('requestId must be a non-empty string');
     if (!finite(mediaTime) || mediaTime < 0) throw new TypeError('mediaTime must be a non-negative number');
@@ -204,6 +220,7 @@
     createAnalyzerResult,
     createCapabilityReport,
     createRuntimeStatus,
+    unknownAnalysisResult,
     isFrameSample,
     isAnalyzerResult,
     isCapabilityReport,

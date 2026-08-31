@@ -4,11 +4,12 @@
   var state = window.BVState.initialExtensionState();
   var expanded = false;
   var detected = false;
+  var runtimeStatus = null;
   var trackers = [
     { id: "court", label: "Court", health: "degraded", note: "not seeded", on: true },
-    { id: "players", label: "Players", health: "ok", note: "2 tracked", on: true },
-    { id: "body", label: "Body pose", health: "ok", note: "17 keypoints", on: true },
-    { id: "shuttle", label: "Shuttle", health: "degraded", note: "low light", on: true },
+    { id: "players", label: "Players", health: "degraded", note: "unknown · fixture probe", on: true },
+    { id: "body", label: "Body pose", health: "unavailable", note: "not bundled", on: false },
+    { id: "shuttle", label: "Shuttle", health: "degraded", note: "unknown · fixture probe", on: true },
     { id: "score", label: "Score OCR", health: "degraded", note: "partial", on: true },
     { id: "racket", label: "Racket", health: "unavailable", note: "not in MVP", on: false, disabled: true }
   ];
@@ -59,18 +60,24 @@
     var fixture = window.BVFixtures;
     var trackerCount = trackers.filter(function (t) { return t.on; }).length;
     var degraded = trackers.some(function (t) { return t.on && t.health === "degraded"; });
+    var runtimeFallback = runtimeStatus && (runtimeStatus.phase === "fallback" || runtimeStatus.inference === false && runtimeStatus.analyzer === "none");
+    var runtimeStale = Boolean(state.stale || runtimeStatus && runtimeStatus.stale);
+    var runtimeReady = Boolean(runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer === "fixture-probe-v1");
     trackers[0].note = state.seeded ? "seeded" : "not seeded";
     trackers[0].health = state.seeded ? "ok" : "degraded";
     var header = ui.el("header", { className: "bv-popup-header" }, [ui.el("span", { className: "bv-logo" }, [ui.el("img", { src: "design-system/assets/logo-mark.svg", alt: "" }), ui.el("strong", { className: "bv-logo-name" }, ["Badminton Vision"])]), ui.el("span", { className: "bv-popup-head-actions" }, [ui.iconButton("settings", "Settings", { size: "sm", disabled: true }), ui.iconButton("x", "Close", { size: "sm", onClick: closePopup })])]);
-    var statusState = state.enabled ? (state.stale ? "stale" : "live") : "ready";
-    var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (state.stale ? "Analysis behind" : "Rally " + state.rally) : detected ? "Badminton match found" : "No YouTube match";
-    var statusDetail = state.enabled ? (state.stale ? "+1.2s" : state.time) : null;
+    var statusState = state.enabled ? (runtimeFallback || runtimeStale ? "stale" : "live") : "ready";
+    var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : "Rally " + state.rally) : detected ? "Badminton match found" : "No YouTube match";
+    var statusDetail = state.enabled ? (runtimeStale && runtimeStatus && Number.isFinite(runtimeStatus.ageSeconds) ? "+" + runtimeStatus.ageSeconds.toFixed(1) + "s" : runtimeReady ? "fixture probe · not production CV" : state.time) : null;
     var intro = ui.el("div", { className: "bv-popup-intro" }, [ui.statusChip(statusState, statusLabel, statusDetail), ui.el("div", { className: "bv-detected" }, [ui.el("span", { className: "bv-detected-icon" }, [ui.icon(detected ? "check" : "info", 15)]), ui.el("span", { className: "bv-detected-copy" }, [ui.el("strong", {}, [detected ? fixture.video.title : "Open a YouTube match"]), ui.el("span", {}, [detected ? fixture.video.channel + " · " + fixture.video.duration : "Badminton Vision runs on youtube.com/watch pages only."])])]), !state.enabled && detected ? ui.callout("guide", "Three steps to get going", "Turn the overlay on, click the four court corners once, then keep watching — the video is never paused or moved.") : null, state.cameraCut ? ui.callout("warn", "Camera cut", "The court projection is stale. Re-seed the court; analysis stays paused while the video keeps playing.") : null]);
 
     var barNodes = trackers.map(function (t) { return ui.el("i", { className: t.on ? (t.health === "degraded" ? "warn" : "") : "off" }); });
     var trackerHeader = ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-4)" } }, ["What's being tracked", ui.el("span", { className: "bv-tracker-bars" }, barNodes)]);
     var trackerAside = ui.el("button", { className: "bv-link-button", type: "button", onClick: function () { expanded = !expanded; render(); } }, [trackerCount + " of " + trackers.length + " on", ui.icon(expanded ? "chevron-up" : "chevron-down", 12)]);
-    var trackerBody = expanded ? ui.el("div", { className: "bv-tracker-list" }, trackers.map(trackerRow).concat([ui.el("p", { className: "bv-helper" }, ["Fixture output stays editable. If a tracker is off, dependent values stay blank rather than being guessed."])])) : ui.el("div", { className: "bv-tracker-summary" }, [ui.badge(degraded ? "some parts unsure" : "all working", degraded ? "warn" : "in"), ui.el("small", {}, ["local UI · inference runtime unavailable · nothing uploaded"]) ]);
+    var runtimeSummary = runtimeStatus && runtimeStatus.resultKind === "runtime-integration-probe"
+      ? "fixture result observed · not production CV"
+      : runtimeReady ? "local fixture integration probe · not production CV" : runtimeFallback ? "local analysis unavailable · playback unaffected" : "local runtime starting · nothing uploaded";
+    var trackerBody = expanded ? ui.el("div", { className: "bv-tracker-list" }, trackers.map(trackerRow).concat([ui.el("p", { className: "bv-helper" }, ["Fixture output stays editable. If a tracker is off, dependent values stay blank rather than being guessed."])])) : ui.el("div", { className: "bv-tracker-summary" }, [ui.badge(degraded ? "some parts unsure" : "all working", degraded ? "warn" : "in"), ui.el("small", {}, [runtimeSummary]) ]);
     var trackerSection = section(trackerHeader, trackerBody, trackerAside);
 
     var densitySection = section(ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-3)" } }, ["How much to show", ui.infoTip("How much to show", "Changes only what appears on the video. Everything is still analysed either way.")]), ui.segmented([{ value: "minimal", label: "Minimal" }, { value: "balanced", label: "Balanced" }, { value: "full", label: "Full" }], state.density, function (value) { dispatch({ type: "SET_DENSITY", value: value }, { type: "SET_DENSITY", value: value }); }, true));
@@ -86,8 +93,9 @@
     if (!chromeAvailable() || !chrome.tabs) { detected = true; render(); return; }
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       detected = isWatchPage(tabs && tabs[0] && tabs[0].url);
-      if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState"], function (result) {
+      if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvRuntimeStatus"], function (result) {
         if (result && result.bvState) state = window.BVState.initialExtensionState(result.bvState);
+        if (result && result.bvRuntimeStatus) runtimeStatus = result.bvRuntimeStatus;
         render();
       }); else render();
     });

@@ -108,12 +108,18 @@
       windowRef = globalThis.window,
       chromeApi = globalThis.chrome,
       overlay = new BSOOverlay.OverlayAnchor({ documentRef, windowRef }),
-      bridge = null
+      bridge = null,
+      onRuntimeMessage = () => {},
+      onRuntimeStatus = () => {},
+      onRuntimeView = () => {}
     } = {}) {
       this.document = documentRef;
       this.window = windowRef;
       this.chrome = chromeApi;
       this.overlay = overlay;
+      this.onRuntimeMessage = onRuntimeMessage;
+      this.onRuntimeStatus = onRuntimeStatus;
+      this.onRuntimeView = onRuntimeView;
       this.bridge = bridge || new RuntimeBridge({
         chromeApi,
         // The extension Port API has no transfer-list parameter. The manifest
@@ -227,25 +233,31 @@
       this.lastMediaTime = mediaTime;
       const view = this.synchronizer.update(mediaTime);
       if (this.overlay) this.overlay.setSynchronizedView(view, mediaTime);
+      this.onRuntimeView(view, mediaTime);
       if (metadata.reason === 'ratechange' && this.overlay) this.overlay.setStatus('Watching', `rate ${metadata.playbackRate}x`);
+      return view;
     }
 
     handleMessage(message) {
       if (!message || message.sessionId !== this.sessionId) return;
       if (BSOProtocol.isAnalyzerResult(message)) {
+        let view = null;
         if (this.synchronizer) {
           this.synchronizer.ingest(message);
-          if (this.lastMediaTime !== null) this.handleMediaTime(this.lastMediaTime);
+          if (this.lastMediaTime !== null) view = this.handleMediaTime(this.lastMediaTime);
         }
+        this.onRuntimeMessage(message, view, this.lastMediaTime);
         return;
       }
       if (BSOProtocol.isCapabilityReport(message)) {
         this.applyCapabilities(message.capabilities, message.fallbacks, message.reason);
+        this.onRuntimeMessage(message);
         return;
       }
       if (message.type === BSOProtocol.TYPES.RUNTIME_STATUS) {
         this.applyCapabilities(message.capabilities || {}, [], message.reason || message.message);
         if (this.overlay && message.message) this.overlay.setStatus(message.phase || 'Runtime', message.message);
+        this.onRuntimeMessage(message);
       }
     }
 
@@ -259,6 +271,7 @@
     }
 
     handleBridgeStatus(status) {
+      this.onRuntimeStatus(status);
       if (!this.overlay) return;
       const messages = {
         'bridge-unavailable': 'offscreen bridge unavailable',
@@ -271,6 +284,7 @@
     }
 
     handleCaptureStatus(status) {
+      this.onRuntimeStatus(status);
       if (!this.overlay) return;
       if (status.type === 'capture-capability') {
         const label = status.mode === 'request-video-frame-callback' ? 'frame callback capture' : status.mode;
@@ -281,6 +295,7 @@
     }
 
     handleSynchronizerStatus(status) {
+      this.onRuntimeStatus(status);
       if (!this.overlay) return;
       if (status.status === 'timeline-reset') this.overlay.setStatus('Resyncing', 'media timeline changed');
     }

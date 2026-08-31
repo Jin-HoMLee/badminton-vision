@@ -4,15 +4,15 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const src = join(root, "src");
+const extension = join(src, "extension");
 const designSystem = join(root, "design-system");
 const dist = join(root, "dist");
 
-// Keep the unpacked extension explicit. In particular, the authored design-system
-// tree contains previews, source components, and documentation that are not runtime
-// dependencies and must not become part of the MV3 package.
-const runtimeSourceFiles = [
+// This is the one public MV3 packaging surface. Keep the list explicit: the
+// design-system source/docs and runtime-only entrypoints must not silently
+// become extension dependencies.
+const uiFiles = [
   "analysis.js",
-  "background.js",
   "content.js",
   "fixtures.js",
   "popup.html",
@@ -24,7 +24,21 @@ const runtimeSourceFiles = [
   "summary.js",
   "ui.js"
 ];
-const runtimeDesignSystemFiles = [
+const runtimeFiles = [
+  ["background/service-worker.js", "background/service-worker.js"],
+  ["common/protocol.js", "common/protocol.js"],
+  ["common/capabilities.js", "common/capabilities.js"],
+  ["common/synchronization.js", "common/synchronization.js"],
+  ["content/overlay.js", "content/overlay.js"],
+  ["content/capture.js", "content/capture.js"],
+  ["content/video-discovery.js", "content/video-discovery.js"],
+  ["content/runtime.js", "content/runtime.js"],
+  ["offscreen/analyzer.js", "offscreen/analyzer.js"],
+  ["offscreen/fixture-model.js", "offscreen/fixture-model.js"],
+  ["offscreen/offscreen.html", "offscreen/offscreen.html"],
+  ["offscreen/offscreen.js", "offscreen/offscreen.js"]
+];
+const designSystemFiles = [
   "tokens/base.css",
   "tokens/colors.css",
   "tokens/elevation.css",
@@ -37,13 +51,9 @@ const runtimeDesignSystemFiles = [
   "assets/logo-mark.svg"
 ];
 
-async function copyFiles(files, sourceRoot, destinationRoot) {
-  for (const file of files) {
-    const source = join(sourceRoot, file);
-    const destination = join(destinationRoot, file);
-    await mkdir(dirname(destination), { recursive: true });
-    await cp(source, destination);
-  }
+async function copyFile(source, destination) {
+  await mkdir(dirname(destination), { recursive: true });
+  await cp(source, destination);
 }
 
 async function listFiles(directory) {
@@ -79,36 +89,32 @@ async function assertNoRemoteDependencies(directory) {
 
 await rm(dist, { recursive: true, force: true });
 await mkdir(dist, { recursive: true });
-await copyFiles(runtimeSourceFiles, src, dist);
-await copyFiles(["manifest.json"], root, dist);
-await copyFiles(runtimeDesignSystemFiles, designSystem, join(dist, "design-system"));
+for (const file of uiFiles) await copyFile(join(src, file), join(dist, file));
+await copyFile(join(root, "manifest.json"), join(dist, "manifest.json"));
+for (const [source, destination] of runtimeFiles) await copyFile(join(extension, source), join(dist, destination));
+for (const file of designSystemFiles) await copyFile(join(designSystem, file), join(dist, "design-system", file));
 
 const manifest = JSON.parse(await readFile(join(dist, "manifest.json"), "utf8"));
+if (manifest.manifest_version !== 3 || manifest.background?.service_worker !== "background/service-worker.js" ||
+    !manifest.permissions?.includes("offscreen") || manifest.message_serialization !== "structured_clone") {
+  throw new Error("manifest.json is not the canonical complete MV3 manifest");
+}
 const required = [
-  "popup.html",
-  "summary.html",
-  "background.js",
-  "content.js",
-  "runtime.js",
-  "analysis.js",
-  "fixtures.js",
-  "state.js",
-  "ui.js",
-  "styles.css",
-  "design-system/tokens/colors.css",
-  "design-system/tokens/typography.css",
-  "design-system/tokens/spacing.css",
-  "design-system/tokens/elevation.css",
-  "design-system/tokens/motion.css",
-  "design-system/tokens/base.css",
-  "design-system/assets/icon-16.svg",
-  "design-system/assets/icon-32.svg",
-  "design-system/assets/icon.svg",
-  "design-system/assets/logo-mark.svg"
+  ...uiFiles,
+  "manifest.json",
+  ...runtimeFiles.map(([, destination]) => destination),
+  ...designSystemFiles.map((file) => join("design-system", file))
 ];
 for (const file of required) {
   try { await stat(join(dist, file)); } catch { throw new Error(`Missing build output: ${file}`); }
 }
-if (manifest.manifest_version !== 3) throw new Error("The extension must be Manifest V3");
+const contentScripts = manifest.content_scripts?.flatMap((entry) => entry.js || []) || [];
+for (const file of contentScripts) {
+  if (!required.includes(file)) throw new Error(`Manifest content script is not packaged: ${file}`);
+}
+const offscreenHtml = await readFile(join(dist, "offscreen/offscreen.html"), "utf8");
+for (const script of ["../common/protocol.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
+  if (!offscreenHtml.includes(`src="${script}"`)) throw new Error(`Packed offscreen document is missing ${script}`);
+}
 await assertNoRemoteDependencies(dist);
-console.log(`Built loadable MV3 extension in ${dist}`);
+console.log(`Built canonical loadable MV3 extension in ${dist}`);

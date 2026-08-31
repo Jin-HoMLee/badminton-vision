@@ -113,14 +113,18 @@ test('packed source includes a local offscreen document and fixture analyzer', (
   assert.match(html, /fixture-model\.js/);
   assert.match(html, /analyzer\.js/);
   assert.match(html, /offscreen\.js/);
-  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'src/extension/manifest.json'), 'utf8'));
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
+  assert.equal(manifest.background.service_worker, 'background/service-worker.js');
   assert.equal(manifest.permissions.includes('offscreen'), true);
   assert.equal(manifest.message_serialization, 'structured_clone');
   assert.equal(manifest.minimum_chrome_version, '148');
+  assert.equal(manifest.content_scripts[0].js.includes('content.js'), true);
+  assert.equal(manifest.content_scripts[0].js.includes('content/runtime.js'), true);
   const packedHtmlPath = path.join(__dirname, '..', 'dist/offscreen/offscreen.html');
   if (fs.existsSync(packedHtmlPath)) {
     assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /fixture-model\.js/);
     assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/analyzer.js')), true);
+    assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/background/service-worker.js')), true);
   }
 });
 
@@ -165,6 +169,10 @@ test('offscreen fixture probe returns deterministic local results with capabilit
   assert.equal(result.capabilities.inference, true);
   assert.equal(result.result.kind, 'runtime-integration-probe');
   assert.equal(result.result.productionModel, false);
+  assert.equal(result.result.state, 'partial');
+  assert.equal(Array.isArray(result.result.players), true);
+  assert.equal(result.result.players.length, 0);
+  assert.equal(result.result.shuttle.state, 'unknown');
   assert.equal(result.result.probe.checksum, 1466837309);
   assert.equal(result.result.probe.sampledPixels, 4);
 });

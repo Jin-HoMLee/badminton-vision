@@ -3,7 +3,9 @@
   "name": "Badminton Vision",
   "description": "A local-first, confidence-aware badminton rally review overlay.",
   "version": "0.1.0",
-  "permissions": ["storage", "tabs"],
+  "minimum_chrome_version": "148",
+  "message_serialization": "structured_clone",
+  "permissions": ["storage", "tabs", "offscreen"],
   "host_permissions": ["*://www.youtube.com/*", "*://youtube.com/*"],
   "action": {
     "default_title": "Badminton Vision",
@@ -22,14 +24,28 @@
     "128": "design-system/assets/icon.svg"
   },
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background/service-worker.js"
   },
   "content_scripts": [
     {
       "matches": ["*://www.youtube.com/watch*", "*://youtube.com/watch*"],
-      "js": ["runtime.js", "analysis.js", "fixtures.js", "state.js", "ui.js", "content.js"],
-      "run_at": "document_idle"
+      "js": [
+        "common/protocol.js",
+        "common/capabilities.js",
+        "common/synchronization.js",
+        "content/overlay.js",
+        "content/capture.js",
+        "content/video-discovery.js",
+        "content/runtime.js",
+        "runtime.js",
+        "analysis.js",
+        "fixtures.js",
+        "state.js",
+        "ui.js",
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [

@@ -15,9 +15,16 @@
   var shadow = null;
   var root = null;
   var video = null;
-  var playback = null;
   var domObserver = null;
   var mediaTime = 0;
+  var runtimeController = null;
+  var runtimeView = {
+    phase: "idle", message: "Local runtime starting", reason: "", analyzer: "none",
+    inference: false, fallbacks: [], capabilities: {}, result: null,
+    currentMediaTime: null, ageSeconds: null, stale: true
+  };
+  var publishedRuntimeKey = null;
+  var lastRuntimeRenderAt = 0;
 
   function hasChrome() { return typeof chrome !== "undefined"; }
   function persist() {
@@ -25,6 +32,46 @@
   }
   function send(message) {
     if (hasChrome() && chrome.runtime) chrome.runtime.sendMessage(message, function () { void chrome.runtime.lastError; });
+  }
+  function publishRuntimeView(view) {
+    runtimeView = view;
+    var result = view.result;
+    var playerCount = result && Array.isArray(result.players) ? result.players.length : null;
+    var status = {
+      phase: view.phase,
+      message: view.message,
+      reason: view.reason,
+      analyzer: view.analyzer,
+      inference: Boolean(view.inference),
+      fallbacks: Array.isArray(view.fallbacks) ? view.fallbacks.slice() : [],
+      capabilities: view.capabilities || {},
+      stale: Boolean(view.stale),
+      ageSeconds: Number.isFinite(view.ageSeconds) ? view.ageSeconds : null,
+      resultKind: result && result.kind ? result.kind : null,
+      resultState: result && result.state ? result.state : "unknown",
+      playerCount: playerCount,
+      sessionId: runtimeController && runtimeController.sessionId ? runtimeController.sessionId : null
+    };
+    var key = JSON.stringify([status.phase, status.analyzer, status.inference, status.reason, status.stale, status.resultKind, status.playerCount]);
+    var now = Date.now();
+    var statusChanged = key !== publishedRuntimeKey;
+    if (hasChrome() && chrome.storage && chrome.storage.local && statusChanged) {
+      publishedRuntimeKey = key;
+      chrome.storage.local.set({ bvRuntimeStatus: status }, function () { void chrome.runtime.lastError; });
+    }
+    // Synchronization is driven by every observed video frame, but the
+    // design-system DOM only needs a modest refresh cadence for age/time labels.
+    if (statusChanged || now - lastRuntimeRenderAt >= 250) {
+      lastRuntimeRenderAt = now;
+      render();
+    }
+  }
+  function runtimeIsStale() { return Boolean(state.stale || runtimeView.stale); }
+  function runtimeCaption() {
+    if (runtimeView.result && runtimeView.result.kind === "runtime-integration-probe") return "fixture result observed · not production CV";
+    if (runtimeView.analyzer === "fixture-probe-v1") return "local integration probe · not production CV";
+    if (runtimeView.phase === "fallback") return "local analysis unavailable · playback unaffected";
+    return "local runtime · awaiting analyzer";
   }
   function formatMediaTime(seconds) {
     var minutes = Math.floor(seconds / 60);
@@ -47,7 +94,6 @@
   function attachVideo() {
     var next = document.querySelector("video");
     if (next === video) { positionToVideo(); return; }
-    if (playback) playback.stop();
     if (video && next && next !== video) {
       state = window.BVState.initialExtensionState({ density: state.density, panels: state.panels });
       strokes = data.strokes.slice();
@@ -56,12 +102,24 @@
       persist();
     }
     video = next;
-    if (video && window.BVRuntime) playback = window.BVRuntime.createPlaybackAdapter(video, function (frame) {
-      mediaTime = frame.mediaTime;
-      if (!state.stale && Math.abs(mediaTime) > .001) state.time = formatMediaTime(mediaTime);
-    });
-    if (playback) playback.start();
     positionToVideo();
+  }
+
+  function startRuntime() {
+    if (runtimeController || !window.BVRuntime || !window.BVRuntime.startIntegratedRuntime) return;
+    var session = window.BVRuntime.startIntegratedRuntime({
+      documentRef: document,
+      windowRef: window,
+      chromeApi: window.chrome,
+      onChange: publishRuntimeView,
+      onMediaTime: function (currentMediaTime) {
+        if (Number.isFinite(currentMediaTime)) {
+          mediaTime = currentMediaTime;
+          if (!state.stale && Math.abs(mediaTime) > .001) state.time = formatMediaTime(mediaTime);
+        }
+      }
+    });
+    if (session) runtimeController = session.controller;
   }
 
   function seedDrawing(points, done) {
@@ -84,7 +142,7 @@
     if (!done) layer.appendChild(ui.el("span", { className: "bv-seed-target", style: { left: targets[seedPoints.length].x + "%", top: targets[seedPoints.length].y + "%" } }));
     seedPoints.forEach(function (point, index) { layer.appendChild(ui.el("span", { className: "bv-seed-point", style: { left: point.x + "%", top: point.y + "%" } }, [index + 1])); });
     var card = ui.el("div", { className: "bv-seed-card" });
-    var top = ui.el("div", { className: "bv-seed-card-top" }, [ui.stepDots(seedPoints.length, corners), ui.el("span", { className: "bv-seed-card-title" }, [done ? "Court locked" : "Click the " + corners[seedPoints.length].toLowerCase() + " outer corner"]), done ? ui.badge("homography ok", "in") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); seedPoints.pop(); render(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); state.seeding = false; state.labeling = true; persist(); render(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !done, onClick: function (event) { event.stopPropagation(); if (!done) return; state.seeded = true; state.enabled = true; state.seeding = false; state.cameraCut = false; persist(); send({ type: "COURT_SEEDED" }); render(); } })])]);
+    var top = ui.el("div", { className: "bv-seed-card-top" }, [ui.stepDots(seedPoints.length, corners), ui.el("span", { className: "bv-seed-card-title" }, [done ? "Court locked" : "Click the " + corners[seedPoints.length].toLowerCase() + " outer corner"]), done ? ui.badge("homography ok", "in") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); seedPoints.pop(); render(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); state.seeding = false; state.labeling = true; persist(); render(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !done, onClick: function (event) { event.stopPropagation(); if (!done) return; state.seeded = true; state.enabled = true; state.seeding = false; state.cameraCut = false; state.stale = false; persist(); send({ type: "COURT_SEEDED" }); render(); } })])]);
     card.appendChild(top);
     card.appendChild(ui.el("p", {}, ["Your four clicks are the outer doubles corners only. Service lines, centre lines and the net come from the official 13.40 × 6.10 m court and are projected in — they never adapt to the image."]));
     card.appendChild(ui.el("div", { className: "bv-seed-note" }, [ui.icon("info", 13), ui.el("span", {}, ["Playback keeps running. A camera cut past tolerance pauses analysis, not the video."]), ui.button("Cancel", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); state.seeding = false; state.enabled = Boolean(state.seeded); persist(); render(); } })]));
@@ -94,7 +152,7 @@
   }
 
   function statsPanel() {
-    return ui.panel("Stats", { icon: "activity", mediaTime: state.time, stale: state.stale, className: "bv-overlay-feed", actions: [ui.iconButton("chevron-up", "Hide stats", { size: "sm", onClick: function () { state.panels.stats = false; persist(); render(); } })] }, [ui.el("div", { className: "bv-stat-grid" }, [ui.stat("Rally", state.rally), ui.stat("Shots", strokes.length), ui.stat("Length", "28.4", "s")]), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", margin: "var(--sp-5) 0" } }, [ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-12)", color: "var(--text-muted)" } }, ["21–18 · 14–11"]), ui.badge("score OCR partial", "warn")]), ui.mixBar([{ label: "Clear", value: 5, color: "var(--player-a)" }, { label: "Drop", value: 4, color: "var(--court-fill)" }, { label: "Smash", value: 3, color: "var(--lime-500)" }, { label: "Net", value: 3, color: "var(--player-b)" }, { label: "Unclassified", value: 2, color: "var(--signal-unknown)" }]), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-5)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border-hairline)" } }, [ui.el("span", { className: "bv-muted", style: { fontSize: "var(--fs-11)" } }, ["Last rally end"]), ui.badge("unclassified", "unknown"), ui.confidence(null, { showWord: true })])]);
+    return ui.panel("Stats", { icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", actions: [ui.iconButton("chevron-up", "Hide stats", { size: "sm", onClick: function () { state.panels.stats = false; persist(); render(); } })] }, [ui.el("div", { className: "bv-stat-grid" }, [ui.stat("Rally", state.rally), ui.stat("Shots", strokes.length), ui.stat("Length", "28.4", "s")]), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", margin: "var(--sp-5) 0" } }, [ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-12)", color: "var(--text-muted)" } }, ["21–18 · 14–11"]), ui.badge("score OCR partial", "warn")]), ui.mixBar([{ label: "Clear", value: 5, color: "var(--player-a)" }, { label: "Drop", value: 4, color: "var(--court-fill)" }, { label: "Smash", value: 3, color: "var(--lime-500)" }, { label: "Net", value: 3, color: "var(--player-b)" }, { label: "Unclassified", value: 2, color: "var(--signal-unknown)" }]), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-5)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border-hairline)" } }, [ui.el("span", { className: "bv-muted", style: { fontSize: "var(--fs-11)" } }, ["Last rally end"]), ui.badge("unclassified", "unknown"), ui.confidence(null, { showWord: true })])]);
   }
   function mapPanel() {
     return ui.panel("Court", { icon: "crosshair", mediaTime: state.time, className: "bv-court-panel", bodyStyle: { padding: "10px" }, actions: [ui.iconButton("chevron-down", "Hide court map", { size: "sm", onClick: function () { state.panels.map = false; persist(); render(); } })] }, [ui.courtDiagram({ renderWidth: 154, players: [{ x: 3.1, y: 9.7 }, { x: 2.5, y: 4.1, side: "b" }], trajectory: [{ x: 2.5, y: 4.3 }, { x: 3.5, y: 8.4 }, { x: 4.8, y: 12.9 }], landing: { x: 4.8, y: 12.9 }, call: "IN", ariaLabel: "Current court map" }), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-4)" } }, [ui.badge("IN", "in"), ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-10)", color: "var(--text-faint)" } }, ["0.11 m inside"])]), ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.confidence(.52, { label: "geo", showWord: true })])]);
@@ -104,12 +162,21 @@
     strokes.forEach(function (stroke) { rows.appendChild(ui.strokeFeedItem(stroke)); });
     var children = [rows];
     if (suggestion) children.push(ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.suggestionRow(suggestion, acceptSuggestion, openLabeling)]));
-    var footer = ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.badge("rally 13 · index 74", "accent", false), ui.button("Older rallies", { variant: "ghost", size: "sm", iconRight: "chevron-right", style: { marginLeft: "auto" }, onClick: openSummary })]);
-    return ui.panel("Stroke feed", { icon: "list", mediaTime: state.time, stale: state.stale, className: "bv-overlay-feed", bodyStyle: { padding: "6px" }, footer: footer, actions: [ui.iconButton("pencil", "Open manual labeling (O)", { size: "sm", onClick: openLabeling }), ui.iconButton("chevron-up", "Hide stroke feed", { size: "sm", onClick: function () { state.panels.feed = false; persist(); render(); } })] }, children);
+    var footer = ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.badge("rally 13 · index 74", "accent", false), ui.el("span", { className: "bv-runtime-footnote" }, [runtimeView.result && runtimeView.result.kind === "runtime-integration-probe" ? "fixture result · not production CV" : "analysis unknown"]), ui.button("Older rallies", { variant: "ghost", size: "sm", iconRight: "chevron-right", style: { marginLeft: "auto" }, onClick: openSummary })]);
+    return ui.panel("Stroke feed", { icon: "list", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", bodyStyle: { padding: "6px" }, footer: footer, actions: [ui.iconButton("pencil", "Open manual labeling (O)", { size: "sm", onClick: openLabeling }), ui.iconButton("chevron-up", "Hide stroke feed", { size: "sm", onClick: function () { state.panels.feed = false; persist(); render(); } })] }, children);
   }
   function liveOverlay() {
     var overlay = ui.el("div", { className: "bv-overlay-root" });
-    var left = ui.el("div", { className: "bv-overlay-stack left" }, [ui.statusChip(state.stale ? "stale" : "live", state.stale ? "Analysis behind" : "Rally " + state.rally, state.stale ? "+1.2s" : state.time, openLabeling)]);
+    var stale = runtimeIsStale();
+    var statusState = runtimeView.phase === "fallback" ? "stale" : stale ? "stale" : "live";
+    var statusLabel = runtimeView.phase === "fallback" ? "Analysis fallback" : stale ? "Analysis behind" : "Rally " + state.rally;
+    var statusDetail = stale && Number.isFinite(runtimeView.ageSeconds)
+      ? "+" + runtimeView.ageSeconds.toFixed(1) + "s"
+      : state.time;
+    var left = ui.el("div", { className: "bv-overlay-stack left" }, [
+      ui.statusChip(statusState, statusLabel, statusDetail, openLabeling),
+      ui.el("div", { className: "bv-runtime-note", role: "status" }, [ui.icon("info", 11), runtimeCaption()])
+    ]);
     if (state.density !== "minimal" && state.panels.stats) left.appendChild(statsPanel());
     overlay.appendChild(left);
     if (state.density === "full" && state.panels.map) overlay.appendChild(ui.el("div", { className: "bv-overlay-map" }, [mapPanel()]));
@@ -200,6 +267,7 @@
     window.addEventListener("resize", positionToVideo, { passive: true }); window.addEventListener("scroll", positionToVideo, { passive: true, capture: true });
     if (typeof ResizeObserver !== "undefined") new ResizeObserver(positionToVideo).observe(document.documentElement);
     domObserver = new MutationObserver(attachVideo); domObserver.observe(document.documentElement, { childList: true, subtree: true }); attachVideo();
+    startRuntime();
     if (hasChrome() && chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(handleMessage);
     if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState"], function (result) { if (result && result.bvState) state = window.BVState.initialExtensionState(result.bvState); render(); });
     else render();
