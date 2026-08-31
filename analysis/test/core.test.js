@@ -28,6 +28,9 @@ const {
   correctStrokeEvent,
   replaceCorrectedStrokeEvent,
   validateStrokeEvent,
+  attributeRallyOutcome,
+  createRallyStateMachine,
+  analyzeRallyEvents,
 } = core;
 
 test('canonical court has BWF dimensions, line ownership, and all generated lines', () => {
@@ -351,4 +354,119 @@ test('highlight ranking refuses to score fewer than ten completed rallies', () =
   const individual = calculateHighlightIndex(inProgress, [...fixture.rallies.slice(0, 9), inProgress], fixture.events);
   assert.equal(individual.reason, 'rally-not-completed');
   assert.equal(individual.index, null);
+});
+
+test('rally state machine orders shots, consumes partial evidence, and de-duplicates events', () => {
+  const machine = createRallyStateMachine();
+  machine.ingest([
+    { type: 'rally_start', rally_id: 'r-state', media_time: 10 },
+    { type: 'shot', event_id: 'late', player_id: 'player-b', shot_family: 'drop', hit_media_time: 12, status: 'accepted', source: 'auto' },
+    { type: 'shot', event_id: 'early', player: { state: 'unknown' }, shot: { state: 'partial' }, hit_media_time: 11, status: 'partial', source: 'auto' },
+    { type: 'shot', event_id: 'late', player_id: 'player-b', shot_family: 'drop', hit_media_time: 12, status: 'accepted', source: 'auto' },
+    { type: 'rally_end', media_time: 14 },
+  ]);
+  const result = machine.finalize();
+  assert.deepEqual(result.rallies[0].stroke_event_ids, ['early', 'late']);
+  assert.equal(result.rallies[0].shot_count, 2);
+  assert.equal(result.rallies[0].evidence_state, 'partial');
+  assert.equal(result.rallies[0].winner_state.label, 'unclassified');
+  assert.equal(result.duplicates.length, 1);
+  assert.equal(result.events.find((event) => event.event_id === 'early').player_id, null);
+  assert.equal(result.events.find((event) => event.event_id === 'early').shot_family, 'unknown');
+});
+
+test('camera cuts close an incomplete rally without pretending it ended', () => {
+  const result = analyzeRallyEvents([
+    { type: 'rally_start', rally_id: 'before-cut', media_time: 20 },
+    { type: 'shot', event_id: 'cut-shot', player_id: 'player-a', shot_family: 'clear', hit_media_time: 21, status: 'accepted' },
+    { type: 'camera_cut', camera_cut_id: 'cut-1', media_time: 22 },
+    { type: 'shot', event_id: 'after-cut', player_id: 'player-b', shot_family: 'net', hit_media_time: 23, status: 'accepted' },
+    { type: 'rally_end', media_time: 24 },
+  ]);
+  assert.equal(result.camera_cuts.length, 1);
+  assert.equal(result.rallies.length, 2);
+  assert.equal(result.rallies[0].status, 'incomplete');
+  assert.equal(result.rallies[0].termination, 'camera_cut');
+  assert.equal(result.rallies[0].end_media_time, null);
+  assert.equal(result.rallies[0].boundary_media_time, 22);
+  assert.equal(result.rallies[1].status, 'completed');
+});
+
+test('winner and error attribution requires accepted evidence and preserves uncertainty', () => {
+  const makeEvent = (id, player, time, status = 'accepted') => createStrokeEvent({
+    event_id: id, rally_id: 'r-outcome', sequence: time, player_id: player, shot_family: 'clear',
+    hit_media_time: time, source: 'auto', status,
+  });
+  const forced = attributeRallyOutcome({
+    events: [makeEvent('a', 'player-a', 1), makeEvent('b', 'player-b', 2)],
+    landing_call: { state: 'out', status: 'accepted', timestamp_media_time: 2, confidence: 0.9 },
+    error_type: 'forced_error',
+  });
+  assert.equal(forced.winner_state.label, 'forced_error');
+  assert.equal(forced.winner_state.player_id, 'player-a');
+
+  const winner = attributeRallyOutcome({
+    events: [makeEvent('a', 'player-a', 1)],
+    landing_call: { state: 'in', status: 'accepted', timestamp_media_time: 1 },
+    termination: 'rally_end',
+  });
+  assert.equal(winner.winner_state.label, 'winner');
+  assert.equal(winner.winner_state.player_id, 'player-a');
+
+  const uncertain = attributeRallyOutcome({
+    events: [makeEvent('a', 'player-a', 1), makeEvent('b', null, 2)],
+    landing_call: { state: 'unknown', status: 'unknown', timestamp_media_time: 2 },
+  });
+  assert.equal(uncertain.winner_state.label, 'unclassified');
+  assert.equal(uncertain.winner_state.player_id, null);
+  assert.equal(uncertain.winner_state.confidence.status, 'unknown');
+  assert.match(uncertain.reason, /unknown/);
+
+  const suggested = attributeRallyOutcome({
+    events: [makeEvent('a', 'player-a', 1), makeEvent('b', 'player-b', 2, 'suggested')],
+    landing_call: { state: 'out', status: 'suggested', timestamp_media_time: 2 },
+    error_type: 'unforced_error',
+  });
+  assert.equal(suggested.winner_state.label, 'unclassified');
+  assert.equal(suggested.winner_state.player_id, null);
+
+  const explicitUnknown = attributeRallyOutcome({
+    events: [makeEvent('a', 'player-a', 1)],
+    landing_call: { state: 'in', status: 'accepted', timestamp_media_time: 1 },
+    termination: 'rally_end',
+    outcome: 'unclassified',
+  });
+  assert.equal(explicitUnknown.winner_state.label, 'unclassified');
+  assert.equal(explicitUnknown.winner_state.player_id, null);
+});
+
+test('corrections replace one state-machine event and retain provenance', () => {
+  const machine = createRallyStateMachine();
+  machine.ingest([
+    { type: 'rally_start', rally_id: 'r-correct', media_time: 1 },
+    { type: 'shot', event_id: 'same-id', player_id: 'player-a', shot_family: 'drop', hit_media_time: 2, status: 'accepted' },
+    { type: 'rally_end', media_time: 3 },
+    { type: 'shot', event_id: 'same-id', shot_family: 'smash', status: 'corrected', source: 'corrected', correction_reason: 'reviewed label' },
+  ]);
+  const result = machine.finalize();
+  assert.equal(result.events.length, 1);
+  assert.equal(result.events[0].shot_family, 'smash');
+  assert.equal(result.events[0].player_id, 'player-a');
+  assert.equal(result.events[0].correction_provenance.length, 1);
+  assert.equal(result.rallies.length, 1);
+});
+
+test('highlight score pressure and missing score remain explainable', () => {
+  const fixture = makeHighlightFixture();
+  const ordinary = calculateHighlightIndex(fixture.rallies[9], fixture.rallies, fixture.events);
+  const tight = createRallyRecord({ ...fixture.rallies[9], score_context: { state: 'tight', game_point: true, source: 'manual' } });
+  const pressured = calculateHighlightIndex(tight, fixture.rallies, fixture.events);
+  assert.equal(pressured.components.outcome_pressure, 1);
+  assert.equal(pressured.partial_components.includes('outcome_pressure'), false);
+  assert.ok(pressured.index > ordinary.index);
+
+  const missingScore = createRallyRecord({ ...fixture.rallies[9], score_context: null });
+  const partial = calculateHighlightIndex(missingScore, fixture.rallies, fixture.events);
+  assert.equal(partial.components.outcome_pressure, 0.7);
+  assert.deepEqual(partial.partial_components, ['outcome_pressure']);
 });

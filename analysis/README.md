@@ -37,11 +37,17 @@ The canonical court uses metres, `x` across the 6.10 m doubles width and `y` alo
 
 Factories return frozen, schema-validated records and do not mutate input. `validate*` functions return `{valid, errors}`. Confidence is normalized to `{value, status, reason}`: a missing value is `{value: null, status: 'unknown', ...}`, never an implicit `1`.
 
-- `createStrokeEvent` follows the README stroke-feed fields and adds a stable required `event_id`, optional manual `label`, optional tracking confidence, and correction provenance.
+- `createStrokeEvent` follows the README stroke-feed fields and adds a stable `event_id`, nullable player/shot values for explicit unknown evidence, optional manual `label`, optional tracking confidence, channel evidence, and correction provenance. Missing values remain `null`/`unknown`; they are not defaulted to a confident observation.
 - `correctStrokeEvent` preserves the same `event_id`, sets `source: 'corrected'` and `status: 'corrected'`, and appends a provenance entry. `replaceCorrectedStrokeEvent` replaces exactly one matching event in a collection and rejects duplicate IDs; it never appends a second corrected event.
-- `createRallyRecord` carries completion/timestamps, event IDs, shot count/coarse-family summary, winner/error state, `winner`/`lose_reason` convenience fields, score context, nullable highlight index, and aggregate confidence. A completed rally requires an end timestamp; `winner` mirrors the winner-state player ID.
+- `createRallyRecord` carries completion/timestamps, event IDs, shot count/coarse-family summary, winner/error state, `winner`/`lose_reason` convenience fields, score context, nullable highlight index, aggregate confidence, and optional partial/camera-cut evidence metadata. A completed rally requires an end timestamp; `winner` mirrors the winner-state player ID.
 - `createWinnerState` supports `winner`, `forced_error`, `unforced_error`, and `unclassified`. Classified outcomes require a player ID; unknown outcomes retain unknown confidence and evidence.
-- `createLineCallState` supports `in`, `out`, and `unknown`, relevant generated line ID, normalized landing point, distance-to-line, timestamp, confidence, evidence, source, status, and provenance.
+- `createLineCallState` supports `in`, `out`, and `unknown`, an optional relevant generated line ID when the upstream landing evidence is incomplete, normalized landing point, distance-to-line, timestamp, confidence, evidence, source, status, and provenance.
+
+### Rally/event state machine
+
+`createRallyStateMachine()` consumes normalized lifecycle observations (`rally_start`, `shot`, `landing`, `rally_end`, and `camera_cut`) and returns immutable snapshots. `analyzeRallyEvents(observations)` is the batch helper. Shot observations may carry accepted, suggested, corrected, partial, or unknown player/shuttle/shot/landing channel evidence; channel values and provenance are retained verbatim. Events are ordered by media time, then sequence, then event ID. Duplicate IDs are idempotently ignored, while a corrected duplicate replaces the same ID and appends correction provenance. A camera cut closes the current segment as `incomplete` with a cut boundary, never as a completed rally; finalization without an end marker also remains incomplete. Missing identity, timestamps, landing calls, outcomes, and confidence stay unknown.
+
+`attributeRallyOutcome(input)` uses only accepted/corrected terminal evidence. An explicit accepted/manual/corrected outcome can classify a known winner. An accepted OUT landing can establish an error class only when forced/unforced evidence is supplied and the opponent is unambiguous; an accepted IN landing plus an explicit rally end can establish a winner. Otherwise the result is `unclassified` with evidence and an explanation reason.
 
 ### Coarse shot rule seam
 
