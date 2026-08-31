@@ -61,9 +61,11 @@
   }
 
   /**
-   * Read a captured ImageBitmap in the offscreen document. The direct-data
-   * branch is intentionally useful for the deterministic Node integration
-   * test; production capture supplies the ImageBitmap/canvas branch.
+   * Read a captured frame in the offscreen document. The direct-data branch
+   * handles stable Chrome's serializable RGBA fallback and is intentionally
+   * useful for the deterministic Node integration test; the ImageBitmap
+   * branch remains available for an explicitly structured-clone-capable
+   * channel.
    */
   async function readFramePixels(frame, environment = defaultEnvironment) {
     const direct = directPixels(frame);

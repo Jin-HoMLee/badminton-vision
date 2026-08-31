@@ -40,8 +40,33 @@
   function send(message) {
     if (hasChrome() && chrome.runtime) chrome.runtime.sendMessage(message, function () { void chrome.runtime.lastError; });
   }
+  function courtDiagnosticState() {
+    if (state.seeding) return "seeding";
+    if (state.seeded && calibration) return "seeded";
+    return "not-seeded";
+  }
+  function updateDiagnosticsMarkers() {
+    if (!host) return;
+    var result = runtimeView.result;
+    var fallbacks = Array.isArray(runtimeView.fallbacks) ? runtimeView.fallbacks : [];
+    var fallbackReasons = runtimeView.phase === "fallback"
+      ? fallbacks.concat(runtimeView.reason || [])
+      : [];
+    host.setAttribute("data-bso-enabled", String(Boolean(state.enabled)));
+    host.setAttribute("data-bso-court-state", courtDiagnosticState());
+    host.setAttribute("data-bso-seed-count", String(state.seeding ? seedPoints.length : (state.seedPoints || []).length));
+    host.setAttribute("data-bso-runtime-phase", runtimeView.phase || "unknown");
+    host.setAttribute("data-bso-runtime-analyzer", runtimeView.analyzer || "none");
+    host.setAttribute("data-bso-inference", String(Boolean(runtimeView.inference)));
+    host.setAttribute("data-bso-analysis-state", result && result.state ? result.state : "unknown");
+    host.setAttribute("data-bso-player-state", result && result.tracking && result.tracking.state || "unknown");
+    host.setAttribute("data-bso-shuttle-state", result && result.shuttle && result.shuttle.state || "unknown");
+    host.setAttribute("data-bso-frame-transport", runtimeView.capabilities && runtimeView.capabilities.frameTransport || "unknown");
+    host.setAttribute("data-bso-fallback", fallbackReasons.filter(Boolean).join(",") || "none");
+  }
   function publishRuntimeView(view) {
     runtimeView = view;
+    updateDiagnosticsMarkers();
     var result = view.result;
     var playerCount = result && Array.isArray(result.players) ? result.players.length : null;
     var status = {
@@ -50,6 +75,7 @@
       reason: view.reason,
       analyzer: view.analyzer,
       inference: Boolean(view.inference),
+      frameTransport: view.capabilities && view.capabilities.frameTransport || "unknown",
       fallbacks: Array.isArray(view.fallbacks) ? view.fallbacks.slice() : [],
       capabilities: view.capabilities || {},
       stale: Boolean(view.stale),
@@ -59,7 +85,7 @@
       playerCount: playerCount,
       sessionId: runtimeController && runtimeController.sessionId ? runtimeController.sessionId : null
     };
-    var key = JSON.stringify([status.phase, status.analyzer, status.inference, status.reason, status.stale, status.resultKind, status.playerCount]);
+    var key = JSON.stringify([status.phase, status.analyzer, status.inference, status.reason, status.frameTransport, status.stale, status.resultKind, status.playerCount]);
     var now = Date.now();
     var statusChanged = key !== publishedRuntimeKey;
     if (hasChrome() && chrome.storage && chrome.storage.local && statusChanged) {
@@ -247,7 +273,14 @@
     var targets = [{ x: 22, y: 82 }, { x: 78, y: 82 }, { x: 63, y: 33 }, { x: 37, y: 33 }];
     var fitted = seedPoints.length === 4 && calibration;
     var invalid = seedPoints.length === 4 && !fitted;
-    var layer = ui.el("div", { className: "bv-seed-layer", role: "dialog", "aria-label": "Set up court" });
+    var layer = ui.el("div", {
+      className: "bv-seed-layer",
+      role: "dialog",
+      "aria-label": "Set up court",
+      "data-bso-court-seeding": "true",
+      "data-bso-seed-count": seedPoints.length,
+      "data-bso-seed-order": corners.slice(0, seedPoints.length).join("|")
+    });
     layer.appendChild(seedDrawing(seedPoints, fitted));
     if (seedPoints.length < 4) layer.appendChild(ui.el("span", { className: "bv-seed-target", style: { left: targets[seedPoints.length].x + "%", top: targets[seedPoints.length].y + "%" } }));
     seedPoints.forEach(function (point, index) { layer.appendChild(ui.el("span", { className: "bv-seed-point", style: seedPointStyle(point) }, [index + 1])); });
@@ -296,7 +329,15 @@
     return ui.panel("Stroke feed", { icon: "list", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", bodyStyle: { padding: "6px" }, footer: footer, actions: [ui.iconButton("pencil", "Open manual labeling (O)", { size: "sm", onClick: openLabeling }), ui.iconButton("chevron-up", "Hide stroke feed", { size: "sm", onClick: function () { state.panels.feed = false; persist(); render(); } })] }, children);
   }
   function liveOverlay() {
-    var overlay = ui.el("div", { className: "bv-overlay-root" });
+    var overlay = ui.el("div", {
+      className: "bv-overlay-root",
+      "data-bso-overlay-state": runtimeView.phase === "fallback" ? "fallback" : runtimeIsStale() ? "stale" : "live",
+      "data-bso-runtime-phase": runtimeView.phase || "unknown",
+      "data-bso-analysis-state": runtimeView.result && runtimeView.result.state || "unknown",
+      "data-bso-player-state": runtimeView.result && runtimeView.result.tracking && runtimeView.result.tracking.state || "unknown",
+      "data-bso-shuttle-state": runtimeView.result && runtimeView.result.shuttle && runtimeView.result.shuttle.state || "unknown",
+      "data-bso-court-state": courtDiagnosticState()
+    });
     if (calibration) overlay.appendChild(calibrationDrawing());
     var stale = runtimeIsStale();
     var statusState = runtimeView.phase === "fallback" ? "stale" : stale ? "stale" : "live";
@@ -373,6 +414,7 @@
 
   function render() {
     if (!root) return;
+    updateDiagnosticsMarkers();
     root.replaceChildren();
     if (!state.enabled && !state.seeding) return;
     if (state.seeding) root.appendChild(seedFlow());

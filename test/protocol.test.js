@@ -24,6 +24,23 @@ test('frame sample contract keeps a transferable frame out of JSON encodings', (
   assert.equal(protocol.isRuntimeMessage(sample.message), true);
 });
 
+test('serializable frame samples do not advertise an invalid transfer list', () => {
+  const frame = { width: 1, height: 1, data: [1, 2, 3, 255] };
+  const sample = protocol.createFrameSample({
+    sessionId: 'stable-session',
+    requestId: 'stable-session:1',
+    mediaTime: 1,
+    capturedAt: 2,
+    width: 1,
+    height: 1,
+    frame,
+    frameFormat: 'rgba-array-v1'
+  });
+  assert.deepEqual(sample.transferables, []);
+  assert.equal(protocol.isFrameSample(sample.message), true);
+  assert.deepEqual(JSON.parse(JSON.stringify(sample.message.frame)), frame);
+});
+
 test('invalid frame metadata is rejected at the boundary', () => {
   assert.throws(() => protocol.createFrameSample({
     sessionId: 'session-1', requestId: 'request-1', mediaTime: -1,

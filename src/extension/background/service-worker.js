@@ -61,7 +61,8 @@ function stateCapabilities(state, overrides = {}) {
     offscreen: Boolean(overrides.offscreen ?? state?.ready),
     inference: Boolean(overrides.inference ?? (state?.ready && captureAvailable)),
     analyzer: overrides.analyzer || (state?.ready ? 'fixture-probe-v1' : 'none'),
-    transport: 'mv3-runtime-messaging'
+    transport: 'mv3-runtime-messaging',
+    frameTransport: state?.capabilities?.frameTransport || 'unknown'
   };
 }
 
@@ -75,6 +76,7 @@ function unavailable(state, reason) {
     offscreen: false,
     inference: false,
     analyzer: 'none',
+    frameTransport: state?.capabilities?.frameTransport || 'unknown',
     fallbacks: ['offscreen-document-unavailable', 'fixture-probe-unavailable'],
     reason
   }));
@@ -97,9 +99,10 @@ function enqueue(sessionId, task) {
 async function forwardToOffscreen(state, message) {
   if (!state || !state.ready) return false;
   try {
-    // chrome.runtime messaging is the MV3 service-worker/offscreen relay. The
-    // frame object remains a structured-clone ImageBitmap where the browser
-    // transport supports it; errors are surfaced instead of claiming CV.
+    // chrome.runtime messaging is the MV3 service-worker/offscreen relay.
+    // Stable Chrome receives a plain RGBA frame; an explicitly
+    // structured-clone-capable channel may carry an ImageBitmap. Errors are
+    // surfaced instead of claiming CV.
     await chrome.runtime.sendMessage(message);
     return true;
   } catch (error) {

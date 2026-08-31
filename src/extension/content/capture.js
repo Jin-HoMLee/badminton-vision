@@ -1,9 +1,9 @@
-/* global globalThis, BSOProtocol, BSOCapabilities */
+/* global globalThis, BSOProtocol, BSOCapabilities, BSOFrameTransport */
 (function installCapture(root, factory) {
-  const api = factory(root.BSOProtocol, root.BSOCapabilities);
+  const api = factory(root.BSOProtocol, root.BSOCapabilities, root.BSOFrameTransport);
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.BSOCapture = api;
-}(typeof globalThis === 'object' ? globalThis : self, function captureFactory(protocol, capabilityApi) {
+}(typeof globalThis === 'object' ? globalThis : self, function captureFactory(protocol, capabilityApi, frameTransportApi) {
   'use strict';
 
   class VideoCapture {
@@ -17,7 +17,9 @@
       minWallIntervalMs = 250,
       minMediaIntervalSeconds = 0.1,
       fallbackIntervalMs = 250,
-      maxInFlight = 1
+      maxInFlight = 1,
+      frameTransport = 'image-bitmap',
+      prepareFrame = null
     } = {}) {
       if (!video || !sessionId) throw new TypeError('video and sessionId are required');
       if (!Number.isInteger(maxInFlight) || maxInFlight < 1) throw new TypeError('maxInFlight must be a positive integer');
@@ -31,6 +33,8 @@
       this.minMediaIntervalSeconds = minMediaIntervalSeconds;
       this.fallbackIntervalMs = fallbackIntervalMs;
       this.maxInFlight = maxInFlight;
+      this.frameTransport = frameTransport;
+      this.prepareFrame = typeof prepareFrame === 'function' ? prepareFrame : null;
       this.active = false;
       this.mode = 'unavailable';
       this.callbackHandle = null;
@@ -49,7 +53,7 @@
       this.active = true;
       const capability = capabilityApi.detectCapture(this.video, this.environment);
       this.mode = capability.mode;
-      this.onStatus({ type: 'capture-capability', mode: this.mode, fallback: capability.fallback });
+      this.onStatus({ type: 'capture-capability', mode: this.mode, fallback: capability.fallback, frameTransport: this.frameTransport });
       if (!capability.available) return;
       if (this.mode === 'request-video-frame-callback') {
         this.scheduleVideoFrameCallback();
@@ -141,31 +145,62 @@
       this.inFlightCount += 1;
       this.inFlight = true;
       const generation = this.captureGeneration;
+      let prepared = null;
+      let sourceFrame = null;
+      let sourceReleased = false;
       Promise.resolve(this.environment.createImageBitmap(this.video)).then((frame) => {
+        sourceFrame = frame;
         if (!this.active || generation !== this.captureGeneration || this.mode === 'unavailable') {
-          if (frame && typeof frame.close === 'function') frame.close();
-          return;
+          if (frame && typeof frame.close === 'function') {
+            frame.close();
+            sourceReleased = true;
+          }
+          return null;
         }
-        const requestId = `${this.sessionId}:${++this.sampleNumber}`;
-        const sample = protocol.createFrameSample({
-          sessionId: this.sessionId,
-          requestId,
-          mediaTime,
-          // rVFC's `now` is monotonic; capturedAt is wall-clock metadata.
-          capturedAt: Date.now(),
-          width: Number.isInteger(frame.width) && frame.width > 0 ? frame.width : width,
-          height: Number.isInteger(frame.height) && frame.height > 0 ? frame.height : height,
-          frame,
-          frameFormat: 'image-bitmap'
+        const prepare = this.prepareFrame || (frameTransportApi && typeof frameTransportApi.prepareFrame === 'function'
+          ? (capturedFrame) => frameTransportApi.prepareFrame(capturedFrame, {
+            mode: this.frameTransport,
+            environment: this.environment
+          })
+          : (capturedFrame) => ({
+            frame: capturedFrame,
+            frameFormat: 'image-bitmap',
+            transferables: [capturedFrame],
+            releaseSource: false
+          }));
+        return Promise.resolve(prepare(frame, { width, height, mediaTime })).then((value) => {
+          prepared = value;
+          if (!prepared || !prepared.frame) throw new Error('frame transport produced no frame');
+          if (!this.active || generation !== this.captureGeneration || this.mode === 'unavailable') return null;
+          const requestId = `${this.sessionId}:${++this.sampleNumber}`;
+          const sample = protocol.createFrameSample({
+            sessionId: this.sessionId,
+            requestId,
+            mediaTime,
+            // rVFC's `now` is monotonic; capturedAt is wall-clock metadata.
+            capturedAt: Date.now(),
+            width: Number.isInteger(prepared.frame.width) && prepared.frame.width > 0 ? prepared.frame.width : width,
+            height: Number.isInteger(prepared.frame.height) && prepared.frame.height > 0 ? prepared.frame.height : height,
+            frame: prepared.frame,
+            frameFormat: prepared.frameFormat || this.frameTransport
+          });
+          this.lastSampleWall = wallTime;
+          this.lastSampleMediaTime = mediaTime;
+          const delivered = this.sendSample(sample.message, prepared.transferables || sample.transferables);
+          if (delivered === false && prepared.frame && typeof prepared.frame.close === 'function') {
+            prepared.frame.close();
+            if (prepared.frame === sourceFrame) sourceReleased = true;
+          }
+          this.backpressureNotified = false;
+          return delivered;
         });
-        this.lastSampleWall = wallTime;
-        this.lastSampleMediaTime = mediaTime;
-        const delivered = this.sendSample(sample.message, sample.transferables);
-        if (delivered === false && frame && typeof frame.close === 'function') frame.close();
-        this.backpressureNotified = false;
       }).catch((error) => {
         this.onStatus({ type: 'capture-error', message: error instanceof Error ? error.message : String(error) });
       }).finally(() => {
+        // The stable-channel fallback sends a plain RGBA object, so the
+        // original ImageBitmap must be released after conversion. In the
+        // structured-clone path ownership moves to the offscreen analyzer.
+        if (!sourceReleased && sourceFrame && (!prepared || prepared.releaseSource) && typeof sourceFrame.close === 'function') sourceFrame.close();
         this.inFlightCount = Math.max(0, this.inFlightCount - 1);
         this.inFlight = this.inFlightCount > 0;
       });
