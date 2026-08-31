@@ -73,6 +73,39 @@ change the product or attach that setup to the operator's browser. The
 current port session is therefore sufficient for manager/content-script
 verification but not for native toolbar automation.
 
+### Captain-only mouse checklist
+
+These actions are intentionally performed by the captain in the already-running
+dedicated Chrome. Do not substitute the ordinary browser, a new profile, or a
+page-console call:
+
+1. In `chrome://extensions/`, choose **Load unpacked**, select exactly
+   `/Users/jin-holee/.treehouse/badminton-statistics-11656a/7/badminton-statistics/dist`,
+   and confirm **Open**. If the card already points to that directory, use its
+   **Reload** button instead.
+2. Keep the existing YouTube match tab open. Use the toolbar action to open
+   **Badminton Vision**, then click **Turn on — step 1 of 3**. Do not click the
+   YouTube play, seek, mute, rate, theater, or fullscreen controls as part of
+   this smoke.
+3. In the overlay, click the four visible outer doubles corners in order:
+   near-left, near-right, far-right, far-left. Click **Lock court** only after
+   the homography preview is accepted. Use **Skip to manual** only when testing
+   the explicit manual-only path.
+4. Confirm the overlay shows two-player/runtime status without requiring a
+   playback action. If the local model cannot initialize, record the exact
+   `inference=false`, analyzer, backend, and fallback markers; do not enable a
+   fixture result or turn unknown evidence into a detection.
+5. Open manual labeling with the pencil action (or `O`), mark Start/End while
+   playback continues, choose a shot and optional player/dimensions, then click
+   **Save label**. Re-open the saved row, change its label, and save the
+   **Save correction** action to verify the same event id is updated. Click
+   **Export CSV** and verify the downloaded row contains the current video URL
+   and label.
+6. Capture the playback invariants before and after the sequence. `paused`,
+   `muted`, `playbackRate`, and `currentSrc/src` must be unchanged; only natural
+   `currentTime` advancement is allowed. If any invariant changes, stop and
+   report it as a product defect.
+
 After either action, take another full snapshot. A warning mentioning
 `message_serialization` or `structured_clone` is a failure: the stable build
 must not declare that Canary-only manifest key. A stale `Extension context
