@@ -163,7 +163,11 @@
   function strokeFeedItem(stroke, onClick) {
     var unknown = stroke.status === "unclassified";
     var sourceTone = stroke.status === "corrected" ? "info" : stroke.status === "unclassified" ? "unknown" : "in";
-    return el("div", { className: "bv-feed-row" + (stroke.selected ? " selected" : ""), role: onClick ? "button" : null, tabindex: onClick ? "0" : null, onClick: onClick }, [el("span", { className: "bv-feed-seq" }, [stroke.sequence]), el("span", { className: "bv-feed-player " + (stroke.player === "B" ? "b" : "") }), el("span", { className: "bv-feed-copy" }, [el("span", { className: "bv-feed-shot" + (unknown ? " unknown" : "") }, [unknown ? "unclassified" : stroke.shot]), el("span", { className: "bv-feed-time" }, [stroke.time])]), el("span", { className: "bv-feed-meta" }, [stroke.confidence !== undefined ? confidence(stroke.confidence, { showValue: false }) : null, badge(stroke.source === "manual" ? "manual" : stroke.status, sourceTone)] )]);
+    var sourceLabel = stroke.fixtureRow ? "fixture" : stroke.source === "manual" ? "manual" : stroke.source === "auto" ? "suggestion" : stroke.status;
+    if (stroke.fixtureRow) sourceTone = "neutral";
+    var row = el("div", { className: "bv-feed-row" + (stroke.selected ? " selected" : "") + (stroke.source === "manual" && !stroke.fixtureRow ? " manual" : ""), role: onClick ? "button" : null, tabindex: onClick ? "0" : null, "data-bso-event-id": stroke.eventId, "data-bso-label-source": stroke.fixtureRow ? "fixture" : stroke.source || "unknown", onClick: onClick }, [el("span", { className: "bv-feed-seq" }, [stroke.sequence]), el("span", { className: "bv-feed-player " + (stroke.player === "B" || stroke.playerId === "B" ? "b" : "") }), el("span", { className: "bv-feed-copy" }, [el("span", { className: "bv-feed-shot" + (unknown ? " unknown" : "") }, [unknown ? "unclassified" : stroke.shot]), el("span", { className: "bv-feed-time" }, [stroke.time || "—"]) ]), el("span", { className: "bv-feed-meta" }, [stroke.confidence !== undefined && stroke.confidence !== null ? confidence(stroke.confidence, { showValue: false }) : null, badge(sourceLabel, sourceTone)] )]);
+    if (onClick) row.addEventListener("keydown", function (event) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(event); } });
+    return row;
   }
 
   function suggestionRow(suggestion, onAccept, onCorrect) {
