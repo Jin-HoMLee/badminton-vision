@@ -27,6 +27,7 @@ const uiFiles = [
 const runtimeFiles = [
   ["background/service-worker.js", "background/service-worker.js"],
   ["common/protocol.js", "common/protocol.js"],
+  ["common/player-tracking.js", "common/player-tracking.js"],
   ["common/capabilities.js", "common/capabilities.js"],
   ["common/synchronization.js", "common/synchronization.js"],
   ["content/overlay.js", "content/overlay.js"],
@@ -113,7 +114,7 @@ for (const file of contentScripts) {
   if (!required.includes(file)) throw new Error(`Manifest content script is not packaged: ${file}`);
 }
 const offscreenHtml = await readFile(join(dist, "offscreen/offscreen.html"), "utf8");
-for (const script of ["../common/protocol.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
+for (const script of ["../common/protocol.js", "../common/player-tracking.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
   if (!offscreenHtml.includes(`src="${script}"`)) throw new Error(`Packed offscreen document is missing ${script}`);
 }
 await assertNoRemoteDependencies(dist);

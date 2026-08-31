@@ -54,5 +54,7 @@ test('default analyzer result is model-neutral and multi-person capable', () => 
   assert.equal(Array.isArray(result.result.players), true);
   assert.equal(result.result.players.length, 0);
   assert.equal(result.result.state, 'partial');
+  assert.equal(result.result.tracking.state, 'unknown');
+  assert.equal(protocol.isTrackingEnvelope(result.result.tracking), true);
   assert.equal(result.result.shuttle.state, 'unknown');
 });

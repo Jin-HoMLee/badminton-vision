@@ -5,6 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const protocol = require('../src/extension/common/protocol.js');
 const protocolSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/common/protocol.js'), 'utf8');
+const trackingSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/common/player-tracking.js'), 'utf8');
 const analyzerSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/analyzer.js'), 'utf8');
 const modelSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/fixture-model.js'), 'utf8');
 const offscreenSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/offscreen.js'), 'utf8');
@@ -41,6 +42,7 @@ function loadOffscreen(chrome) {
     chrome,
   });
   vm.runInContext(protocolSource, context, { filename: 'protocol.js' });
+  vm.runInContext(trackingSource, context, { filename: 'player-tracking.js' });
   vm.runInContext(modelSource, context, { filename: 'fixture-model.js' });
   vm.runInContext(analyzerSource, context, { filename: 'analyzer.js' });
   vm.runInContext(offscreenSource, context, { filename: 'offscreen.js' });
@@ -111,6 +113,7 @@ function createServiceWorkerHarness({ withOffscreen = true } = {}) {
 test('packed source includes a local offscreen document and fixture analyzer', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/offscreen.html'), 'utf8');
   assert.match(html, /fixture-model\.js/);
+  assert.match(html, /player-tracking\.js/);
   assert.match(html, /analyzer\.js/);
   assert.match(html, /offscreen\.js/);
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
@@ -172,6 +175,11 @@ test('offscreen fixture probe returns deterministic local results with capabilit
   assert.equal(result.result.state, 'partial');
   assert.equal(Array.isArray(result.result.players), true);
   assert.equal(result.result.players.length, 0);
+  assert.equal(result.result.tracking.schema, 'bso.player-tracking.result.v1');
+  assert.equal(result.result.tracking.state, 'unknown');
+  assert.equal(result.result.tracking.players.length, 0);
+  assert.equal(result.result.tracking.detector.id, 'fixture-probe-v1');
+  assert.equal(result.result.tracking.source.id, 'captured-frame');
   assert.equal(result.result.shuttle.state, 'unknown');
   assert.equal(result.result.probe.checksum, 1466837309);
   assert.equal(result.result.probe.sampledPixels, 4);

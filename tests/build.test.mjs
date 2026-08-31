@@ -26,6 +26,7 @@ const expectedFiles = [
   "ui.js",
   "background/service-worker.js",
   "common/capabilities.js",
+  "common/player-tracking.js",
   "common/protocol.js",
   "common/synchronization.js",
   "content/capture.js",

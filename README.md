@@ -225,8 +225,10 @@ integration probe, not production CV. It proves capture → service-worker →
 offscreen messaging and leaves player/shuttle/shot values unknown or editable.
 Its model-neutral result envelope has room for an array of session-local player
 tracks with confidence and partial/unknown states; no production model or
-weight is bundled. See `docs/runtime.md` for the runtime smoke check and
-canonical packaging details.
+weight is bundled. The versioned pose shape and deterministic multi-person
+association gates live in `src/extension/common/player-tracking.js`; see
+`docs/runtime.md` for the contract, runtime smoke check, and canonical
+packaging details.
 
 `src/runtime.js` is the read-only playback boundary and UI seam. It reads
 `currentTime`, frame metadata, dimensions, and playback state; it does not
