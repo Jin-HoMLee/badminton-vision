@@ -174,19 +174,14 @@
       var activeVideoKey = window.BVState.videoKeyForUrl(tabUrl);
       if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvRuntimeStatus"], function (result) {
         if (result && result.bvState) {
-          state = window.BVState.initialExtensionState(result.bvState);
-          if (detected) {
-            if (state.videoKey && activeVideoKey && state.videoKey !== activeVideoKey) {
-              state = window.BVState.resetVideoLocalState(state, activeVideoKey);
-            } else if (!state.videoKey) {
-              state.videoKey = activeVideoKey;
-            }
-            if (state.seeded && !state.calibration) {
-              state = window.BVState.resetVideoLocalState(state, activeVideoKey);
-            }
+          state = detected
+            ? window.BVState.stateForVideo(result.bvState, activeVideoKey)
+            : window.BVState.initialExtensionState(result.bvState);
+          if (detected && state.seeded && !state.calibration) {
+            state = window.BVState.resetVideoLocalState(state, activeVideoKey);
           }
         } else if (detected) {
-          state.videoKey = activeVideoKey;
+          state = window.BVState.stateForVideo(state, activeVideoKey);
         }
         if (result && result.bvRuntimeStatus) runtimeStatus = result.bvRuntimeStatus;
         persist();
