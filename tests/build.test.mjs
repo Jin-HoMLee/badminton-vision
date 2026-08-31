@@ -42,6 +42,7 @@ const expectedFiles = [
   "offscreen/lite-openpose-adapter.js",
   "offscreen/lite-runtime-loader.js",
   "offscreen/movenet-adapter.js",
+  "offscreen/shuttle-tracking-adapter.js",
   "offscreen/offscreen.html",
   "offscreen/offscreen.js",
   "offscreen/vendor/lite-openpose/LICENSE",

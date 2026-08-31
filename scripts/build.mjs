@@ -44,6 +44,9 @@ const runtimeFiles = [
   ["offscreen/movenet-adapter.js", "offscreen/movenet-adapter.js"],
   ["offscreen/lite-runtime-loader.js", "offscreen/lite-runtime-loader.js"],
   ["offscreen/lite-openpose-adapter.js", "offscreen/lite-openpose-adapter.js"],
+  // Kept packaged but intentionally not loaded by offscreen.html: the local
+  // shuttle adapter is an experimental seam until a later integration pass.
+  ["offscreen/shuttle-tracking-adapter.js", "offscreen/shuttle-tracking-adapter.js"],
   ["offscreen/fixture-model.js", "offscreen/fixture-model.js"],
   ["offscreen/vendor/lite-openpose/pose_256.tflite", "offscreen/vendor/lite-openpose/pose_256.tflite"],
   ["offscreen/vendor/lite-openpose/LICENSE", "offscreen/vendor/lite-openpose/LICENSE"],

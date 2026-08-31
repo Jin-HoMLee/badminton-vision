@@ -145,6 +145,18 @@ an explicit weight redistribution grant or a model package with a clear license
 and attribution notice, adding `model.json` or weight shards would violate the
 launch brief's licensing gate. Do not replace this gate with a CDN URL.
 
+## Shuttle candidate experiment
+
+`offscreen/shuttle-tracking-adapter.js` is a packaged but intentionally
+unwired, model-neutral frame-difference experiment. It uses a bounded RGBA
+scan, compactness/contrast rejection, confidence scoring, and temporal
+continuity; it emits `unknown` instead of extrapolating through cuts, stale or
+invalid samples, missing/ambiguous candidates, and backpressure. It does not
+modify the pose adapter or offscreen session orchestrator. See
+[`docs/shuttle-tracking.md`](shuttle-tracking.md) for the result shape,
+state-safety rules, latency budget, and accuracy limitations. It is not
+TrackNet or a validated production shuttle tracker.
+
 ## Court calibration boundary
 
 `analysis/index.js` is copied to the browser as `analysis-primitives.js` and
