@@ -1,18 +1,36 @@
-# M0 runtime contract
+# Runtime contract and local integration slice
 
-This repository contains the first local-first Chrome MV3 runtime foundation. It intentionally has no TrackNet conversion, model weights, court analytics, or ONNX Runtime Web dependency. The offscreen analyzer is a mock seam so those choices can be de-risked independently.
+This repository contains a local-first Chrome MV3 runtime foundation and a
+small end-to-end runtime integration slice. It intentionally does not claim
+that production player/shuttle computer vision is solved. The offscreen
+analyzer is a committed deterministic fixture probe, not TrackNet, model
+weights, court analytics, or a production CV model.
 
 ## Build and load
 
-Requires Node.js 20 or newer and Chrome with MV3 offscreen-document support:
+Requires Node.js 20 or newer and Chrome 148 or newer with MV3
+offscreen-document and structured-clone messaging support:
 
 ```sh
 npm run build
 ```
 
-The command creates `dist/`, a loadable unpacked extension. In Chrome, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select this repository's `dist/` directory. Navigate to a YouTube `watch` page. The extension starts automatically when it finds a video; no player control is required.
+The command creates `dist/`, a loadable unpacked extension. The build checks
+that the MV3 service worker and offscreen document plus its local fixture
+scripts are present. In Chrome, open `chrome://extensions`, enable
+**Developer mode**, choose **Load unpacked**, and select this repository's
+`dist/` directory. Navigate to a YouTube `watch` page. The extension starts
+automatically when it finds a video; no player control is required.
 
-The test and build gate is:
+The focused runtime round-trip check is:
+
+```sh
+npm run runtime-smoke
+```
+
+It exercises the offscreen document, service-worker relay, fixture result,
+missing-offscreen fallback, and capture backpressure/no-playback-mutation
+invariants using deterministic Node harnesses. A full build and test gate is:
 
 ```sh
 npm run check
@@ -24,8 +42,10 @@ npm run check
 
 - observes the YouTube SPA and DOM for the current `HTMLVideoElement`;
 - uses `requestVideoFrameCallback` when available and reads `mediaTime`, dimensions, and playback rate;
-- throttles frame copies by wall-clock/media time and creates an `ImageBitmap` without pausing, seeking, muting, changing playback rate, changing `src`, changing video styles, or replacing the player;
-- reports `timer-fallback` when `requestVideoFrameCallback` is unavailable, and `unavailable` when frame copying is unavailable.
+- throttles frame copies by wall-clock/media time and creates a real `ImageBitmap` snapshot;
+- limits pending `createImageBitmap` operations with an explicit one-sample default (`maxInFlight`), reports backpressure, and never builds an unbounded queue;
+- reports `timer-fallback` when `requestVideoFrameCallback` is unavailable, and `unavailable` when frame copying is unavailable;
+- never pauses, seeks, mutes, changes playback rate, changes `src`, changes video styles, or replaces the player.
 
 The overlay is a separate DOM sibling with `position: fixed`. It follows `getBoundingClientRect()` and re-anchors through `ResizeObserver`, window resize/scroll, fullscreen changes, mutations, navigation, and video replacement. It is deliberately a status chip rather than the eventual product UI.
 
@@ -46,11 +66,21 @@ The message types are:
 
 - `runtime.session.start` / `runtime.session.end`: video-local lifecycle;
 - `capture.frame.sample`: `{ requestId, mediaTime, capturedAt, dimensions, frameFormat, frame }`;
-- `analysis.result`: `{ requestId, mediaTime, analyzedAt, status, analyzer, inferenceAvailable, result }`;
+- `analysis.result`: `{ requestId, mediaTime, analyzedAt, status, analyzer, analyzerIdentity, inferenceAvailable, capabilities, capabilityState, result }`;
 - `runtime.capabilities`: capture/offscreen/transferable-frame/inference capabilities and fallbacks;
 - `runtime.status`: human-readable lifecycle and fallback status.
 
-`createFrameSample()` returns `{ message, transferables }`. The frame is an `ImageBitmap` (or a compatible transferable frame object), never a base64 image. `RuntimeBridge` passes that explicit transfer list to transfer-capable `postMessage` implementations. The MV3 service-worker relay preserves the same message shape across the offscreen boundary; if a browser transport cannot preserve a transferable frame, the runtime reports the transport fallback rather than silently claiming inference availability. The mock analyzer only consumes the timestamp/metadata seam and returns an explicitly unclassified result.
+`createFrameSample()` returns `{ message, transferables }`. The frame is an
+`ImageBitmap` (or a compatible transferable frame object), never a base64
+image. Chrome MV3 runtime ports have no transfer-list parameter, so the
+manifest opts into Chrome 148+'s structured-clone messaging and the bridge
+reports that the hop may copy the bitmap. The service-worker relay preserves
+the message shape across the offscreen boundary. The default offscreen analyzer is `fixture-probe-v1`:
+it reads the local bitmap through a canvas and runs a deterministic sampled-RGB
+checksum fixture. Results identify themselves as `runtime-integration-probe`,
+set `runtimeIntegrationTest: true` and `productionModel: false`, and remain
+explicitly unclassified. This is not a production player or shuttle CV model;
+no TrackNet asset is used in the live runtime path.
 
 ## Synchronization and stale results
 
@@ -66,4 +96,11 @@ The renderer never waits for inference and never seeks to catch up. Playback-rat
 
 ## Capability/fallback states
 
-M0 reports capture mode, offscreen availability, analyzer name, inference availability, and fallback reasons. The expected initial analyzer state is `analyzer: "mock"` and `inference: false`; this is not a model-quality claim. Missing offscreen support, missing frame-copy support, disconnected runtime ports, invalid protocol messages, and mock analyzer errors are visible in the status chip while playback remains untouched.
+The runtime reports capture mode, offscreen availability, analyzer name,
+inference availability, and fallback reasons. The expected ready state is
+`analyzer: "fixture-probe-v1"` and `inference: true`, with the explicit
+fallback `runtime-integration-probe-not-production-cv`; this is a local
+plumbing signal, not a model-quality claim. Missing offscreen support reports
+`analyzer: "none"` and `inference: false`. Missing frame-copy support,
+disconnected runtime ports, invalid protocol messages, and analyzer errors
+are visible in the status chip while playback remains untouched.

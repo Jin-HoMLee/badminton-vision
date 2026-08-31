@@ -1,0 +1,222 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const protocol = require('../src/extension/common/protocol.js');
+const protocolSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/common/protocol.js'), 'utf8');
+const analyzerSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/analyzer.js'), 'utf8');
+const modelSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/fixture-model.js'), 'utf8');
+const offscreenSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/offscreen.js'), 'utf8');
+const workerSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/background/service-worker.js'), 'utf8');
+
+function event() {
+  const listeners = [];
+  return {
+    listeners,
+    addListener(listener) { listeners.push(listener); },
+    emit(...args) { return listeners.map((listener) => listener(...args)); }
+  };
+}
+
+function frame() {
+  return {
+    width: 2,
+    height: 2,
+    data: Uint8Array.from([
+      255, 0, 0, 255, 0, 10, 0, 255,
+      0, 0, 20, 255, 5, 5, 5, 255
+    ]),
+    close() { this.closed = true; }
+  };
+}
+
+function loadOffscreen(chrome) {
+  const context = vm.createContext({
+    console,
+    Promise,
+    Uint8Array,
+    setTimeout,
+    clearTimeout,
+    chrome,
+  });
+  vm.runInContext(protocolSource, context, { filename: 'protocol.js' });
+  vm.runInContext(modelSource, context, { filename: 'fixture-model.js' });
+  vm.runInContext(analyzerSource, context, { filename: 'analyzer.js' });
+  vm.runInContext(offscreenSource, context, { filename: 'offscreen.js' });
+  return context;
+}
+
+function waitForWork() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+function createServiceWorkerHarness({ withOffscreen = true } = {}) {
+  const swConnect = event();
+  const swMessages = event();
+  const offscreenMessages = event();
+  const portMessages = [];
+  const offscreenChrome = {
+    runtime: {
+      onMessage: offscreenMessages,
+      sendMessage: async (message) => {
+        swMessages.emit(message);
+      }
+    }
+  };
+  loadOffscreen(offscreenChrome);
+
+  const swChrome = {
+    runtime: {
+      onConnect: swConnect,
+      onMessage: swMessages,
+      getContexts: async () => [],
+      getURL: (url) => `chrome-extension://test/${url}`,
+      sendMessage: async (message) => {
+        offscreenMessages.emit(message);
+      }
+    },
+    offscreen: withOffscreen ? { createDocument: async () => {} } : undefined
+  };
+  const context = vm.createContext({
+    console,
+    Promise,
+    Map,
+    Error,
+    setTimeout,
+    clearTimeout,
+    chrome: swChrome,
+    importScripts(...scripts) {
+      for (const script of scripts) {
+        assert.equal(script, '../common/protocol.js');
+        vm.runInContext(protocolSource, context, { filename: script });
+      }
+    }
+  });
+  vm.runInContext(workerSource, context, { filename: 'service-worker.js' });
+
+  const port = {
+    name: 'bso-runtime-v1',
+    onMessage: event(),
+    onDisconnect: event(),
+    postMessage(...args) { portMessages.push(args); },
+    disconnect() { this.onDisconnect.emit(); }
+  };
+  swConnect.emit(port);
+  return { port, portMessages };
+}
+
+// Keep this source assertion independent of Chrome so a broken package cannot
+// pass Node-only tests while omitting the offscreen document entrypoint.
+test('packed source includes a local offscreen document and fixture analyzer', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/offscreen.html'), 'utf8');
+  assert.match(html, /fixture-model\.js/);
+  assert.match(html, /analyzer\.js/);
+  assert.match(html, /offscreen\.js/);
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'src/extension/manifest.json'), 'utf8'));
+  assert.equal(manifest.permissions.includes('offscreen'), true);
+  assert.equal(manifest.message_serialization, 'structured_clone');
+  assert.equal(manifest.minimum_chrome_version, '148');
+  const packedHtmlPath = path.join(__dirname, '..', 'dist/offscreen/offscreen.html');
+  if (fs.existsSync(packedHtmlPath)) {
+    assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /fixture-model\.js/);
+    assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/analyzer.js')), true);
+  }
+});
+
+test('offscreen fixture probe returns deterministic local results with capability state', async () => {
+  const sent = [];
+  const onMessage = event();
+  const chrome = {
+    runtime: {
+      onMessage,
+      sendMessage: async (message) => { sent.push(message); }
+    }
+  };
+  loadOffscreen(chrome);
+  const start = protocol.createSessionStart({
+    sessionId: 'probe-session',
+    pageUrl: 'https://www.youtube.com/watch?v=fixture',
+    capabilities: { capture: 'request-video-frame-callback', transferableFrames: true }
+  });
+  onMessage.emit(start);
+  await waitForWork();
+  const sample = protocol.createFrameSample({
+    sessionId: 'probe-session',
+    requestId: 'probe-session:1',
+    mediaTime: 12.5,
+    capturedAt: 100,
+    width: 2,
+    height: 2,
+    frame: frame()
+  });
+  onMessage.emit(sample.message);
+  await waitForWork();
+  await waitForWork();
+
+  const result = sent.find((message) => message.type === protocol.TYPES.ANALYZER_RESULT);
+  assert.ok(result);
+  assert.equal(result.requestId, 'probe-session:1');
+  assert.equal(result.mediaTime, 12.5);
+  assert.equal(result.analyzer, 'fixture-probe-v1');
+  assert.equal(result.analyzerIdentity.runtimeIntegrationTest, true);
+  assert.equal(result.analyzerIdentity.productionModel, false);
+  assert.equal(result.capabilities.offscreen, true);
+  assert.equal(result.capabilities.inference, true);
+  assert.equal(result.result.kind, 'runtime-integration-probe');
+  assert.equal(result.result.productionModel, false);
+  assert.equal(result.result.probe.checksum, 1466837309);
+  assert.equal(result.result.probe.sampledPixels, 4);
+});
+
+test('service worker relays start, ImageBitmap sample, result, and ordered end marker', async () => {
+  const harness = createServiceWorkerHarness();
+  const { port, portMessages } = harness;
+  const session = protocol.createSessionStart({
+    sessionId: 'round-trip',
+    pageUrl: 'https://www.youtube.com/watch?v=fixture',
+    capabilities: { capture: 'request-video-frame-callback', transferableFrames: true }
+  });
+  port.onMessage.emit(session);
+  await waitForWork();
+  port.onMessage.emit(protocol.createFrameSample({
+    sessionId: 'round-trip',
+    requestId: 'round-trip:1',
+    mediaTime: 4.25,
+    capturedAt: 10,
+    width: 2,
+    height: 2,
+    frame: frame()
+  }).message);
+  await waitForWork();
+  await waitForWork();
+  const result = portMessages.find(([message]) => message.type === protocol.TYPES.ANALYZER_RESULT);
+  assert.ok(result);
+  assert.equal(result[0].requestId, 'round-trip:1');
+  assert.equal(result[0].mediaTime, 4.25);
+  assert.equal(result[0].analyzer, 'fixture-probe-v1');
+  assert.equal(result[0].capabilities.offscreen, true);
+
+  port.onMessage.emit(protocol.createSessionEnd({ sessionId: 'round-trip', reason: 'test-complete' }));
+  await waitForWork();
+  await waitForWork();
+  const resultIndex = portMessages.findIndex(([message]) => message.type === protocol.TYPES.ANALYZER_RESULT);
+  const endedIndex = portMessages.findIndex(([message]) => message.type === protocol.TYPES.RUNTIME_STATUS && message.phase === 'ended');
+  assert.ok(resultIndex >= 0);
+  assert.ok(endedIndex > resultIndex);
+});
+
+test('service worker reports explicit fallback when offscreen is unavailable', async () => {
+  const harness = createServiceWorkerHarness({ withOffscreen: false });
+  const session = protocol.createSessionStart({ sessionId: 'fallback-session', capabilities: { capture: 'timer-fallback' } });
+  harness.port.onMessage.emit(session);
+  await waitForWork();
+  await waitForWork();
+  const report = harness.portMessages.find(([message]) => message.type === protocol.TYPES.CAPABILITY_REPORT);
+  const status = harness.portMessages.find(([message]) => message.type === protocol.TYPES.RUNTIME_STATUS);
+  assert.equal(report[0].capabilities.offscreen, false);
+  assert.equal(report[0].capabilities.inference, false);
+  assert.equal(report[0].capabilities.analyzer, 'none');
+  assert.equal(status[0].phase, 'fallback');
+  assert.match(status[0].reason, /offscreen/);
+});

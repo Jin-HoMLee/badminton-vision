@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node build.mjs",
     "test": "node --test test/*.test.js",
+    "runtime-smoke": "npm run build && node --test test/runtime-integration.test.js test/capture-backpressure.test.js",
     "check": "npm run build && npm test"
   }
 }

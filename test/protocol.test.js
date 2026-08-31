@@ -42,6 +42,8 @@ test('analyzer result carries media time and the explicit stale policy', () => {
   assert.equal(result.type, protocol.TYPES.ANALYZER_RESULT);
   assert.equal(result.mediaTime, 4);
   assert.equal(result.inferenceAvailable, false);
+  assert.equal(result.analyzerIdentity, 'mock');
+  assert.deepEqual(result.capabilities, {});
   assert.equal(result.stalePolicy.name, 'media-time-watermark');
   assert.equal(protocol.isAnalyzerResult(result), true);
 });
