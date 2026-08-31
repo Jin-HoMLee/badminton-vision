@@ -62,6 +62,7 @@ const expectedFiles = [
   "design-system/assets/logo-mark.svg",
   "design-system/tokens/base.css",
   "design-system/tokens/colors.css",
+  "design-system/tokens/fonts.css",
   "design-system/tokens/elevation.css",
   "design-system/tokens/motion.css",
   "design-system/tokens/spacing.css",
@@ -93,6 +94,7 @@ test("production build contains only local runtime design-system assets", async 
   assert.equal(manifest.action.default_icon["32"], "design-system/assets/icon-32.svg");
   assert.equal(manifest.icons["16"], "design-system/assets/icon-16.svg");
   assert.equal(manifest.icons["32"], "design-system/assets/icon-32.svg");
+  assert.equal(manifest.web_accessible_resources.some((entry) => entry.resources.includes("design-system/tokens/*")), true);
 
   const cssFiles = (await listFiles(dist)).filter((file) => file.endsWith(".css"));
   const textFiles = await Promise.all((await listFiles(dist)).map(async (file) => ({
@@ -116,6 +118,8 @@ test("production build contains only local runtime design-system assets", async 
   assert.equal((await listFiles(dist)).includes("manifest.runtime.json"), false);
   assert.equal((await listFiles(dist)).includes("content/overlay.js"), false);
   assert.match(await readFile(join(dist, "design-system/tokens/typography.css"), "utf8"), /Space Grotesk/);
+  assert.match(await readFile(join(dist, "design-system/tokens/fonts.css"), "utf8"), /system-ui/);
+  assert.doesNotMatch(await readFile(join(dist, "design-system/tokens/fonts.css"), "utf8"), /(?:@import|@font-face|https?:\/\/)/i);
   assert.doesNotMatch(await readFile(join(dist, "design-system/tokens/typography.css"), "utf8"), /@import/i);
   assert.match(await readFile(join(dist, "content.js"), "utf8"), /data-bso-frame-transport/);
   assert.match(await readFile(join(dist, "content.js"), "utf8"), /data-bso-court-seeding/);

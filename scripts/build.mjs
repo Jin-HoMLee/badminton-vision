@@ -63,6 +63,7 @@ const runtimeFiles = [
   ["offscreen/offscreen.js", "offscreen/offscreen.js"]
 ];
 const designSystemFiles = [
+  "tokens/fonts.css",
   "tokens/base.css",
   "tokens/colors.css",
   "tokens/elevation.css",
@@ -137,6 +138,16 @@ for (const file of required) {
 const contentScripts = manifest.content_scripts?.flatMap((entry) => entry.js || []) || [];
 for (const file of contentScripts) {
   if (!required.includes(file)) throw new Error(`Manifest content script is not packaged: ${file}`);
+}
+const cssImportPattern = /@import\s+(?:url\(\s*["']([^"']+)["']\s*\)|["']([^"']+)["'])\s*;/g;
+for (const file of required.filter((entry) => entry.endsWith(".css"))) {
+  const css = await readFile(join(dist, file), "utf8");
+  for (const match of css.matchAll(cssImportPattern)) {
+    const imported = match[1] || match[2];
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(imported)) continue;
+    const importedPath = join(dirname(join(dist, file)), imported);
+    try { await stat(importedPath); } catch { throw new Error(`Missing CSS import from ${file}: ${imported}`); }
+  }
 }
 const offscreenHtml = await readFile(join(dist, "offscreen/offscreen.html"), "utf8");
 for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "lite-runtime-loader.js", "lite-openpose-adapter.js", "shuttle-tracking-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {

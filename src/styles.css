@@ -1,3 +1,4 @@
+@import url("./design-system/tokens/fonts.css");
 @import url("./design-system/tokens/colors.css");
 @import url("./design-system/tokens/typography.css");
 @import url("./design-system/tokens/spacing.css");
@@ -5,10 +6,18 @@
 @import url("./design-system/tokens/motion.css");
 @import url("./design-system/tokens/base.css");
 
-:root {
+:root, :host {
   --font-display: "Space Grotesk", "Space Grotesk Fallback", system-ui, sans-serif;
   --font-sans: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:host {
+  display: block;
+  color: var(--text-body);
+  background: transparent;
+  font: var(--type-body);
+  -webkit-font-smoothing: antialiased;
 }
 
 html { background: var(--ink-900); }
