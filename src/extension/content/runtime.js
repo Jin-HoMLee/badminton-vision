@@ -1,4 +1,4 @@
-/* global globalThis, BSOProtocol, BSOSynchronization, BSOCapabilities, BSOCapture, BSOOverlay, BSOVideoDiscovery */
+/* global globalThis, BSOProtocol, BSOSynchronization, BSOCapabilities, BSOFrameTransport, BSOCapture, BSOOverlay, BSOVideoDiscovery */
 (function installRuntime(root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -56,9 +56,10 @@
         return false;
       }
       try {
-        // Chrome MV3 runtime ports do not expose MessagePort's transfer-list
-        // argument. Chrome 148+'s structured-clone opt-in in manifest.json
-        // keeps ImageBitmap snapshots intact, although the hop may copy them.
+        // Runtime ports do not provide a transferable-list contract that is
+        // safe to assume on stable Chrome. The selected frame transport sends
+        // plain RGBA data there; an explicitly structured-clone-capable
+        // channel may still use the ImageBitmap branch.
         if (!transferables.length || this.supportsTransferList) {
           this.port.postMessage(message, transferables);
         } else {
@@ -122,9 +123,9 @@
       this.onRuntimeView = onRuntimeView;
       this.bridge = bridge || new RuntimeBridge({
         chromeApi,
-        // The extension Port API has no transfer-list parameter. The manifest
-        // opts into structured-clone messaging so the ImageBitmap remains a
-        // real frame object on Chrome versions that support this slice.
+        // Stable Chrome receives the serializable RGBA frame selected by the
+        // content runtime. This bridge still accepts the ImageBitmap branch
+        // for an explicitly structured-clone-capable channel.
         supportsTransferList: false,
         onMessage: (message) => this.handleMessage(message),
         onStatus: (status) => this.handleBridgeStatus(status)
@@ -191,9 +192,17 @@
       video.addEventListener('loadedmetadata', this.metadataListener);
       const captureCapability = BSOCapabilities.detectCapture(video, globalThis);
       const offscreenAvailable = Boolean(this.chrome && this.chrome.offscreen && typeof this.chrome.offscreen.createDocument === 'function');
+      const frameTransport = BSOFrameTransport && typeof BSOFrameTransport.selectTransport === 'function'
+        ? BSOFrameTransport.selectTransport(this.chrome)
+        : 'image-bitmap';
       const capabilities = {
         capture: captureCapability.mode,
-        transferableFrames: typeof globalThis.ImageBitmap === 'function' || typeof globalThis.VideoFrame === 'function',
+        // Stable Chrome uses the serializable RGBA fallback unless the
+        // manifest explicitly opts into structured-clone messaging on a
+        // channel that supports it. ImageBitmap remains the capture source in
+        // both paths; only the message payload changes.
+        transferableFrames: frameTransport === 'image-bitmap' && (typeof globalThis.ImageBitmap === 'function' || typeof globalThis.VideoFrame === 'function'),
+        frameTransport,
         offscreen: offscreenAvailable,
         inference: false,
         analyzer: 'pending',
@@ -206,7 +215,11 @@
         sendSample: (message, transferables) => this.bridge.sendFrameSample(message, transferables),
         onMediaTime: (mediaTime, metadata) => this.handleMediaTime(mediaTime, metadata),
         onStatus: (status) => this.handleCaptureStatus(status),
-        environment: globalThis
+        environment: globalThis,
+        frameTransport,
+        prepareFrame: BSOFrameTransport && typeof BSOFrameTransport.prepareFrame === 'function'
+          ? (frame) => BSOFrameTransport.prepareFrame(frame, { mode: frameTransport, environment: globalThis })
+          : null
       });
       this.capture.start();
       if (reason === 'video-replaced') this.handleNavigation('video-replaced');
@@ -288,7 +301,8 @@
       if (!this.overlay) return;
       if (status.type === 'capture-capability') {
         const label = status.mode === 'request-video-frame-callback' ? 'frame callback capture' : status.mode;
-        this.overlay.setStatus(status.mode === 'unavailable' ? 'Fallback' : 'Starting', label);
+        const transport = status.frameTransport ? ` · ${status.frameTransport}` : '';
+        this.overlay.setStatus(status.mode === 'unavailable' ? 'Fallback' : 'Starting', label + transport);
       } else if (status.type === 'capture-error') {
         this.overlay.setStatus('Fallback', status.message);
       }

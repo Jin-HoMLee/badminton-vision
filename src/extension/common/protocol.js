@@ -92,8 +92,9 @@
   /**
    * Return a wire message and the object(s) that must be transferred with it.
    * ImageBitmap and VideoFrame are intentionally kept out of JSON/base64. A
-   * transport may use the returned transferables when it supports a transfer
-   * list; the runtime fixture analyzer consumes the snapshot locally.
+   * structured-clone transport may use the returned transferables; stable
+   * Chrome supplies a bounded plain RGBA frame instead. The runtime fixture
+   * analyzer consumes either snapshot locally.
    */
   function createFrameSample({
     sessionId,
@@ -121,7 +122,7 @@
       frameFormat,
       frame
     };
-    return { message, transferables: [frame] };
+    return { message, transferables: frameFormat === 'image-bitmap' ? [frame] : [] };
   }
 
   function createAnalyzerResult({
@@ -170,7 +171,8 @@
     analyzer = 'none',
     fallbacks = [],
     reason = '',
-    transport = 'mv3-runtime-messaging'
+    transport = 'mv3-runtime-messaging',
+    frameTransport = 'unknown'
   }) {
     return {
       ...base(TYPES.CAPABILITY_REPORT, sessionId),
@@ -180,7 +182,8 @@
         offscreen: Boolean(offscreen),
         inference: Boolean(inference),
         analyzer,
-        transport
+        transport,
+        frameTransport
       },
       fallbacks: Array.isArray(fallbacks) ? fallbacks : [],
       reason,
@@ -209,7 +212,8 @@
     return hasBase(message, TYPES.FRAME_SAMPLE) && nonEmptyString(message.requestId) &&
       finite(message.mediaTime) && message.mediaTime >= 0 && finite(message.capturedAt) &&
       isObject(message.dimensions) && Number.isInteger(message.dimensions.width) && message.dimensions.width > 0 &&
-      Number.isInteger(message.dimensions.height) && message.dimensions.height > 0 && isObject(message.frame);
+      Number.isInteger(message.dimensions.height) && message.dimensions.height > 0 && isObject(message.frame) &&
+      (!message.frameFormat || typeof message.frameFormat === 'string');
   }
 
   function isTrackingEnvelope(value) {

@@ -1,9 +1,9 @@
-/* global globalThis, BSOProtocol */
+/* global globalThis, BSOProtocol, BSOFrameTransport */
 (function installCapabilities(root, factory) {
-  const api = factory(root.BSOProtocol);
+  const api = factory(root.BSOProtocol, root.BSOFrameTransport);
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.BSOCapabilities = api;
-}(typeof globalThis === 'object' ? globalThis : self, function capabilitiesFactory(protocol) {
+}(typeof globalThis === 'object' ? globalThis : self, function capabilitiesFactory(protocol, frameTransportApi) {
   'use strict';
 
   function detectCapture(video, environment = globalThis) {
@@ -20,10 +20,14 @@
     const fallbacks = [];
     if (capture.fallback) fallbacks.push(capture.fallback);
     if (!offscreen) fallbacks.push('offscreen-document-unavailable');
+    const frameTransport = frameTransportApi && typeof frameTransportApi.selectTransport === 'function'
+      ? frameTransportApi.selectTransport(chromeApi)
+      : 'image-bitmap';
     return protocol.createCapabilityReport({
       sessionId: 'capability-probe',
       capture: capture.mode,
-      transferableFrames: typeof environment.ImageBitmap === 'function' || typeof environment.VideoFrame === 'function',
+      transferableFrames: frameTransport === 'image-bitmap' && (typeof environment.ImageBitmap === 'function' || typeof environment.VideoFrame === 'function'),
+      frameTransport,
       offscreen,
       inference: false,
       analyzer: 'none',

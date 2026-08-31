@@ -34,6 +34,7 @@ const runtimeFiles = [
   ["common/player-tracking.js", "common/player-tracking.js"],
   ["common/capabilities.js", "common/capabilities.js"],
   ["common/synchronization.js", "common/synchronization.js"],
+  ["common/frame-transport.js", "common/frame-transport.js"],
   ["content/overlay.js", "content/overlay.js"],
   ["content/capture.js", "content/capture.js"],
   ["content/video-discovery.js", "content/video-discovery.js"],
@@ -102,8 +103,8 @@ for (const file of designSystemFiles) await copyFile(join(designSystem, file), j
 
 const manifest = JSON.parse(await readFile(join(dist, "manifest.json"), "utf8"));
 if (manifest.manifest_version !== 3 || manifest.background?.service_worker !== "background/service-worker.js" ||
-    !manifest.permissions?.includes("offscreen") || manifest.message_serialization !== "structured_clone") {
-  throw new Error("manifest.json is not the canonical complete MV3 manifest");
+    !manifest.permissions?.includes("offscreen") || Object.hasOwn(manifest, "message_serialization")) {
+  throw new Error("manifest.json is not the canonical stable-channel MV3 manifest");
 }
 const required = [
   ...uiFiles,

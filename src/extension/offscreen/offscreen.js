@@ -33,8 +33,10 @@ function unknownTracking(sample, reason) {
 
 /**
  * The default analyzer is a committed, deterministic runtime fixture. It
- * proves that an ImageBitmap can cross the MV3 boundary and be read locally;
- * it is deliberately not a production player/shuttle CV model.
+ * proves that a captured frame can cross the MV3 boundary and be read locally
+ * (ImageBitmap on an explicitly structured-clone-capable channel or bounded
+ * RGBA data on stable Chrome); it is deliberately not a production
+ * player/shuttle CV model.
  */
 class MockAnalyzer {
   async analyze(sample) {
@@ -105,7 +107,8 @@ function capabilityState(input = {}, { inference = input.capture !== 'unavailabl
     offscreen: true,
     inference: Boolean(inference),
     analyzer: analyzerId(),
-    transport: 'mv3-runtime-messaging'
+    transport: 'mv3-runtime-messaging',
+    frameTransport: input.frameTransport || 'unknown'
   };
 }
 
@@ -152,6 +155,7 @@ async function handleSessionStart(message) {
       offscreen: true,
       inference: input.capture !== 'unavailable',
       analyzer: analyzerId(),
+      frameTransport: input.frameTransport || 'unknown',
       fallbacks: ['runtime-integration-probe-not-production-cv'].concat(input.capture === 'unavailable' ? ['capture-unavailable'] : []),
       reason: 'A deterministic local fixture is active; production CV is not bundled.'
     }));

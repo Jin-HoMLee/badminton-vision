@@ -45,10 +45,50 @@ test('timer fallback captures ImageBitmap samples and reports bounded backpressu
   assert.equal(statuses.some((status) => status.status === 'backpressure'), true);
   resolveBitmap(frame);
   await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
   capture.stop();
   assert.equal(sent.length, 1);
   assert.equal(sent[0][0].frameFormat, 'image-bitmap');
   assert.deepEqual(sent[0][1], [frame]);
+});
+
+test('stable transport fallback sends serializable pixels and releases the source bitmap', async () => {
+  let callback;
+  const sent = [];
+  const statuses = [];
+  const sourceFrame = { width: 640, height: 360, close() { this.closed = true; } };
+  const video = {
+    currentTime: 3,
+    videoWidth: 640,
+    videoHeight: 360,
+    requestVideoFrameCallback(fn) { callback = fn; return 1; }
+  };
+  const capture = new VideoCapture({
+    video,
+    sessionId: 'stable-session',
+    sendSample: (...args) => sent.push(args),
+    onStatus: (status) => statuses.push(status),
+    environment: { createImageBitmap: async () => sourceFrame },
+    frameTransport: 'rgba-array-v1',
+    prepareFrame: async (frame) => ({
+      frame: { width: 2, height: 1, data: [1, 2, 3, 255, 4, 5, 6, 255] },
+      frameFormat: 'rgba-array-v1',
+      transferables: [],
+      releaseSource: true
+    }),
+    minWallIntervalMs: 0,
+    minMediaIntervalSeconds: 0
+  });
+  capture.start();
+  callback(100, { mediaTime: 3.1, width: 640, height: 360 });
+  await tick();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0][0].frameFormat, 'rgba-array-v1');
+  assert.deepEqual(sent[0][1], []);
+  assert.equal(sourceFrame.closed, true);
+  assert.equal(statuses[0].frameTransport, 'rgba-array-v1');
+  capture.stop();
 });
 
 test('queued frame callback cannot mutate playback or create a second in-flight bitmap', async () => {
