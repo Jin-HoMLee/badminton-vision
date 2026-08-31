@@ -27,6 +27,21 @@ test("public setup journey keeps minimal density and exposes reversible states",
   assert.equal(current.labeling, false);
 });
 
+test("court instruction position is video-local, normalized, and safely reset", async () => {
+  const state = await stateModule();
+  const videoA = state.videoKeyForUrl("https://www.youtube.com/watch?v=alpha");
+  const videoB = state.videoKeyForUrl("https://www.youtube.com/watch?v=beta");
+  let current = state.initialExtensionState({ videoKey: videoA, seedCardPosition: { x: 0.42, y: 0.18 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(current.seedCardPosition)), { x: 0.42, y: 0.18 });
+  current = state.reduceExtensionState(current, { type: "SET_SEED_CARD_POSITION", position: { x: 3, y: -1 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(current.seedCardPosition)), { x: 1, y: 0 });
+  const reset = state.resetVideoLocalState(current, videoB);
+  assert.equal(reset.videoKey, videoB);
+  assert.equal(reset.seedCardPosition, null);
+  assert.equal(state.reduceExtensionState(current, { type: "RESET_COURT" }).seedCardPosition, null);
+  assert.equal(state.reduceExtensionState(current, { type: "CAMERA_CUT" }).seedCardPosition, null);
+});
+
 test("video-local calibration state persists for one video and resets on navigation", async () => {
   const state = await stateModule();
   const videoA = state.videoKeyForUrl("https://www.youtube.com/watch?v=alpha");

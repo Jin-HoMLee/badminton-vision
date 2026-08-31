@@ -42,6 +42,7 @@
         "analysis.js",
         "analysis-primitives.js",
         "calibration.js",
+        "seed-card.js",
         "fixtures.js",
         "state.js",
         "ui.js",
