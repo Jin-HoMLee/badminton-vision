@@ -4,10 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const protocol = require('../src/extension/common/protocol.js');
+const tracking = require('../src/extension/common/player-tracking.js');
 const protocolSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/common/protocol.js'), 'utf8');
 const trackingSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/common/player-tracking.js'), 'utf8');
 const analyzerSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/analyzer.js'), 'utf8');
 const modelSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/fixture-model.js'), 'utf8');
+const moveNetSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/movenet-adapter.js'), 'utf8');
 const offscreenSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/offscreen.js'), 'utf8');
 const workerSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/background/service-worker.js'), 'utf8');
 
@@ -44,6 +46,7 @@ function loadOffscreen(chrome) {
   vm.runInContext(protocolSource, context, { filename: 'protocol.js' });
   vm.runInContext(trackingSource, context, { filename: 'player-tracking.js' });
   vm.runInContext(modelSource, context, { filename: 'fixture-model.js' });
+  vm.runInContext(moveNetSource, context, { filename: 'movenet-adapter.js' });
   vm.runInContext(analyzerSource, context, { filename: 'analyzer.js' });
   vm.runInContext(offscreenSource, context, { filename: 'offscreen.js' });
   return context;
@@ -113,6 +116,7 @@ function createServiceWorkerHarness({ withOffscreen = true } = {}) {
 test('packed source includes a local offscreen document and fixture analyzer', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/offscreen.html'), 'utf8');
   assert.match(html, /fixture-model\.js/);
+  assert.match(html, /movenet-adapter\.js/);
   assert.match(html, /player-tracking\.js/);
   assert.match(html, /analyzer\.js/);
   assert.match(html, /offscreen\.js/);
@@ -127,7 +131,9 @@ test('packed source includes a local offscreen document and fixture analyzer', (
   const packedHtmlPath = path.join(__dirname, '..', 'dist/offscreen/offscreen.html');
   if (fs.existsSync(packedHtmlPath)) {
     assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /fixture-model\.js/);
+    assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /movenet-adapter\.js/);
     assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/analyzer.js')), true);
+    assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/movenet-adapter.js')), true);
     assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/background/service-worker.js')), true);
   }
 });
@@ -186,6 +192,64 @@ test('offscreen fixture probe returns deterministic local results with capabilit
   assert.equal(result.result.shuttle.state, 'unknown');
   assert.equal(result.result.probe.checksum, 1466837309);
   assert.equal(result.result.probe.sampledPixels, 4);
+});
+
+test('offscreen scheduler coalesces pending frames, drops stale samples, and closes every bitmap', async () => {
+  const sent = [];
+  const onMessage = event();
+  const chrome = {
+    runtime: {
+      onMessage,
+      sendMessage: async (message) => { sent.push(message); }
+    }
+  };
+  const context = loadOffscreen(chrome);
+  let release;
+  const firstAnalysis = new Promise((resolve) => { release = resolve; });
+  const analyzed = [];
+  context.BSOOffscreenAnalyzer.setAnalyzer({
+    identity: { id: 'test-analyzer', version: 1, kind: 'test', runtimeIntegrationTest: true, productionModel: false },
+    async analyze(message) {
+      analyzed.push(message.requestId);
+      if (message.requestId === 'scheduler:1') await firstAnalysis;
+      return protocol.createAnalyzerResult({
+        sessionId: message.sessionId,
+        requestId: message.requestId,
+        mediaTime: message.mediaTime,
+        analyzer: 'test-analyzer',
+        analyzerIdentity: this.identity,
+        inferenceAvailable: true,
+        result: { state: 'unknown', players: [], tracking: tracking.unknownTrackingResult({
+          sessionId: message.sessionId, requestId: message.requestId, mediaTime: message.mediaTime,
+          reason: 'test'
+        }) }
+      });
+    }
+  });
+  const session = protocol.createSessionStart({ sessionId: 'scheduler', capabilities: { capture: 'timer-fallback', frameTransport: 'rgba-array-v1' } });
+  onMessage.emit(session);
+  await waitForWork();
+  const first = frame();
+  const pending = frame();
+  const newest = frame();
+  onMessage.emit(protocol.createFrameSample({ sessionId: 'scheduler', requestId: 'scheduler:1', mediaTime: 1, capturedAt: 1, width: 2, height: 2, frame: first, frameFormat: 'rgba-array-v1' }).message);
+  await waitForWork();
+  onMessage.emit(protocol.createFrameSample({ sessionId: 'scheduler', requestId: 'scheduler:2', mediaTime: 2, capturedAt: 2, width: 2, height: 2, frame: pending, frameFormat: 'rgba-array-v1' }).message);
+  onMessage.emit(protocol.createFrameSample({ sessionId: 'scheduler', requestId: 'scheduler:3', mediaTime: 3, capturedAt: 3, width: 2, height: 2, frame: newest, frameFormat: 'rgba-array-v1' }).message);
+  assert.equal(pending.closed, true);
+  release();
+  await waitForWork();
+  await waitForWork();
+  assert.deepEqual(analyzed, ['scheduler:1', 'scheduler:3']);
+  assert.equal(first.closed, true);
+  assert.equal(newest.closed, true);
+  const stale = frame();
+  onMessage.emit(protocol.createFrameSample({ sessionId: 'scheduler', requestId: 'scheduler:stale', mediaTime: 3, capturedAt: 4, width: 2, height: 2, frame: stale, frameFormat: 'rgba-array-v1' }).message);
+  assert.equal(stale.closed, true);
+  assert.deepEqual(analyzed, ['scheduler:1', 'scheduler:3']);
+  onMessage.emit(protocol.createSessionEnd({ sessionId: 'scheduler', reason: 'test-complete' }));
+  await waitForWork();
+  assert.equal(sent.some((message) => message.type === protocol.TYPES.RUNTIME_STATUS && message.phase === 'ended'), true);
 });
 
 test('service worker relays start, serializable frame sample, result, and ordered end marker', async () => {
