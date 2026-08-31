@@ -1,4 +1,4 @@
-/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter */
+/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter, BSOLiteOpenPoseAdapter */
 'use strict';
 
 const ANALYZER_FALLBACK = 'fixture-probe-v1';
@@ -71,15 +71,17 @@ class MockAnalyzer {
   }
 }
 
-const ProductionAnalyzer = globalThis.BSOMoveNetAdapter && globalThis.tf &&
+const ProductionAnalyzer = globalThis.BSOLiteOpenPoseAdapter &&
+  globalThis.BSOLiteOpenPoseAdapter.LiteOpenPoseAnalyzer;
+const MoveNetAnalyzer = globalThis.BSOMoveNetAdapter && globalThis.tf &&
   globalThis.BSOMoveNetAdapter.MoveNetMultiPoseLightningAnalyzer;
 const FixtureAnalyzer = globalThis.BSOFixtureAnalyzer && globalThis.BSOFixtureAnalyzer.FixtureProbeAnalyzer;
-// The adapter is shipped as a seam, but its TensorFlow.js runtime and model
-// are intentionally absent until the weight license is cleared. Node/runtime
-// harnesses retain the deterministic fixture, so plumbing tests never claim CV
-// detections.
+// The cleared local LiteRT analyzer is the only production selection. The
+// deterministic fixture is retained for diagnostics/tests when the local
+// production script is absent; it is never silently substituted after a model
+// or backend failure, which keeps capability identity honest.
 let activeAnalyzer = ProductionAnalyzer
-  ? new ProductionAnalyzer({ tf: globalThis.tf, environment: globalThis })
+  ? new ProductionAnalyzer({ environment: globalThis })
   : FixtureAnalyzer ? new FixtureAnalyzer() : new MockAnalyzer();
 const sessions = new Map();
 const sessionQueues = new Map();
@@ -125,7 +127,8 @@ function capabilityState(input = {}, { inference = input.capture !== 'unavailabl
 globalThis.BSOOffscreenAnalyzer = Object.freeze({
   MockAnalyzer,
   FixtureProbeAnalyzer: FixtureAnalyzer,
-  MoveNetMultiPoseLightningAnalyzer: ProductionAnalyzer,
+  MoveNetMultiPoseLightningAnalyzer: MoveNetAnalyzer,
+  LiteOpenPoseAnalyzer: ProductionAnalyzer,
   setAnalyzer,
   getActiveAnalyzer: () => activeAnalyzer
 });
@@ -174,15 +177,22 @@ async function handleSessionStart(message) {
     const fallbacks = (initialized.fallbacks || []).slice();
     if (activeAnalyzer.identity?.runtimeIntegrationTest) fallbacks.push('runtime-integration-probe-not-production-cv');
     if (input.capture === 'unavailable') fallbacks.push('capture-unavailable');
-    const reason = initialized.reason || (activeAnalyzer.identity?.runtimeIntegrationTest
-      ? 'A deterministic local fixture is active; production CV is not bundled.' : 'Local MoveNet inference is active.');
+    const reason = inference
+      ? (activeAnalyzer.identity?.runtimeIntegrationTest
+        ? 'A deterministic local fixture is active; production CV is not bundled.'
+        : activeAnalyzer.identity?.productionModel
+          ? 'Cleared local Lightweight OpenPose inference is active.'
+          : 'Local analyzer is active.')
+      : initialized.reason || (input.capture === 'unavailable'
+        ? 'Frame capture is unavailable; production inference did not run.'
+        : 'Local production inference is unavailable; playback is unaffected.');
     await send(BSOProtocol.createCapabilityReport({
       sessionId: message.sessionId,
       capture: input.capture || 'unknown',
       transferableFrames: Boolean(input.transferableFrames),
       offscreen: true,
       inference,
-      analyzer: analyzerId(),
+      analyzer: inference ? analyzerId() : 'none',
       frameTransport: input.frameTransport || 'unknown',
       fallbacks: Array.from(new Set(fallbacks)),
       reason
@@ -192,8 +202,10 @@ async function handleSessionStart(message) {
       phase: inference ? 'ready' : 'fallback',
       message: inference ? (activeAnalyzer.identity?.runtimeIntegrationTest
         ? 'Local runtime integration probe ready; not production CV.'
-        : 'Local MoveNet MultiPose Lightning ready.') : 'Local inference unavailable; playback is unaffected.',
-      capabilities: capabilityState(input, { inference }),
+        : activeAnalyzer.identity?.productionModel
+          ? 'Local Lightweight OpenPose pose inference ready.'
+          : 'Local analyzer ready.') : 'Local inference unavailable; playback is unaffected.',
+      capabilities: capabilityState(input, { inference, analyzer: inference ? analyzerId() : 'none' }),
       reason
     }));
   });
@@ -208,7 +220,10 @@ async function reportFrameStatus(session, phase, message, reason) {
     sessionId: session.sessionId,
     phase,
     message,
-    capabilities: capabilityState(session.capabilities, { inference: phase !== 'fallback' }),
+    capabilities: capabilityState(session.capabilities, {
+      inference: phase !== 'fallback',
+      analyzer: phase === 'fallback' ? 'none' : analyzerId()
+    }),
     reason
   }));
 }
