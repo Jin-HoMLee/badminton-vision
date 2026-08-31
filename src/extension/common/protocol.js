@@ -60,7 +60,7 @@
    * Return a wire message and the object(s) that must be transferred with it.
    * ImageBitmap and VideoFrame are intentionally kept out of JSON/base64. A
    * transport may use the returned transferables when it supports a transfer
-   * list; the mock analyzer only needs the metadata.
+   * list; the runtime fixture analyzer consumes the snapshot locally.
    */
   function createFrameSample({
     sessionId,
@@ -98,11 +98,16 @@
     analyzedAt = Date.now(),
     status = 'ok',
     analyzer = 'mock',
+    analyzerIdentity = analyzer,
     inferenceAvailable = false,
+    capabilities = {},
+    capabilityState = capabilities,
     result = { shotFamily: 'unclassified', confidence: 0, geometryConfidence: 0 }
   }) {
     if (!nonEmptyString(requestId)) throw new TypeError('requestId must be a non-empty string');
     if (!finite(mediaTime) || mediaTime < 0) throw new TypeError('mediaTime must be a non-negative number');
+    if (!nonEmptyString(analyzer)) throw new TypeError('analyzer must be a non-empty string');
+    const state = isObject(capabilityState) ? capabilityState : {};
     return {
       ...base(TYPES.ANALYZER_RESULT, sessionId),
       requestId,
@@ -110,7 +115,13 @@
       analyzedAt,
       status,
       analyzer,
+      analyzerIdentity,
       inferenceAvailable: Boolean(inferenceAvailable),
+      // Results carry the capability snapshot that was true when they were
+      // produced. This keeps a late result from being mistaken for a current
+      // production-model result after a fallback or session change.
+      capabilities: state,
+      capabilityState: state,
       result,
       stalePolicy: STALE_RESULT_POLICY
     };
@@ -124,7 +135,8 @@
     inference = false,
     analyzer = 'none',
     fallbacks = [],
-    reason = ''
+    reason = '',
+    transport = 'mv3-runtime-messaging'
   }) {
     return {
       ...base(TYPES.CAPABILITY_REPORT, sessionId),
@@ -133,7 +145,8 @@
         transferableFrames: Boolean(transferableFrames),
         offscreen: Boolean(offscreen),
         inference: Boolean(inference),
-        analyzer
+        analyzer,
+        transport
       },
       fallbacks: Array.isArray(fallbacks) ? fallbacks : [],
       reason,
@@ -167,7 +180,8 @@
 
   function isAnalyzerResult(message) {
     return hasBase(message, TYPES.ANALYZER_RESULT) && nonEmptyString(message.requestId) &&
-      finite(message.mediaTime) && message.mediaTime >= 0 && isObject(message.result);
+      finite(message.mediaTime) && message.mediaTime >= 0 && nonEmptyString(message.analyzer) &&
+      isObject(message.result) && isObject(message.capabilities || message.capabilityState);
   }
 
   function isCapabilityReport(message) {

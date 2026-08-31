@@ -16,9 +16,11 @@
       environment = globalThis,
       minWallIntervalMs = 250,
       minMediaIntervalSeconds = 0.1,
-      fallbackIntervalMs = 250
+      fallbackIntervalMs = 250,
+      maxInFlight = 1
     } = {}) {
       if (!video || !sessionId) throw new TypeError('video and sessionId are required');
+      if (!Number.isInteger(maxInFlight) || maxInFlight < 1) throw new TypeError('maxInFlight must be a positive integer');
       this.video = video;
       this.sessionId = sessionId;
       this.sendSample = sendSample;
@@ -28,6 +30,7 @@
       this.minWallIntervalMs = minWallIntervalMs;
       this.minMediaIntervalSeconds = minMediaIntervalSeconds;
       this.fallbackIntervalMs = fallbackIntervalMs;
+      this.maxInFlight = maxInFlight;
       this.active = false;
       this.mode = 'unavailable';
       this.callbackHandle = null;
@@ -35,7 +38,10 @@
       this.sampleNumber = 0;
       this.lastSampleWall = -Infinity;
       this.lastSampleMediaTime = -Infinity;
+      this.inFlightCount = 0;
       this.inFlight = false;
+      this.captureGeneration = 0;
+      this.backpressureNotified = false;
     }
 
     start() {
@@ -54,14 +60,16 @@
 
     stop() {
       this.active = false;
+      this.captureGeneration += 1;
       if (this.fallbackTimer !== null) {
-        clearTimeout(this.fallbackTimer);
+        const clear = this.environment.clearTimeout || clearTimeout;
+        clear(this.fallbackTimer);
         this.fallbackTimer = null;
       }
       // requestVideoFrameCallback has no cancellation API. The active/video
-      // checks in the callback make a queued callback harmless.
+      // and generation checks in the callback make a queued callback harmless.
       this.callbackHandle = null;
-      this.inFlight = false;
+      this.backpressureNotified = false;
     }
 
     scheduleVideoFrameCallback() {
@@ -84,7 +92,8 @@
 
     scheduleFallbackCapture() {
       if (!this.active || this.mode !== 'timer-fallback') return;
-      this.fallbackTimer = setTimeout(() => {
+      const schedule = this.environment.setTimeout || setTimeout;
+      this.fallbackTimer = schedule(() => {
         this.fallbackTimer = null;
         const mediaTime = Number.isFinite(this.video.currentTime) ? this.video.currentTime : null;
         if (mediaTime !== null) {
@@ -97,7 +106,20 @@
     }
 
     maybeCapture(mediaTime, wallTime, metadata) {
-      if (!this.active || this.inFlight) return;
+      if (!this.active) return;
+      if (this.inFlightCount >= this.maxInFlight) {
+        if (!this.backpressureNotified) {
+          this.backpressureNotified = true;
+          this.onStatus({
+            type: 'capture-status',
+            status: 'backpressure',
+            inFlight: this.inFlightCount,
+            maxInFlight: this.maxInFlight,
+            message: 'Frame sample held back while the local analyzer is busy'
+          });
+        }
+        return;
+      }
       if (mediaTime + 1e-4 < this.lastSampleMediaTime) {
         this.lastSampleMediaTime = -Infinity;
         this.lastSampleWall = -Infinity;
@@ -116,9 +138,11 @@
         this.onStatus({ type: 'capture-error', message: 'Video dimensions are unavailable' });
         return;
       }
+      this.inFlightCount += 1;
       this.inFlight = true;
+      const generation = this.captureGeneration;
       Promise.resolve(this.environment.createImageBitmap(this.video)).then((frame) => {
-        if (!this.active || this.mode === 'unavailable') {
+        if (!this.active || generation !== this.captureGeneration || this.mode === 'unavailable') {
           if (frame && typeof frame.close === 'function') frame.close();
           return;
         }
@@ -129,17 +153,21 @@
           mediaTime,
           // rVFC's `now` is monotonic; capturedAt is wall-clock metadata.
           capturedAt: Date.now(),
-          width,
-          height,
-          frame
+          width: Number.isInteger(frame.width) && frame.width > 0 ? frame.width : width,
+          height: Number.isInteger(frame.height) && frame.height > 0 ? frame.height : height,
+          frame,
+          frameFormat: 'image-bitmap'
         });
         this.lastSampleWall = wallTime;
         this.lastSampleMediaTime = mediaTime;
-        this.sendSample(sample.message, sample.transferables);
+        const delivered = this.sendSample(sample.message, sample.transferables);
+        if (delivered === false && frame && typeof frame.close === 'function') frame.close();
+        this.backpressureNotified = false;
       }).catch((error) => {
         this.onStatus({ type: 'capture-error', message: error instanceof Error ? error.message : String(error) });
       }).finally(() => {
-        this.inFlight = false;
+        this.inFlightCount = Math.max(0, this.inFlightCount - 1);
+        this.inFlight = this.inFlightCount > 0;
       });
     }
   }

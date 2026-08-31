@@ -7,16 +7,24 @@
   'use strict';
 
   class RuntimeBridge {
-    constructor({ chromeApi = globalThis.chrome, onMessage = () => {}, onStatus = () => {} } = {}) {
+    constructor({
+      chromeApi = globalThis.chrome,
+      onMessage = () => {},
+      onStatus = () => {},
+      supportsTransferList = true
+    } = {}) {
       this.chrome = chromeApi;
       this.onMessage = onMessage;
       this.onStatus = onStatus;
+      this.supportsTransferList = supportsTransferList;
+      this.transferFallbackReported = false;
       this.port = null;
       this.sessionId = null;
     }
 
     start(sessionId, capabilities) {
       this.sessionId = sessionId;
+      this.transferFallbackReported = false;
       if (!this.chrome || !this.chrome.runtime || typeof this.chrome.runtime.connect !== 'function') {
         this.onStatus({ type: 'bridge-unavailable', reason: 'runtime-connect-unavailable' });
         return false;
@@ -48,12 +56,29 @@
         return false;
       }
       try {
-        // The second argument is honored by transfer-capable transports. It is
-        // deliberately explicit so a future direct MessagePort can avoid a
-        // pixel-copy; Chrome runtime ports may report a fallback instead.
-        this.port.postMessage(message, transferables);
+        // Chrome MV3 runtime ports do not expose MessagePort's transfer-list
+        // argument. Chrome 148+'s structured-clone opt-in in manifest.json
+        // keeps ImageBitmap snapshots intact, although the hop may copy them.
+        if (!transferables.length || this.supportsTransferList) {
+          this.port.postMessage(message, transferables);
+        } else {
+          this.port.postMessage(message);
+          if (!this.transferFallbackReported) {
+            this.transferFallbackReported = true;
+            this.onStatus({ type: 'frame-transport-fallback', reason: 'mv3-runtime-port-uses-structured-clone' });
+          }
+        }
         return true;
       } catch (error) {
+        if (transferables.length) {
+          try {
+            this.port.postMessage(message);
+            this.onStatus({ type: 'frame-transport-fallback', reason: error instanceof Error ? error.message : String(error) });
+            return true;
+          } catch (_) {
+            // Fall through to the explicit transport error below.
+          }
+        }
         this.onStatus({ type: 'frame-transport-error', reason: error instanceof Error ? error.message : String(error) });
         return false;
       }
@@ -89,7 +114,15 @@
       this.window = windowRef;
       this.chrome = chromeApi;
       this.overlay = overlay;
-      this.bridge = bridge || new RuntimeBridge({ chromeApi, onMessage: (message) => this.handleMessage(message), onStatus: (status) => this.handleBridgeStatus(status) });
+      this.bridge = bridge || new RuntimeBridge({
+        chromeApi,
+        // The extension Port API has no transfer-list parameter. The manifest
+        // opts into structured-clone messaging so the ImageBitmap remains a
+        // real frame object on Chrome versions that support this slice.
+        supportsTransferList: false,
+        onMessage: (message) => this.handleMessage(message),
+        onStatus: (status) => this.handleBridgeStatus(status)
+      });
       this.discovery = null;
       this.video = null;
       this.capture = null;
@@ -157,7 +190,8 @@
         transferableFrames: typeof globalThis.ImageBitmap === 'function' || typeof globalThis.VideoFrame === 'function',
         offscreen: offscreenAvailable,
         inference: false,
-        analyzer: 'pending'
+        analyzer: 'pending',
+        transport: 'mv3-runtime-messaging'
       };
       this.bridge.start(this.sessionId, capabilities);
       this.capture = new BSOCapture.VideoCapture({
@@ -216,9 +250,12 @@
     }
 
     applyCapabilities(capabilities, fallbacks = [], reason = '') {
-      const label = capabilities.inference ? (capabilities.analyzer || 'inference ready') : 'mock analyzer';
+      const analyzer = capabilities.analyzer || 'none';
+      const label = analyzer === 'fixture-probe-v1'
+        ? 'runtime integration probe (not production CV)'
+        : (capabilities.inference ? analyzer : 'local analyzer unavailable');
       const fallback = fallbacks.length ? ` · ${fallbacks.join(', ')}` : '';
-      if (this.overlay) this.overlay.setStatus('Ready', `${label}${fallback}${reason ? ` · ${reason}` : ''}`);
+      if (this.overlay) this.overlay.setStatus(capabilities.inference ? 'Ready' : 'Fallback', `${label}${fallback}${reason ? ` · ${reason}` : ''}`);
     }
 
     handleBridgeStatus(status) {
@@ -227,6 +264,7 @@
         'bridge-unavailable': 'offscreen bridge unavailable',
         'bridge-disconnected': 'runtime disconnected',
         'frame-transport-error': 'frame transfer unavailable',
+        'frame-transport-fallback': 'ImageBitmap copied by MV3 structured-clone transport',
         'frame-rejected': 'frame sample rejected'
       };
       this.overlay.setStatus('Fallback', messages[status.type] || status.reason || 'runtime fallback');

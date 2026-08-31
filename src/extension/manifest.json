@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "Badminton Stats Overlay (runtime)",
   "version": "0.1.0",
-  "minimum_chrome_version": "116",
+  "minimum_chrome_version": "148",
+  "message_serialization": "structured_clone",
   "description": "A local-first runtime foundation for timestamp-synchronized badminton video analysis.",
   "permissions": [
     "offscreen"

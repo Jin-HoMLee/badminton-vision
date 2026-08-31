@@ -6,9 +6,10 @@ global.BSOCapabilities = {
   detectCapture(video, environment) {
     return {
       mode: typeof video.requestVideoFrameCallback === 'function' && typeof environment.createImageBitmap === 'function'
-        ? 'request-video-frame-callback' : 'unavailable',
-      available: true,
-      fallback: null
+        ? 'request-video-frame-callback'
+        : typeof environment.createImageBitmap === 'function' ? 'timer-fallback' : 'unavailable',
+      available: typeof environment.createImageBitmap === 'function',
+      fallback: typeof video.requestVideoFrameCallback === 'function' ? null : 'requestVideoFrameCallback-unavailable'
     };
   }
 };
