@@ -23,7 +23,9 @@ retired. Runtime modules remain under `src/extension/`, but are copied by the
 canonical build only when referenced by the root manifest.
 
 Requires Node.js 20 or newer and Chrome 148 or newer with MV3
-offscreen-document and structured-clone messaging support. In Chrome, open
+offscreen-document support. Stable Chrome uses the serializable RGBA frame
+fallback described below; structured-clone messaging is an optional channel
+capability and is not declared in the public manifest. In Chrome, open
 `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and
 select this repository's `dist/` directory. Navigate to a YouTube `watch`
 page. The extension discovers a video automatically; no player control is
@@ -169,6 +171,7 @@ own discovery and capture. The content runtime:
 - observes the YouTube SPA and DOM for the current `HTMLVideoElement`;
 - uses `requestVideoFrameCallback` when available and reads `mediaTime`, dimensions, and playback rate;
 - throttles frame copies by wall-clock/media time and creates a real `ImageBitmap` snapshot;
+- uses `rgba-array-v1` on stable Chrome, downsampling the captured bitmap to at most 4096 pixels before messaging; a channel that explicitly supports structured clone may retain the `image-bitmap` path;
 - limits pending `createImageBitmap` operations with an explicit one-sample default (`maxInFlight`), reports backpressure, and never builds an unbounded queue;
 - the offscreen scheduler allows one active inference and one newest pending frame, closes coalesced/stale bitmaps, and drops older work;
 - reports `timer-fallback` when `requestVideoFrameCallback` is unavailable, and `unavailable` when frame copying is unavailable;
@@ -198,16 +201,18 @@ The message types are:
 - `runtime.session.start` / `runtime.session.end`: video-local lifecycle;
 - `capture.frame.sample`: `{ requestId, mediaTime, capturedAt, dimensions, frameFormat, frame }`;
 - `analysis.result`: `{ requestId, mediaTime, analyzedAt, status, analyzer, analyzerIdentity, inferenceAvailable, capabilities, capabilityState, result }`;
-- `runtime.capabilities`: capture/offscreen/transferable-frame/inference capabilities and fallbacks;
+- `runtime.capabilities`: capture/frame-transport/offscreen/transferable-frame/inference capabilities and fallbacks;
 - `runtime.status`: human-readable lifecycle and fallback status.
 
-`createFrameSample()` returns `{ message, transferables }`. The frame is an
-`ImageBitmap` (or a compatible transferable frame object), never a base64
-image. Chrome MV3 runtime ports have no transfer-list parameter, so the
-manifest opts into Chrome 148+'s structured-clone messaging and the bridge
-reports that the hop may copy the bitmap. The service-worker relay preserves
+`createFrameSample()` returns `{ message, transferables }`. The preferred
+capture primitive is an `ImageBitmap`, never a base64 image. On stable Chrome,
+`common/frame-transport.js` converts it to a bounded plain RGBA object before
+MV3 JSON messaging, avoiding the silent `{}` conversion that would otherwise
+make the offscreen frame unreadable. A channel that explicitly reports
+`message_serialization: "structured_clone"` may send the bitmap with the
+existing `transferables` contract. The service-worker relay preserves
 the message shape across the offscreen boundary. The default offscreen analyzer is `fixture-probe-v1`:
-it reads the local bitmap through a canvas and runs a deterministic sampled-RGB
+it reads the local frame pixels (through a canvas for the bitmap path) and runs a deterministic sampled-RGB
 checksum fixture. Results identify themselves as `runtime-integration-probe`,
 set `runtimeIntegrationTest: true` and `productionModel: false`, and remain
 explicitly unclassified. This is not a production player or shuttle CV model;
@@ -227,11 +232,13 @@ The renderer never waits for inference and never seeks to catch up. Playback-rat
 
 ## Capability/fallback states
 
-The runtime reports capture mode, offscreen availability, analyzer name,
-inference availability, and fallback reasons. The expected ready state is
-`analyzer: "fixture-probe-v1"` and `inference: true`, with the explicit
+The runtime reports capture mode, frame transport, offscreen availability,
+analyzer name, inference availability, and fallback reasons. The expected
+stable ready state is `frameTransport: "rgba-array-v1"`,
+`analyzer: "fixture-probe-v1"`, and `inference: true`, with the explicit
 fallback `runtime-integration-probe-not-production-cv`; this is a local
 plumbing signal, not a model-quality claim. Missing offscreen support reports
 `analyzer: "none"` and `inference: false`. Missing frame-copy support,
-disconnected runtime ports, invalid protocol messages, and analyzer errors
-are visible in the UI status surfaces while playback remains untouched.
+serialization canvas support, disconnected runtime ports, invalid protocol
+messages, and analyzer errors are visible in the UI status surfaces while
+playback remains untouched.

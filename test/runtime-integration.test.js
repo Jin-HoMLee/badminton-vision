@@ -123,10 +123,11 @@ test('packed source includes a local offscreen document and fixture analyzer', (
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
   assert.equal(manifest.background.service_worker, 'background/service-worker.js');
   assert.equal(manifest.permissions.includes('offscreen'), true);
-  assert.equal(manifest.message_serialization, 'structured_clone');
+  assert.equal(Object.hasOwn(manifest, 'message_serialization'), false);
   assert.equal(manifest.minimum_chrome_version, '148');
   assert.equal(manifest.content_scripts[0].js.includes('content.js'), true);
   assert.equal(manifest.content_scripts[0].js.includes('content/runtime.js'), true);
+  assert.equal(manifest.content_scripts[0].js.includes('common/frame-transport.js'), true);
   const packedHtmlPath = path.join(__dirname, '..', 'dist/offscreen/offscreen.html');
   if (fs.existsSync(packedHtmlPath)) {
     assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /fixture-model\.js/);
@@ -150,7 +151,7 @@ test('offscreen fixture probe returns deterministic local results with capabilit
   const start = protocol.createSessionStart({
     sessionId: 'probe-session',
     pageUrl: 'https://www.youtube.com/watch?v=fixture',
-    capabilities: { capture: 'request-video-frame-callback', transferableFrames: true }
+    capabilities: { capture: 'request-video-frame-callback', transferableFrames: false, frameTransport: 'rgba-array-v1' }
   });
   onMessage.emit(start);
   await waitForWork();
@@ -161,7 +162,8 @@ test('offscreen fixture probe returns deterministic local results with capabilit
     capturedAt: 100,
     width: 2,
     height: 2,
-    frame: frame()
+    frame: frame(),
+    frameFormat: 'rgba-array-v1'
   });
   onMessage.emit(sample.message);
   await waitForWork();
@@ -176,6 +178,7 @@ test('offscreen fixture probe returns deterministic local results with capabilit
   assert.equal(result.analyzerIdentity.productionModel, false);
   assert.equal(result.capabilities.offscreen, true);
   assert.equal(result.capabilities.inference, true);
+  assert.equal(result.capabilities.frameTransport, 'rgba-array-v1');
   assert.equal(result.result.kind, 'runtime-integration-probe');
   assert.equal(result.result.productionModel, false);
   assert.equal(result.result.state, 'partial');
@@ -223,16 +226,16 @@ test('offscreen scheduler coalesces pending frames, drops stale samples, and clo
       });
     }
   });
-  const session = protocol.createSessionStart({ sessionId: 'scheduler', capabilities: { capture: 'timer-fallback' } });
+  const session = protocol.createSessionStart({ sessionId: 'scheduler', capabilities: { capture: 'timer-fallback', frameTransport: 'rgba-array-v1' } });
   onMessage.emit(session);
   await waitForWork();
   const first = frame();
   const pending = frame();
   const newest = frame();
-  onMessage.emit(protocol.createFrameSample({ sessionId: 'scheduler', requestId: 'scheduler:1', mediaTime: 1, capturedAt: 1, width: 2, height: 2, frame: first }).message);
+  onMessage.emit(protocol.createFrameSample({ sessionId: 'scheduler', requestId: 'scheduler:1', mediaTime: 1, capturedAt: 1, width: 2, height: 2, frame: first, frameFormat: 'rgba-array-v1' }).message);
   await waitForWork();
-  onMessage.emit(protocol.createFrameSample({ sessionId: 'scheduler', requestId: 'scheduler:2', mediaTime: 2, capturedAt: 2, width: 2, height: 2, frame: pending }).message);
-  onMessage.emit(protocol.createFrameSample({ sessionId: 'scheduler', requestId: 'scheduler:3', mediaTime: 3, capturedAt: 3, width: 2, height: 2, frame: newest }).message);
+  onMessage.emit(protocol.createFrameSample({ sessionId: 'scheduler', requestId: 'scheduler:2', mediaTime: 2, capturedAt: 2, width: 2, height: 2, frame: pending, frameFormat: 'rgba-array-v1' }).message);
+  onMessage.emit(protocol.createFrameSample({ sessionId: 'scheduler', requestId: 'scheduler:3', mediaTime: 3, capturedAt: 3, width: 2, height: 2, frame: newest, frameFormat: 'rgba-array-v1' }).message);
   assert.equal(pending.closed, true);
   release();
   await waitForWork();
@@ -241,7 +244,7 @@ test('offscreen scheduler coalesces pending frames, drops stale samples, and clo
   assert.equal(first.closed, true);
   assert.equal(newest.closed, true);
   const stale = frame();
-  onMessage.emit(protocol.createFrameSample({ sessionId: 'scheduler', requestId: 'scheduler:stale', mediaTime: 3, capturedAt: 4, width: 2, height: 2, frame: stale }).message);
+  onMessage.emit(protocol.createFrameSample({ sessionId: 'scheduler', requestId: 'scheduler:stale', mediaTime: 3, capturedAt: 4, width: 2, height: 2, frame: stale, frameFormat: 'rgba-array-v1' }).message);
   assert.equal(stale.closed, true);
   assert.deepEqual(analyzed, ['scheduler:1', 'scheduler:3']);
   onMessage.emit(protocol.createSessionEnd({ sessionId: 'scheduler', reason: 'test-complete' }));
@@ -249,13 +252,13 @@ test('offscreen scheduler coalesces pending frames, drops stale samples, and clo
   assert.equal(sent.some((message) => message.type === protocol.TYPES.RUNTIME_STATUS && message.phase === 'ended'), true);
 });
 
-test('service worker relays start, ImageBitmap sample, result, and ordered end marker', async () => {
+test('service worker relays start, serializable frame sample, result, and ordered end marker', async () => {
   const harness = createServiceWorkerHarness();
   const { port, portMessages } = harness;
   const session = protocol.createSessionStart({
     sessionId: 'round-trip',
     pageUrl: 'https://www.youtube.com/watch?v=fixture',
-    capabilities: { capture: 'request-video-frame-callback', transferableFrames: true }
+    capabilities: { capture: 'request-video-frame-callback', transferableFrames: false, frameTransport: 'rgba-array-v1' }
   });
   port.onMessage.emit(session);
   await waitForWork();
@@ -266,7 +269,8 @@ test('service worker relays start, ImageBitmap sample, result, and ordered end m
     capturedAt: 10,
     width: 2,
     height: 2,
-    frame: frame()
+    frame: frame(),
+    frameFormat: 'rgba-array-v1'
   }).message);
   await waitForWork();
   await waitForWork();
@@ -276,6 +280,7 @@ test('service worker relays start, ImageBitmap sample, result, and ordered end m
   assert.equal(result[0].mediaTime, 4.25);
   assert.equal(result[0].analyzer, 'fixture-probe-v1');
   assert.equal(result[0].capabilities.offscreen, true);
+  assert.equal(result[0].capabilities.frameTransport, 'rgba-array-v1');
 
   port.onMessage.emit(protocol.createSessionEnd({ sessionId: 'round-trip', reason: 'test-complete' }));
   await waitForWork();

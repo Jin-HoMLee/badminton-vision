@@ -33,8 +33,9 @@ function unknownTracking(sample, reason) {
 
 /**
  * The fixture remains available to Node integration harnesses. The browser
- * package selects the local MoveNet adapter below; no UI or capture code
- * knows which analyzer is active.
+ * package selects the local MoveNet adapter when its explicitly vendored
+ * runtime is present; no UI or capture code knows which analyzer is active.
+ * Stable Chrome's serializable RGBA path is accepted by either analyzer.
  */
 class MockAnalyzer {
   async analyze(sample) {
@@ -114,7 +115,8 @@ function capabilityState(input = {}, { inference = input.capture !== 'unavailabl
     offscreen: Boolean(offscreen),
     inference: Boolean(inference),
     analyzer,
-    transport: 'mv3-runtime-messaging'
+    transport: 'mv3-runtime-messaging',
+    frameTransport: input.frameTransport || 'unknown'
   };
 }
 
@@ -181,6 +183,7 @@ async function handleSessionStart(message) {
       offscreen: true,
       inference,
       analyzer: analyzerId(),
+      frameTransport: input.frameTransport || 'unknown',
       fallbacks: Array.from(new Set(fallbacks)),
       reason
     }));

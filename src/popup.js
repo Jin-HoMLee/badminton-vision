@@ -64,6 +64,15 @@
     var runtimeStale = Boolean(state.stale || runtimeStatus && runtimeStatus.stale);
     var runtimeReady = Boolean(runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer === "fixture-probe-v1");
     var courtSeeded = Boolean(state.seeded && state.calibration && state.seedPoints && state.seedPoints.length === 4);
+    root.setAttribute("data-bso-popup", "true");
+    root.setAttribute("data-bso-youtube-detected", String(Boolean(detected)));
+    root.setAttribute("data-bso-enabled", String(Boolean(state.enabled)));
+    root.setAttribute("data-bso-court-state", courtSeeded ? "seeded" : state.seeding ? "seeding" : "not-seeded");
+    root.setAttribute("data-bso-runtime-phase", runtimeStatus && runtimeStatus.phase || (state.enabled ? "starting" : "idle"));
+    root.setAttribute("data-bso-runtime-analyzer", runtimeStatus && runtimeStatus.analyzer || "none");
+    root.setAttribute("data-bso-inference", String(Boolean(runtimeStatus && runtimeStatus.inference)));
+    root.setAttribute("data-bso-frame-transport", runtimeStatus && runtimeStatus.frameTransport || "unknown");
+    root.setAttribute("data-bso-fallback", runtimeFallback ? (runtimeStatus.reason || "runtime-fallback") : "none");
     trackers[0].note = courtSeeded ? "seeded" : "not seeded";
     trackers[0].health = courtSeeded ? "ok" : "degraded";
     var header = ui.el("header", { className: "bv-popup-header" }, [ui.el("span", { className: "bv-logo" }, [ui.el("img", { src: "design-system/assets/logo-mark.svg", alt: "" }), ui.el("strong", { className: "bv-logo-name" }, ["Badminton Vision"])]), ui.el("span", { className: "bv-popup-head-actions" }, [ui.iconButton("settings", "Settings", { size: "sm", disabled: true }), ui.iconButton("x", "Close", { size: "sm", onClick: closePopup })])]);
@@ -86,7 +95,10 @@
 
     var primaryLabel = state.enabled ? "Back to the match" : "Turn on — step 1 of 3";
     var primary = ui.button(primaryLabel, { variant: "primary", full: true, icon: state.enabled ? "layout" : "play", disabled: !detected, onClick: function () { if (state.enabled) { closePopup(); return; } dispatch({ type: "ENABLE" }, { type: "ENABLE" }); closePopup(); } });
-    var actions = ui.el("div", { className: "bv-footer-actions" }, [primary, ui.el("div", { className: "bv-footer-row" }, [ui.button(courtSeeded ? "Set up court again" : "Set up court", { icon: "crosshair", onClick: function () { dispatch({ type: "START_SEED" }, { type: "START_SEED" }); closePopup(); } }), ui.button("Label it myself", { icon: "pencil", onClick: function () { dispatch({ type: "OPEN_LABELING" }, { type: "OPEN_LABELING" }); closePopup(); } })]), ui.button("See match summary · download data", { variant: "ghost", icon: "table", onClick: function () { openSummary(); closePopup(); } })]);
+    primary.setAttribute("data-bso-action", state.enabled ? "continue" : "enable");
+    var seedButton = ui.button(courtSeeded ? "Set up court again" : "Set up court", { icon: "crosshair", onClick: function () { dispatch({ type: "START_SEED" }, { type: "START_SEED" }); closePopup(); } });
+    seedButton.setAttribute("data-bso-action", "seed-court");
+    var actions = ui.el("div", { className: "bv-footer-actions" }, [primary, ui.el("div", { className: "bv-footer-row" }, [seedButton, ui.button("Label it myself", { icon: "pencil", onClick: function () { dispatch({ type: "OPEN_LABELING" }, { type: "OPEN_LABELING" }); closePopup(); } })]), ui.button("See match summary · download data", { variant: "ghost", icon: "table", onClick: function () { openSummary(); closePopup(); } })]);
     root.replaceChildren(header, intro, trackerSection, densitySection, panelSection, actions);
   }
 

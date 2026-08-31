@@ -244,3 +244,6 @@ through `src/calibration.js`; its normalized result is stored with the
 video-local extension state and rendered without changing the player.
 
 The supplied design system is copied to `design-system/`; see `design-system/PROVENANCE.md` for source and exclusions. `src/styles.css` imports its local color, type, spacing, elevation, motion, and base tokens. No server, credentials, model binary, or private endpoint is included.
+
+For a repeatable live-page smoke sequence using the captain's already-open
+Chrome, see [`docs/e2e-smoke.md`](docs/e2e-smoke.md).

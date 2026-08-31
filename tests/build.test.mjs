@@ -29,6 +29,7 @@ const expectedFiles = [
   "background/service-worker.js",
   "common/capabilities.js",
   "common/player-tracking.js",
+  "common/frame-transport.js",
   "common/protocol.js",
   "common/synchronization.js",
   "content/capture.js",
@@ -71,7 +72,7 @@ test("production build contains only local runtime design-system assets", async 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.background.service_worker, "background/service-worker.js");
   assert.equal(manifest.permissions.includes("offscreen"), true);
-  assert.equal(manifest.message_serialization, "structured_clone");
+  assert.equal(Object.hasOwn(manifest, "message_serialization"), false);
   assert.equal(manifest.action.default_icon["16"], "design-system/assets/icon-16.svg");
   assert.equal(manifest.action.default_icon["32"], "design-system/assets/icon-32.svg");
   assert.equal(manifest.icons["16"], "design-system/assets/icon-16.svg");
@@ -99,4 +100,7 @@ test("production build contains only local runtime design-system assets", async 
   assert.equal((await listFiles(dist)).includes("manifest.runtime.json"), false);
   assert.match(await readFile(join(dist, "design-system/tokens/typography.css"), "utf8"), /Space Grotesk/);
   assert.doesNotMatch(await readFile(join(dist, "design-system/tokens/typography.css"), "utf8"), /@import/i);
+  assert.match(await readFile(join(dist, "content.js"), "utf8"), /data-bso-frame-transport/);
+  assert.match(await readFile(join(dist, "content.js"), "utf8"), /data-bso-court-seeding/);
+  assert.match(await readFile(join(dist, "popup.js"), "utf8"), /data-bso-youtube-detected/);
 });
