@@ -37,7 +37,6 @@ const runtimeFiles = [
   ["common/capabilities.js", "common/capabilities.js"],
   ["common/synchronization.js", "common/synchronization.js"],
   ["common/frame-transport.js", "common/frame-transport.js"],
-  ["content/overlay.js", "content/overlay.js"],
   ["content/capture.js", "content/capture.js"],
   ["content/video-discovery.js", "content/video-discovery.js"],
   ["content/runtime.js", "content/runtime.js"],

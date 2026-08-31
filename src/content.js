@@ -8,6 +8,11 @@
   var calibrationApi = window.BVCalibration;
   var seedCardApi = window.BVSeedCard;
   var state = window.BVState.initialExtensionState();
+  // Popup actions can arrive while the initial storage read is still pending.
+  // Hold them until the stored video-local state is applied so hydration cannot
+  // overwrite a just-enabled live session and leave an empty overlay behind.
+  var storageHydrated = false;
+  var pendingMessages = [];
   // Fixture rows are only rendered after an explicit fixture-probe result is
   // received. A real session starts with no automatic stroke claims; manual
   // labels remain first-class and are merged into the current evidence.
@@ -1026,7 +1031,7 @@
     // same HTMLVideoElement for its next watch page.
     resetVideoLocalState("navigation");
   }
-  function handleMessage(message) {
+  function handleMessageAfterStorage(message) {
     if (!message) return;
     if (message.type === "START_SEED") {
       bindVideoState();
@@ -1064,7 +1069,32 @@
       persist(); render();
     }
   }
+  function handleMessage(message) {
+    if (!message) return;
+    if (!storageHydrated) {
+      pendingMessages.push(message);
+      return;
+    }
+    handleMessageAfterStorage(message);
+  }
+  function releasePendingMessages() {
+    storageHydrated = true;
+    var queued = pendingMessages;
+    pendingMessages = [];
+    queued.forEach(handleMessageAfterStorage);
+  }
+  function removeRetiredRuntimeOverlays() {
+    if (!document || typeof document.querySelectorAll !== "function") return;
+    document.querySelectorAll("[data-bso-runtime-overlay]").forEach(function (node) {
+      if (node && typeof node.remove === "function") node.remove();
+      else if (node && node.parentNode && typeof node.parentNode.removeChild === "function") node.parentNode.removeChild(node);
+    });
+  }
   function init() {
+    // An extension reload can leave the old plain-text runtime node in the
+    // page after its isolated world is invalidated. Remove that retired node
+    // before mounting the boxed design-system overlay.
+    removeRetiredRuntimeOverlays();
     host = document.createElement("div"); host.className = "bv-overlay-anchor"; host.setAttribute("data-badminton-vision", "overlay");
     host.style.position = "fixed"; host.style.zIndex = "2147483640"; host.style.pointerEvents = "none";
     shadow = host.attachShadow({ mode: "open" });
@@ -1087,9 +1117,14 @@
     if (hasChrome() && chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(handleMessage);
     if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState"], function (result) {
       applyStoredState(result && result.bvState ? result.bvState : state);
+      releasePendingMessages();
       render();
     });
-    else { applyStoredState(state); render(); }
+    else {
+      applyStoredState(state);
+      releasePendingMessages();
+      render();
+    }
   }
   init();
 })();

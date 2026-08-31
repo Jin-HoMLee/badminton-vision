@@ -62,12 +62,16 @@ extension internals from a page console.
 
 The toolbar action and native action popup are outside page CDP. They cannot
 be clicked by `chrome-devtools-axi`; use the normal toolbar action as the one
-manual step. The experimental CDP `Extensions.triggerAction` path is a
-separate test setup: the Chrome DevTools MCP extension category requires a
-pipe-launched isolated browser with `--categoryExtensions` (and unsafe
-extension debugging enabled), while the current dedicated browser is a
-`--remote-debugging-port` session. If a supervisor supplies that separate
-isolated test browser, MCP's `trigger_extension_action` or Puppeteer's
+manual step. The popup also recovers the common install/reload boundary: if the
+open YouTube tab has no content-script receiver, it injects the declared local
+YouTube content path before delivering the action. If that injection is denied,
+manually reload the same YouTube tab and click the toolbar action again. The
+experimental CDP `Extensions.triggerAction` path is a separate test setup: the
+Chrome DevTools MCP extension category requires a pipe-launched isolated browser
+with `--categoryExtensions` (and unsafe extension debugging enabled), while the
+current dedicated browser is a `--remote-debugging-port` session. If a
+supervisor supplies that separate isolated test browser, MCP's
+`trigger_extension_action` or Puppeteer's
 `Extensions.triggerAction({ id, targetId })` can exercise the action; do not
 change the product or attach that setup to the operator's browser. The
 current port session is therefore sufficient for manager/content-script

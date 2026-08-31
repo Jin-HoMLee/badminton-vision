@@ -15,7 +15,15 @@ test("popup exposes local actions and honest unavailable states", async () => {
   assert.match(popup, /Production inference unavailable/);
   assert.match(popup, /Open a YouTube watch page first/);
   assert.match(popup, /sendToTab\(message, onDone\)/);
+  assert.match(popup, /chrome\.scripting\.executeScript/);
   assert.match(popup, /chrome\.tabs\.create\(\{ url: summaryUrl\(origin\) \}, finish\)/);
+});
+
+test("the production runtime does not construct the retired plain-text overlay", async () => {
+  const runtime = await source("extension/content/runtime.js");
+  assert.match(runtime, /overlay = null/);
+  assert.match(runtime, /retired plain-text status layer/);
+  assert.doesNotMatch(runtime, /new BSOOverlay\\.OverlayAnchor/);
 });
 
 test("panel toggles and keyboard shortcuts are explicit and re-render safe", async () => {

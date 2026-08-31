@@ -20,6 +20,27 @@
     var write = chrome.storage.local.set({ bvState: state });
     if (write && typeof write.catch === "function") write.catch(function () {});
   }
+  function contentScriptFiles() {
+    if (!chromeAvailable() || !chrome.runtime || typeof chrome.runtime.getManifest !== "function") return [];
+    var manifest = chrome.runtime.getManifest();
+    var entry = (manifest.content_scripts || []).find(function (candidate) {
+      return Array.isArray(candidate.matches) && candidate.matches.some(function (match) { return match.indexOf("youtube.com/watch") >= 0; });
+    });
+    return entry && Array.isArray(entry.js) ? entry.js.slice() : [];
+  }
+  function injectContentScript(tabId, message, finish) {
+    if (!chrome.scripting || typeof chrome.scripting.executeScript !== "function") { finish(); return; }
+    var files = contentScriptFiles();
+    if (!files.length) { finish(); return; }
+    chrome.scripting.executeScript({ target: { tabId: tabId }, files: files }, function () {
+      var injectionError = chrome.runtime.lastError;
+      if (injectionError) { finish(); return; }
+      chrome.tabs.sendMessage(tabId, message, function () {
+        void chrome.runtime.lastError;
+        finish();
+      });
+    });
+  }
   function sendToTab(message, onDone) {
     var finish = typeof onDone === "function" ? onDone : function () {};
     if (!chromeAvailable() || !chrome.tabs) { finish(); return; }
@@ -27,7 +48,15 @@
       var tab = tabs && tabs[0];
       if (!tab || tab.id == null) { finish(); return; }
       chrome.tabs.sendMessage(tab.id, message, function () {
-        void chrome.runtime.lastError;
+        var sendError = chrome.runtime.lastError;
+        if (sendError) {
+          // Installing/reloading an unpacked extension does not inject its
+          // declared content scripts into an already-open YouTube tab. Make
+          // the first Live action repair that boundary instead of silently
+          // discarding the user's click.
+          injectContentScript(tab.id, message, finish);
+          return;
+        }
         finish();
       });
     });
