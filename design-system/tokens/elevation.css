@@ -1,4 +1,4 @@
-:root{
+:root,:host{
 /* Panels float over moving video, so elevation is mostly a dark spread + a hairline
    top highlight, never a soft grey drop shadow. */
 --shadow-chip:0 1px 2px rgba(0,0,0,.4);

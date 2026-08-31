@@ -1,4 +1,4 @@
-:root{
+:root,:host{
 --sp-1:2px;--sp-2:4px;--sp-3:6px;--sp-4:8px;--sp-5:12px;--sp-6:16px;--sp-7:20px;--sp-8:24px;--sp-9:32px;--sp-10:40px;--sp-11:56px;
 
 --radius-xs:3px;--radius-sm:5px;--radius-md:8px;--radius-lg:12px;--radius-xl:16px;--radius-pill:999px;

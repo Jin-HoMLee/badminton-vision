@@ -1,4 +1,4 @@
-:root{
+:root,:host{
 /* ---- Base neutrals: cool "broadcast ink". The product lives on top of video, so
    every surface is a dark, slightly blue-black glass. ---- */
 --ink-900:#0a0e11;--ink-800:#10161a;--ink-700:#161e23;--ink-600:#1e282e;--ink-500:#28343c;--ink-400:#38464f;
