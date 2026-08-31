@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const crypto = require('node:crypto');
 const protocol = require('../src/extension/common/protocol.js');
 const tracking = require('../src/extension/common/player-tracking.js');
 const protocolSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/common/protocol.js'), 'utf8');
@@ -10,6 +11,7 @@ const trackingSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension
 const analyzerSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/analyzer.js'), 'utf8');
 const modelSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/fixture-model.js'), 'utf8');
 const moveNetSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/movenet-adapter.js'), 'utf8');
+const liteOpenPoseSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/lite-openpose-adapter.js'), 'utf8');
 const offscreenSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/offscreen.js'), 'utf8');
 const workerSource = fs.readFileSync(path.join(__dirname, '..', 'src/extension/background/service-worker.js'), 'utf8');
 
@@ -34,7 +36,7 @@ function frame() {
   };
 }
 
-function loadOffscreen(chrome) {
+function loadOffscreen(chrome, { withProduction = false } = {}) {
   const context = vm.createContext({
     console,
     Promise,
@@ -47,6 +49,10 @@ function loadOffscreen(chrome) {
   vm.runInContext(trackingSource, context, { filename: 'player-tracking.js' });
   vm.runInContext(modelSource, context, { filename: 'fixture-model.js' });
   vm.runInContext(moveNetSource, context, { filename: 'movenet-adapter.js' });
+  if (withProduction) {
+    context.BSOLiteRuntimeReady = Promise.resolve({ loaded: true });
+    vm.runInContext(liteOpenPoseSource, context, { filename: 'lite-openpose-adapter.js' });
+  }
   vm.runInContext(analyzerSource, context, { filename: 'analyzer.js' });
   vm.runInContext(offscreenSource, context, { filename: 'offscreen.js' });
   return context;
@@ -117,9 +123,18 @@ test('packed source includes a local offscreen document and fixture analyzer', (
   const html = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/offscreen.html'), 'utf8');
   assert.match(html, /fixture-model\.js/);
   assert.match(html, /movenet-adapter\.js/);
+  assert.match(html, /lite-runtime-loader\.js/);
+  assert.match(html, /lite-openpose-adapter\.js/);
   assert.match(html, /player-tracking\.js/);
   assert.match(html, /analyzer\.js/);
   assert.match(html, /offscreen\.js/);
+  const modelPath = path.join(__dirname, '..', 'src/extension/offscreen/vendor/lite-openpose/pose_256.tflite');
+  const modelNotice = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/vendor/lite-openpose/MODEL-NOTICE.md'), 'utf8');
+  assert.ok(fs.statSync(modelPath).size > 1000000);
+  assert.equal(crypto.createHash('sha256').update(fs.readFileSync(modelPath)).digest('hex'), 'b5c200e7050f1e17884059bf3da72b14e842af555ad67a49f46a4a9b37aeb0cd');
+  assert.match(modelNotice, /Apache-2\.0/);
+  assert.match(modelNotice, /SHA-256/);
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/vendor/litert/LICENSE'), 'utf8'), /Apache License/);
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
   assert.equal(manifest.background.service_worker, 'background/service-worker.js');
   assert.equal(manifest.permissions.includes('offscreen'), true);
@@ -132,10 +147,21 @@ test('packed source includes a local offscreen document and fixture analyzer', (
   if (fs.existsSync(packedHtmlPath)) {
     assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /fixture-model\.js/);
     assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /movenet-adapter\.js/);
+    assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /lite-openpose-adapter\.js/);
     assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/analyzer.js')), true);
     assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/movenet-adapter.js')), true);
+    assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/lite-openpose-adapter.js')), true);
+    assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/vendor/lite-openpose/pose_256.tflite')), true);
+    assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/vendor/litert/litert_wasm_internal.wasm')), true);
     assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/background/service-worker.js')), true);
   }
+});
+
+test('offscreen selects the cleared local analyzer when its package script is present', () => {
+  const context = loadOffscreen({ runtime: {} }, { withProduction: true });
+  const analyzer = context.BSOOffscreenAnalyzer.getActiveAnalyzer();
+  assert.equal(analyzer.identity.id, 'lightweight-openpose-lite-256-v1');
+  assert.equal(analyzer.identity.productionModel, true);
 });
 
 test('offscreen fixture probe returns deterministic local results with capability state', async () => {

@@ -118,7 +118,11 @@
         update({
           phase: message.status === "fallback" ? "fallback" : "result",
           message: message.result && message.result.note ? message.result.note : "Local analyzer result received",
-          reason: message.result && message.result.productionModel === false ? "runtime-integration-probe" : "",
+          reason: message.result && message.result.runtimeIntegrationTest
+            ? "runtime-integration-probe"
+            : message.status === "fallback" && !message.inferenceAvailable
+              ? (message.result && message.result.reason) || "local-inference-unavailable"
+              : "",
           analyzer: message.analyzer || resultCapabilities.analyzer || "none",
           inference: Boolean(message.inferenceAvailable),
           capabilities: resultCapabilities,
