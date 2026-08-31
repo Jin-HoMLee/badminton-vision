@@ -8,7 +8,7 @@
   var trackers = [
     { id: "court", label: "Court", health: "degraded", note: "not seeded", on: true },
     { id: "players", label: "Players", health: "degraded", note: "unknown · fixture probe", on: true },
-    { id: "body", label: "Body pose", health: "unavailable", note: "not bundled", on: false },
+    { id: "body", label: "Body pose", health: "degraded", note: "starting · local pose model", on: true, disabled: false },
     { id: "shuttle", label: "Shuttle", health: "degraded", note: "unknown · fixture probe", on: true },
     { id: "score", label: "Score OCR", health: "degraded", note: "partial", on: true },
     { id: "racket", label: "Racket", health: "unavailable", note: "not in MVP", on: false, disabled: true }
@@ -20,25 +20,39 @@
     var write = chrome.storage.local.set({ bvState: state });
     if (write && typeof write.catch === "function") write.catch(function () {});
   }
-  function sendToTab(message) {
-    if (!chromeAvailable() || !chrome.tabs) return;
+  function sendToTab(message, onDone) {
+    var finish = typeof onDone === "function" ? onDone : function () {};
+    if (!chromeAvailable() || !chrome.tabs) { finish(); return; }
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       var tab = tabs && tabs[0];
-      if (!tab || tab.id == null) return;
-      chrome.tabs.sendMessage(tab.id, message, function () { void chrome.runtime.lastError; });
+      if (!tab || tab.id == null) { finish(); return; }
+      chrome.tabs.sendMessage(tab.id, message, function () {
+        void chrome.runtime.lastError;
+        finish();
+      });
     });
   }
-  function dispatch(action, message) {
+  function dispatch(action, message, onDone) {
     state = window.BVState.reduceExtensionState(state, action);
-    if (action.type === "START_SEED") state.seeding = true;
-    if (action.type === "OPEN_LABELING") state.labeling = true;
     persist();
-    sendToTab(message || { type: "STATE_UPDATE", state: state });
+    sendToTab(message || { type: "STATE_UPDATE", state: state }, onDone);
     render();
   }
+  function summaryUrl(originUrl) {
+    var url = chromeAvailable() && chrome.runtime ? chrome.runtime.getURL("summary.html") : "summary.html";
+    return originUrl ? url + "?from=" + encodeURIComponent(originUrl) : url;
+  }
   function openSummary() {
-    if (chromeAvailable() && chrome.tabs && chrome.runtime) chrome.tabs.create({ url: chrome.runtime.getURL("summary.html") });
-    else window.open("summary.html", "_blank");
+    var finish = function () { closePopup(); };
+    if (chromeAvailable() && chrome.tabs && chrome.runtime) {
+      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        var origin = tabs && tabs[0] && tabs[0].url;
+        chrome.tabs.create({ url: summaryUrl(origin) }, finish);
+      });
+    } else if (window.open) {
+      window.open(summaryUrl(window.location && window.location.href), "_blank");
+      finish();
+    } else finish();
   }
   function closePopup() { if (window.close) window.close(); }
   function isWatchPage(url) { return /^https?:\/\/(www\.)?youtube\.com\/watch(?:\?|$)/.test(url || ""); }
@@ -49,7 +63,7 @@
   function trackerRow(tracker) {
     var dotClass = tracker.disabled ? "off" : tracker.health === "degraded" ? "warn" : tracker.on ? "" : "off";
     var colorHealth = tracker.health === "degraded" ? "warn" : "";
-    var switchButton = ui.el("button", { className: "bv-mini-switch", type: "button", role: "switch", "aria-checked": tracker.on, disabled: tracker.disabled, "aria-label": "Toggle " + tracker.label, onClick: function () { tracker.on = !tracker.on; render(); } }, [ui.el("i")]);
+    var switchButton = ui.el("button", { className: "bv-mini-switch", type: "button", role: "switch", "aria-checked": tracker.on, disabled: tracker.disabled, title: tracker.disabled ? tracker.note : "Toggle " + tracker.label, "aria-label": "Toggle " + tracker.label, onClick: function () { dispatch({ type: "SET_TRACKER", tracker: tracker.id, value: !tracker.on }, { type: "SET_TRACKER", tracker: tracker.id, value: !tracker.on }); } }, [ui.el("i")]);
     return ui.el("div", { className: "bv-tracker-row" + (tracker.disabled ? " unavailable" : "") }, [ui.el("i", { className: "bv-tracker-dot " + dotClass }), ui.el("span", { className: "bv-tracker-label" }, [tracker.label]), ui.el("span", { className: "bv-tracker-meta" }, [ui.el("span", { className: "bv-tracker-note " + colorHealth }, [tracker.on ? tracker.note : "off"]), switchButton])]);
   }
   function panelToggle(label, description, key, disabled) {
@@ -58,6 +72,27 @@
 
   function render() {
     var fixture = window.BVFixtures;
+    var poseTracker = trackers.find(function (tracker) { return tracker.id === "body"; });
+    if (poseTracker) {
+      poseTracker.disabled = false;
+      poseTracker.health = "degraded";
+      poseTracker.note = "starting · local pose model";
+      if (runtimeStatus && runtimeStatus.phase === "fallback" && !runtimeStatus.inference) {
+        poseTracker.disabled = true;
+        poseTracker.on = false;
+        poseTracker.note = "unavailable · local pose runtime fallback";
+      } else if (runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer === "fixture-probe-v1") {
+        poseTracker.disabled = true;
+        poseTracker.on = false;
+        poseTracker.note = "unavailable · fixture has no pose model";
+      } else if (runtimeStatus && runtimeStatus.inference) {
+        poseTracker.health = "ok";
+        poseTracker.note = "local pose model";
+      }
+    }
+    trackers.forEach(function (tracker) {
+      if (state.trackerSettings && state.trackerSettings[tracker.id] != null && !tracker.disabled) tracker.on = Boolean(state.trackerSettings[tracker.id]);
+    });
     var trackerCount = trackers.filter(function (t) { return t.on; }).length;
     var degraded = trackers.some(function (t) { return t.on && t.health === "degraded"; });
     var runtimeFallback = runtimeStatus && (runtimeStatus.phase === "fallback" || runtimeStatus.inference === false && runtimeStatus.analyzer === "none");
@@ -75,11 +110,16 @@
     root.setAttribute("data-bso-fallback", runtimeFallback ? (runtimeStatus.reason || "runtime-fallback") : "none");
     trackers[0].note = courtSeeded ? "seeded" : "not seeded";
     trackers[0].health = courtSeeded ? "ok" : "degraded";
-    var header = ui.el("header", { className: "bv-popup-header" }, [ui.el("span", { className: "bv-logo" }, [ui.el("img", { src: "design-system/assets/logo-mark.svg", alt: "" }), ui.el("strong", { className: "bv-logo-name" }, ["Badminton Vision"])]), ui.el("span", { className: "bv-popup-head-actions" }, [ui.iconButton("settings", "Settings", { size: "sm", disabled: true }), ui.iconButton("x", "Close", { size: "sm", onClick: closePopup })])]);
+    var header = ui.el("header", { className: "bv-popup-header" }, [ui.el("span", { className: "bv-logo" }, [ui.el("img", { src: "design-system/assets/logo-mark.svg", alt: "" }), ui.el("strong", { className: "bv-logo-name" }, ["Badminton Vision"])]), ui.el("span", { className: "bv-popup-head-actions" }, [ui.iconButton("settings", "Settings unavailable in local demo", { size: "sm", disabled: true }), ui.iconButton("x", "Close", { size: "sm", onClick: closePopup })])]);
     var statusState = state.enabled ? (runtimeFallback || runtimeStale ? "stale" : "live") : "ready";
     var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : "Rally " + state.rally) : detected ? "Badminton match found" : "No YouTube match";
     var statusDetail = state.enabled ? (runtimeStale && runtimeStatus && Number.isFinite(runtimeStatus.ageSeconds) ? "+" + runtimeStatus.ageSeconds.toFixed(1) + "s" : runtimeReady ? "fixture probe · not production CV" : state.time) : null;
-    var intro = ui.el("div", { className: "bv-popup-intro" }, [ui.statusChip(statusState, statusLabel, statusDetail), ui.el("div", { className: "bv-detected" }, [ui.el("span", { className: "bv-detected-icon" }, [ui.icon(detected ? "check" : "info", 15)]), ui.el("span", { className: "bv-detected-copy" }, [ui.el("strong", {}, [detected ? fixture.video.title : "Open a YouTube match"]), ui.el("span", {}, [detected ? fixture.video.channel + " · " + fixture.video.duration : "Badminton Vision runs on youtube.com/watch pages only."])])]), !state.enabled && detected ? ui.callout("guide", "Three steps to get going", "Turn the overlay on, click the four court corners once, then keep watching — the video is never paused or moved.") : null, state.cameraCut ? ui.callout("warn", "Camera cut", "The court projection is stale. Re-seed the court; analysis stays paused while the video keeps playing.") : null]);
+    var backendNotice = runtimeFallback
+      ? ui.callout("warn", "Production inference unavailable", "This build could not start its local computer-vision runtime. Playback is unaffected and manual labeling remains available.")
+      : runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer !== "fixture-probe-v1"
+        ? ui.callout("guide", "Local pose runtime active", "Pose tracking stays on-device. Rally shots, shuttle paths, and this fixture summary remain a local integration/demo experience, not production CV.")
+        : ui.callout("guide", "Local fixture demo", "Any fixture result is an integration probe, not production CV. Nothing is uploaded; labels and corrections stay local.");
+    var intro = ui.el("div", { className: "bv-popup-intro" }, [ui.statusChip(statusState, statusLabel, statusDetail), ui.el("div", { className: "bv-detected" }, [ui.el("span", { className: "bv-detected-icon" }, [ui.icon(detected ? "check" : "info", 15)]), ui.el("span", { className: "bv-detected-copy" }, [ui.el("strong", {}, [detected ? fixture.video.title : "Open a YouTube match"]), ui.el("span", {}, [detected ? fixture.video.channel + " · " + fixture.video.duration : "Badminton Vision runs on youtube.com/watch pages only."])])]), !detected ? ui.callout("info", "Overlay unavailable here", "Open a youtube.com/watch page to use live overlay, court setup, or manual labeling. The summary remains available locally.") : backendNotice, !state.enabled && detected ? ui.callout("guide", "Three steps to get going", "Turn the overlay on, click the four court corners once, then keep watching — the video is never paused or moved.") : null, state.cameraCut ? ui.callout("warn", "Camera cut", "The court projection is stale. Re-seed the court; analysis stays paused while the video keeps playing.") : null]);
 
     var barNodes = trackers.map(function (t) { return ui.el("i", { className: t.on ? (t.health === "degraded" ? "warn" : "") : "off" }); });
     var trackerHeader = ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-4)" } }, ["What's being tracked", ui.el("span", { className: "bv-tracker-bars" }, barNodes)]);
@@ -93,12 +133,18 @@
     var densitySection = section(ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-3)" } }, ["How much to show", ui.infoTip("How much to show", "Changes only what appears on the video. Everything is still analysed either way.")]), ui.segmented([{ value: "minimal", label: "Minimal" }, { value: "balanced", label: "Balanced" }, { value: "full", label: "Full" }], state.density, function (value) { dispatch({ type: "SET_DENSITY", value: value }, { type: "SET_DENSITY", value: value }); }, true));
     var panelSection = section("Panels on the video", ui.el("div", { className: "bv-panel-toggles" }, [panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), ui.toggle("Compare with the pros", "Coming later — needs a licensed benchmark", false, null, { disabled: true, id: "panel-pro" })]));
 
-    var primaryLabel = state.enabled ? "Back to the match" : "Turn on — step 1 of 3";
-    var primary = ui.button(primaryLabel, { variant: "primary", full: true, icon: state.enabled ? "layout" : "play", disabled: !detected, onClick: function () { if (state.enabled) { closePopup(); return; } dispatch({ type: "ENABLE" }, { type: "ENABLE" }); closePopup(); } });
-    primary.setAttribute("data-bso-action", state.enabled ? "continue" : "enable");
-    var seedButton = ui.button(courtSeeded ? "Set up court again" : "Set up court", { icon: "crosshair", onClick: function () { dispatch({ type: "START_SEED" }, { type: "START_SEED" }); closePopup(); } });
+    var primaryLabel = state.enabled ? "Open overlay" : "Turn on — step 1 of 3";
+    var primary = ui.button(primaryLabel, { variant: "primary", full: true, icon: state.enabled ? "layout" : "play", disabled: !detected, title: !detected ? "Open a YouTube watch page first" : null, onClick: function () { dispatch({ type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, { type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, closePopup); } });
+    primary.setAttribute("data-bso-action", state.enabled ? "open-overlay" : "enable");
+    var seedButton = ui.button(courtSeeded ? "Set up court again" : "Set up court", { icon: "crosshair", disabled: !detected, title: !detected ? "Court setup needs a YouTube watch page" : null, onClick: function () { dispatch({ type: "START_SEED" }, { type: "START_SEED" }, closePopup); } });
     seedButton.setAttribute("data-bso-action", "seed-court");
-    var actions = ui.el("div", { className: "bv-footer-actions" }, [primary, ui.el("div", { className: "bv-footer-row" }, [seedButton, ui.button("Label it myself", { icon: "pencil", onClick: function () { dispatch({ type: "OPEN_LABELING" }, { type: "OPEN_LABELING" }); closePopup(); } })]), ui.button("See match summary · download data", { variant: "ghost", icon: "table", onClick: function () { openSummary(); closePopup(); } })]);
+    var manualButton = ui.button("Label it myself", { icon: "pencil", disabled: !detected, title: !detected ? "Manual labeling needs a YouTube watch page" : null, onClick: function () { dispatch({ type: "OPEN_LABELING" }, { type: "OPEN_LABELING" }, closePopup); } });
+    manualButton.setAttribute("data-bso-action", "manual-only");
+    var disableButton = state.enabled ? ui.button("Disable overlay", { variant: "ghost", icon: "pause", onClick: function () { dispatch({ type: "DISABLE" }, { type: "DISABLE" }, closePopup); } }) : null;
+    if (disableButton) disableButton.setAttribute("data-bso-action", "disable");
+    var summaryButton = ui.button("See match summary · download data", { variant: "ghost", icon: "table", onClick: openSummary });
+    summaryButton.setAttribute("data-bso-action", "export");
+    var actions = ui.el("div", { className: "bv-footer-actions" }, [primary, ui.el("div", { className: "bv-footer-row" }, [seedButton, manualButton]), disableButton, summaryButton]);
     root.replaceChildren(header, intro, trackerSection, densitySection, panelSection, actions);
   }
 

@@ -20,6 +20,7 @@ const expectedFiles = [
   "manifest.json",
   "popup.html",
   "popup.js",
+  "review.js",
   "runtime.js",
   "seed-card.js",
   "state.js",

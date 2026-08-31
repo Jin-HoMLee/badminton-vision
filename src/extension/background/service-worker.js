@@ -217,7 +217,10 @@ chrome.runtime.onMessage.addListener((message) => {
 // sanitized capability snapshot without coupling itself to frame transport.
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'OPEN_SUMMARY') {
-    void chrome.tabs.create({ url: chrome.runtime.getURL('summary.html') });
+    const origin = sender?.tab?.url;
+    const summary = chrome.runtime.getURL('summary.html');
+    const url = origin ? `${summary}?from=${encodeURIComponent(origin)}` : summary;
+    void chrome.tabs.create({ url });
     return false;
   }
   if (message?.type === 'GET_RUNTIME_STATUS') {

@@ -10,8 +10,13 @@
   var state = window.BVState.initialExtensionState();
   var strokes = data.strokes.slice();
   var suggestion = data.suggestion ? Object.assign({}, data.suggestion) : null;
-  var draft = { shot: null, start: "12:03.980", end: "12:04.420", axes: {} };
-  data.axes.forEach(function (axis) { draft.axes[axis.label] = axis.value; });
+  var draft = newDraft();
+
+  function newDraft() {
+    var next = { shot: null, start: "12:03.980", end: "12:04.420", axes: {} };
+    data.axes.forEach(function (axis) { next.axes[axis.label] = axis.value; });
+    return next;
+  }
   // Draft points are normalized to the current video rectangle. The fitted
   // result is also normalized, so a resize/theater/fullscreen only requires
   // the existing anchor to move; no refit or player mutation is needed.
@@ -117,6 +122,13 @@
   function currentVideoKey() {
     return window.BVState.videoKeyForUrl(window.location && window.location.href);
   }
+  function reviewStrokes() {
+    return window.BVReview ? window.BVReview.mergeStrokes(data.strokes, state.manualLabels) : data.strokes.slice();
+  }
+  function restoreReviewState() {
+    strokes = reviewStrokes();
+    if (suggestion && strokes.some(function (stroke) { return String(stroke.eventId) === String(suggestion.eventId); })) suggestion = null;
+  }
   function resetVideoLocalState(reason) {
     activeVideoKey = currentVideoKey();
     state = window.BVState.resetVideoLocalState(state, activeVideoKey);
@@ -125,6 +137,7 @@
     seedCardDrag = null;
     strokes = data.strokes.slice();
     suggestion = data.suggestion ? Object.assign({}, data.suggestion) : null;
+    draft = newDraft();
     persist();
     render();
   }
@@ -416,7 +429,7 @@
     var title = fitted ? "Court ready to lock" : invalid ? "Court needs correction" : "Click the " + corners[seedPoints.length].toLowerCase() + " outer corner";
     var handle = ui.el("button", { className: "bv-seed-card-handle", type: "button", "aria-label": "Move court setup instructions", "aria-describedby": "bv-seed-card-help", "aria-grabbed": "false", "aria-keyshortcuts": "ArrowLeft ArrowRight ArrowUp ArrowDown Home", title: "Drag to move. Use arrow keys to nudge. Home resets the position.", "data-bso-seed-card-handle": "true" }, [ui.icon("grip", 14), ui.el("span", { className: "bv-seed-card-handle-text" }, ["Drag to move"])]);
     var help = ui.el("span", { className: "bv-sr-only", id: "bv-seed-card-help" }, ["Drag this handle to move the instructions inside the video. Use the arrow keys to nudge it. Press Home to reset its position."]);
-    var top = ui.el("div", { className: "bv-seed-card-top" }, [handle, ui.stepDots(Math.min(seedPoints.length, 4), corners), ui.el("span", { className: "bv-seed-card-title" }, [title]), fitted ? ui.badge("homography ok", "in") : invalid ? ui.badge("not accepted", "warn") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Reset position", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); resetSeedCardPosition(); } }), ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); undoSeedPoint(); } }), ui.button("Reset court", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0 && !state.seeded, onClick: function (event) { event.stopPropagation(); resetSeed(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); state.seeding = false; state.labeling = true; persist(); render(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !fitted, onClick: function (event) { event.stopPropagation(); lockSeed(); } })])]);
+    var top = ui.el("div", { className: "bv-seed-card-top" }, [handle, ui.stepDots(Math.min(seedPoints.length, 4), corners), ui.el("span", { className: "bv-seed-card-title" }, [title]), fitted ? ui.badge("homography ok", "in") : invalid ? ui.badge("not accepted", "warn") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Reset position", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); resetSeedCardPosition(); } }), ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); undoSeedPoint(); } }), ui.button("Reset court", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0 && !state.seeded, onClick: function (event) { event.stopPropagation(); resetSeed(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); openLabeling(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !fitted, onClick: function (event) { event.stopPropagation(); lockSeed(); } })])]);
     top.appendChild(help);
     card.appendChild(top);
     if (state.calibrationError) card.appendChild(ui.callout("warn", "Calibration not accepted", state.calibrationError));
@@ -448,18 +461,20 @@
   }
 
   function statsPanel() {
-    return ui.panel("Stats", { icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", actions: [ui.iconButton("chevron-up", "Hide stats", { size: "sm", onClick: function () { state.panels.stats = false; persist(); render(); } })] }, [ui.el("div", { className: "bv-stat-grid" }, [ui.stat("Rally", state.rally), ui.stat("Shots", strokes.length), ui.stat("Length", "28.4", "s")]), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", margin: "var(--sp-5) 0" } }, [ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-12)", color: "var(--text-muted)" } }, ["21–18 · 14–11"]), ui.badge("score OCR partial", "warn")]), ui.mixBar([{ label: "Clear", value: 5, color: "var(--player-a)" }, { label: "Drop", value: 4, color: "var(--court-fill)" }, { label: "Smash", value: 3, color: "var(--lime-500)" }, { label: "Net", value: 3, color: "var(--player-b)" }, { label: "Unclassified", value: 2, color: "var(--signal-unknown)" }]), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-5)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border-hairline)" } }, [ui.el("span", { className: "bv-muted", style: { fontSize: "var(--fs-11)" } }, ["Last rally end"]), ui.badge("unclassified", "unknown"), ui.confidence(null, { showWord: true })])]);
+    return ui.panel("Stats", { icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", actions: [ui.iconButton("chevron-up", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, [ui.el("div", { className: "bv-stat-grid" }, [ui.stat("Rally", state.rally), ui.stat("Shots", strokes.length), ui.stat("Length", "28.4", "s")]), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", margin: "var(--sp-5) 0" } }, [ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-12)", color: "var(--text-muted)" } }, ["21–18 · 14–11"]), ui.badge("score OCR partial", "warn")]), ui.mixBar([{ label: "Clear", value: 5, color: "var(--player-a)" }, { label: "Drop", value: 4, color: "var(--court-fill)" }, { label: "Smash", value: 3, color: "var(--lime-500)" }, { label: "Net", value: 3, color: "var(--player-b)" }, { label: "Unclassified", value: 2, color: "var(--signal-unknown)" }]), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-5)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border-hairline)" } }, [ui.el("span", { className: "bv-muted", style: { fontSize: "var(--fs-11)" } }, ["Last rally end"]), ui.badge("unclassified", "unknown"), ui.confidence(null, { showWord: true })])]);
   }
   function mapPanel() {
-    return ui.panel("Court", { icon: "crosshair", mediaTime: state.time, className: "bv-court-panel", bodyStyle: { padding: "10px" }, actions: [ui.iconButton("chevron-down", "Hide court map", { size: "sm", onClick: function () { state.panels.map = false; persist(); render(); } })] }, [ui.courtDiagram({ renderWidth: 154, players: [{ x: 3.1, y: 9.7 }, { x: 2.5, y: 4.1, side: "b" }], trajectory: [{ x: 2.5, y: 4.3 }, { x: 3.5, y: 8.4 }, { x: 4.8, y: 12.9 }], landing: { x: 4.8, y: 12.9 }, call: "IN", ariaLabel: "Current court map" }), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-4)" } }, [ui.badge("IN", "in"), ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-10)", color: "var(--text-faint)" } }, ["0.11 m inside"])]), ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.confidence(.52, { label: "geo", showWord: true })])]);
+    return ui.panel("Court", { icon: "crosshair", mediaTime: state.time, className: "bv-court-panel", bodyStyle: { padding: "10px" }, actions: [ui.iconButton("chevron-down", "Hide court map", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "map", value: false }); persist(); render(); } })] }, [ui.courtDiagram({ renderWidth: 154, players: [{ x: 3.1, y: 9.7 }, { x: 2.5, y: 4.1, side: "b" }], trajectory: [{ x: 2.5, y: 4.3 }, { x: 3.5, y: 8.4 }, { x: 4.8, y: 12.9 }], landing: { x: 4.8, y: 12.9 }, call: "IN", ariaLabel: "Current court map" }), ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-4)" } }, [ui.badge("IN", "in"), ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-10)", color: "var(--text-faint)" } }, ["0.11 m inside"])]), ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.confidence(.52, { label: "geo", showWord: true })])]);
   }
   function feedPanel() {
     var rows = ui.el("div", { className: "bv-feed" });
     strokes.forEach(function (stroke) { rows.appendChild(ui.strokeFeedItem(stroke)); });
-    var children = [rows];
+    var children = [];
+    if (state.lastEdit) children.push(ui.el("div", { className: "bv-review-undo", role: "status" }, [ui.el("span", {}, [(state.lastEdit.source === "manual" ? "Saved manual review at " : "Accepted fixture suggestion at ") + (state.lastEdit.time || "the current timestamp") + "."]), ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit })]));
+    children.push(rows);
     if (suggestion) children.push(ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.suggestionRow(suggestion, acceptSuggestion, openLabeling)]));
     var footer = ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.badge("rally 13 · index 74", "accent", false), ui.el("span", { className: "bv-runtime-footnote" }, [runtimeView.result && runtimeView.result.kind === "runtime-integration-probe" ? "fixture result · not production CV" : "analysis unknown"]), ui.button("Older rallies", { variant: "ghost", size: "sm", iconRight: "chevron-right", style: { marginLeft: "auto" }, onClick: openSummary })]);
-    return ui.panel("Stroke feed", { icon: "list", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", bodyStyle: { padding: "6px" }, footer: footer, actions: [ui.iconButton("pencil", "Open manual labeling (O)", { size: "sm", onClick: openLabeling }), ui.iconButton("chevron-up", "Hide stroke feed", { size: "sm", onClick: function () { state.panels.feed = false; persist(); render(); } })] }, children);
+    return ui.panel("Stroke feed", { icon: "list", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", bodyStyle: { padding: "6px" }, footer: footer, actions: [ui.iconButton("pencil", "Open manual labeling (O)", { size: "sm", onClick: openLabeling }), ui.iconButton("chevron-up", "Hide stroke feed", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "feed", value: false }); persist(); render(); } })] }, children);
   }
   function liveOverlay() {
     var overlay = ui.el("div", {
@@ -482,7 +497,9 @@
       ui.statusChip(statusState, statusLabel, statusDetail, openLabeling),
       ui.el("div", { className: "bv-runtime-note", role: "status" }, [ui.icon("info", 11), runtimeCaption()])
     ]);
-    if (state.density !== "minimal" && state.panels.stats) left.appendChild(statsPanel());
+    // Panel switches are independent controls: density sets the default
+    // presentation, while an explicit toggle always wins and reopens a panel.
+    if (state.panels.stats) left.appendChild(statsPanel());
     overlay.appendChild(left);
     if (state.panels.map) overlay.appendChild(ui.el("div", { className: "bv-overlay-map" }, [mapPanel()]));
     if (state.panels.feed) overlay.appendChild(ui.el("div", { className: "bv-overlay-stack right" }, [feedPanel()]));
@@ -491,26 +508,84 @@
     return overlay;
   }
 
-  function openLabeling() { state.labeling = true; state.enabled = true; state.seeding = false; persist(); render(); }
+  function openLabeling() {
+    state = window.BVState.reduceExtensionState(state, { type: "OPEN_LABELING" });
+    draft = newDraft();
+    persist();
+    render();
+  }
+  function commitReviewEvent(record, previousSuggestion) {
+    if (!record || !record.eventId || !window.BVReview) return;
+    var previousStroke = strokes.find(function (stroke) { return String(stroke.eventId) === String(record.eventId); });
+    var previousLabel = (state.manualLabels || []).find(function (label) { return String(label.eventId) === String(record.eventId); });
+    state.lastEdit = {
+      eventId: record.eventId,
+      source: record.source || "manual",
+      time: record.time,
+      previousStroke: previousStroke ? window.BVReview.clone(previousStroke) : null,
+      previousLabel: previousLabel ? window.BVReview.clone(previousLabel) : null,
+      previousSuggestion: previousSuggestion ? window.BVReview.clone(previousSuggestion) : null
+    };
+    state.manualLabels = window.BVReview.upsert(state.manualLabels, record);
+    strokes = window.BVReview.mergeStrokes(data.strokes, state.manualLabels);
+    persist();
+  }
   function acceptSuggestion() {
     if (!suggestion) return;
-    strokes.push({ eventId: suggestion.eventId, rallyId: suggestion.rallyId, sequence: strokes.length + 1, player: "A", shot: suggestion.shot, time: suggestion.time, status: "accepted", source: "auto", confidence: suggestion.confidence });
-    send({ type: "ACCEPT_SUGGESTION", eventId: suggestion.eventId });
-    suggestion = null; render();
+    var accepted = {
+      eventId: suggestion.eventId,
+      rallyId: suggestion.rallyId,
+      sequence: strokes.length + 1,
+      player: "A",
+      shot: suggestion.shot,
+      time: suggestion.time,
+      startSec: window.BVReview.mediaSeconds(suggestion.time),
+      endSec: window.BVReview.mediaSeconds(suggestion.time) + .4,
+      status: "accepted",
+      source: "auto",
+      confidence: suggestion.confidence
+    };
+    var priorSuggestion = suggestion;
+    commitReviewEvent(accepted, priorSuggestion);
+    send({ type: "ACCEPT_SUGGESTION", eventId: accepted.eventId });
+    suggestion = null;
+    closeLabeling();
+  }
+  function undoLastEdit() {
+    var edit = state.lastEdit;
+    if (!edit || !edit.eventId || !window.BVReview) return;
+    state.manualLabels = window.BVReview.without(state.manualLabels, edit.eventId);
+    if (edit.previousLabel) state.manualLabels = window.BVReview.upsert(state.manualLabels, edit.previousLabel);
+    strokes = window.BVReview.mergeStrokes(data.strokes, state.manualLabels);
+    suggestion = edit.previousSuggestion ? window.BVReview.clone(edit.previousSuggestion) : null;
+    state.lastEdit = null;
+    persist();
+    send({ type: "UNDO_LABEL", eventId: edit.eventId });
+    render();
   }
   function cycleDensity() {
-    var values = ["minimal", "balanced", "full"]; state.density = values[(values.indexOf(state.density) + 1) % values.length]; persist(); send({ type: "SET_DENSITY", value: state.density }); render();
+    var values = ["minimal", "balanced", "full"];
+    var next = values[(values.indexOf(state.density) + 1) % values.length];
+    state = window.BVState.reduceExtensionState(state, { type: "SET_DENSITY", value: next });
+    persist();
+    send({ type: "SET_DENSITY", value: next });
+    render();
   }
   function openSummary() {
-    send({ type: "OPEN_SUMMARY" });
+    if (hasChrome() && chrome.runtime) send({ type: "OPEN_SUMMARY" });
+    else if (window.open) window.open("summary.html?from=" + encodeURIComponent(window.location.href), "_blank");
   }
   function exportCsv() {
-    var rows = strokes.map(function (stroke, index) { return { video_url: data.video.url, shot_id: stroke.eventId, start_sec: 721 + index * .7, end_sec: 721 + index * .7 + .4, label: stroke.shot || "unclassified", longitudinal_position: draft.axes.Longitudinal || "", lateral_position: draft.axes.Lateral || "", timing: draft.axes.Timing || "", intention: draft.axes.Intention || "", impact: draft.axes.Impact || "", direction: draft.axes.Direction || "" }; });
+    var videoUrl = window.location && /^https?:/.test(window.location.href) ? window.location.href : data.video.url;
+    var rows = strokes.map(function (stroke, index) {
+      return window.BVReview ? window.BVReview.toShotRow(stroke, videoUrl, index) : { video_url: videoUrl, shot_id: stroke.eventId, label: stroke.shot || "unclassified" };
+    });
     var link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([window.BVAnalysis.toShotsCsv(rows)], { type: "text/csv" })); link.download = "badminton-vision-shots.csv"; link.click(); setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
   }
   function manualPanel() {
     var saveLabel = draft.shot || (suggestion && suggestion.shot);
-    var panel = ui.panel("Manual labeling", { icon: "pencil", mediaTime: state.time, className: "bv-label-panel", bodyStyle: { flex: "1" }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Cancel", { variant: "ghost", size: "sm", onClick: closeLabeling }), ui.button("Save shot", { variant: "primary", size: "sm", disabled: !saveLabel, onClick: function () { saveManual(saveLabel); } })])]) }, []);
+    var saveActionLabel = draft.shot ? "Save correction" : suggestion ? "Accept suggestion" : "Save shot";
+    var panel = ui.panel("Manual labeling", { icon: "pencil", mediaTime: state.time, className: "bv-label-panel", bodyStyle: { flex: "1" }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Cancel", { variant: "ghost", size: "sm", onClick: closeLabeling }), ui.button(saveActionLabel, { variant: "primary", size: "sm", disabled: !saveLabel, onClick: saveDraft })])]) }, []);
     panel.tabIndex = 0;
     var body = panel.querySelector(".bv-panel-body");
     body.appendChild(ui.el("div", { className: "bv-segment-window" }, [ui.el("span", { className: "bv-mono" }, [draft.start + " → " + draft.end]), ui.el("span", { className: "bv-segment-controls" }, [ui.button("Start", { variant: "ghost", size: "sm", iconRight: null, onClick: function () { draft.start = formatMediaTime(mediaTime); render(); } }), ui.button("End", { variant: "ghost", size: "sm", onClick: function () { draft.end = formatMediaTime(mediaTime); render(); } })]) ]));
@@ -522,28 +597,83 @@
     data.axes.forEach(function (axis) { axisList.appendChild(ui.dimensionAxis(axis.label, axis.options, draft.axes[axis.label], function (value) { draft.axes[axis.label] = value; render(); })); });
     body.appendChild(axisList);
     body.appendChild(ui.el("p", { className: "bv-helper" }, ["Manual labels are first-class records. Saving updates the same event id and appends provenance — it never creates a duplicate."]));
-    panel.addEventListener("keydown", function (event) {
-      if (event.target !== panel) return;
-      var key = event.key.toLowerCase();
-      if (key >= "1" && key <= "9") { draft.shot = ["Serve", "Clear", "Drop", "Smash", "Half Smash", "Lift", "Net Shot", "Net Kill", "Push"][Number(key) - 1]; event.preventDefault(); render(); }
-      else if (key === "s") { draft.start = formatMediaTime(mediaTime); event.preventDefault(); render(); }
-      else if (key === "e") { draft.end = formatMediaTime(mediaTime); event.preventDefault(); render(); }
-      else if (key === "o") { event.preventDefault(); }
-      else if (event.key === "Escape") { event.preventDefault(); closeLabeling(); }
-      else if (event.key === "Enter" && saveLabel) { event.preventDefault(); saveManual(saveLabel); }
-    });
     setTimeout(function () { panel.focus(); }, 0);
     return panel;
   }
-  function saveManual(shot) {
-    if (!shot) return;
-    var eventId = suggestion ? suggestion.eventId : "r" + state.rally + "-s" + String(strokes.length + 1).padStart(2, "0");
-    strokes = strokes.filter(function (stroke) { return stroke.eventId !== eventId; });
-    strokes.push({ eventId: eventId, rallyId: state.rally, sequence: strokes.length + 1, player: "A", shot: shot, time: draft.start, status: suggestion ? "corrected" : "accepted", source: "manual", confidence: null });
-    send({ type: "LABEL_EVENT", eventId: eventId, shot: shot, provenance: "manual" });
-    suggestion = null; closeLabeling();
+  function saveDraft() {
+    if (draft.shot) saveManual(draft.shot);
+    else if (suggestion) acceptSuggestion();
   }
-  function closeLabeling() { state.labeling = false; persist(); render(); }
+  function saveManual(shot) {
+    if (!shot || !window.BVReview) return;
+    var eventId = suggestion ? suggestion.eventId : "r" + state.rally + "-s" + String(strokes.length + 1).padStart(2, "0");
+    var startSec = window.BVReview.mediaSeconds(draft.start);
+    var endSec = window.BVReview.mediaSeconds(draft.end);
+    var record = {
+      eventId: eventId,
+      rallyId: suggestion ? suggestion.rallyId : state.rally,
+      sequence: (strokes.find(function (stroke) { return String(stroke.eventId) === String(eventId); }) || {}).sequence || strokes.length + 1,
+      player: "A",
+      shot: shot,
+      time: draft.start,
+      startSec: startSec,
+      endSec: endSec,
+      axes: Object.assign({}, draft.axes),
+      status: suggestion ? "corrected" : "accepted",
+      source: "manual",
+      confidence: null
+    };
+    var priorSuggestion = suggestion;
+    commitReviewEvent(record, priorSuggestion);
+    send({ type: "LABEL_EVENT", eventId: eventId, shot: shot, provenance: "manual", startSec: startSec, endSec: endSec });
+    suggestion = null;
+    closeLabeling();
+  }
+  function closeLabeling() {
+    state = window.BVState.reduceExtensionState(state, { type: "CLOSE_LABELING" });
+    draft = newDraft();
+    persist();
+    render();
+  }
+
+  function isInteractiveTarget(target) {
+    var tag = target && target.tagName ? target.tagName.toLowerCase() : "";
+    return tag === "input" || tag === "textarea" || tag === "select" || tag === "button" || tag === "a" || target && target.isContentEditable || target && target.getAttribute && target.getAttribute("role") === "button";
+  }
+  function handleKeyboardShortcuts(event) {
+    var key = String(event.key || "").toLowerCase();
+    // Escape is a global dismiss affordance, including while a shot button is
+    // focused. Other shortcuts yield to native controls so Enter/Space do not
+    // accidentally save a draft when activating a picker button.
+    if (key === "escape" && state.labeling && !state.seeding) {
+      event.preventDefault();
+      closeLabeling();
+      return;
+    }
+    if (isInteractiveTarget(event.target)) return;
+    if (key === "o" && state.enabled && !state.seeding) {
+      event.preventDefault();
+      if (!state.labeling) openLabeling();
+      return;
+    }
+    if (!state.labeling || state.seeding) return;
+    if (key >= "1" && key <= "9") {
+      draft.shot = ["Serve", "Clear", "Drop", "Smash", "Half Smash", "Lift", "Net Shot", "Net Kill", "Push"][Number(key) - 1];
+      event.preventDefault();
+      render();
+    } else if (key === "s") {
+      draft.start = formatMediaTime(mediaTime);
+      event.preventDefault();
+      render();
+    } else if (key === "e") {
+      draft.end = formatMediaTime(mediaTime);
+      event.preventDefault();
+      render();
+    } else if (event.key === "Enter" && (draft.shot || suggestion)) {
+      event.preventDefault();
+      saveDraft();
+    }
+  }
 
   function render() {
     if (!root) return;
@@ -556,6 +686,7 @@
   }
   function applyStoredState(nextState) {
     state = window.BVState.initialExtensionState(nextState);
+    restoreReviewState();
     var key = currentVideoKey();
     if (state.videoKey && key && state.videoKey !== key) {
       state = window.BVState.resetVideoLocalState(state, key);
@@ -563,8 +694,13 @@
       state.videoKey = state.videoKey || key;
     }
     if (state.seeded && !state.calibration) {
+      var savedLabels = state.manualLabels;
+      var savedLastEdit = state.lastEdit;
       state = window.BVState.resetVideoLocalState(state, key);
+      state.manualLabels = savedLabels;
+      state.lastEdit = savedLastEdit;
       state.calibrationError = "This saved court has no fitted calibration. Please seed the four outer corners again.";
+      restoreReviewState();
     }
     activeVideoKey = key;
     restoreCalibrationState();
@@ -584,17 +720,22 @@
       calibration = null;
       persist(); render();
     }
-    else if (message.type === "ENABLE") {
+    else if (message.type === "ENABLE" || message.type === "OPEN_OVERLAY") {
       bindVideoState();
-      state = window.BVState.reduceExtensionState(state, { type: "ENABLE" });
+      state = window.BVState.reduceExtensionState(state, { type: message.type });
       state.videoKey = activeVideoKey || currentVideoKey();
       seedPoints = state.seeding ? state.seedDraftPoints.slice() : [];
       if (state.seeded && state.calibration && !calibration) restoreCalibrationState();
       persist(); render();
     }
+    else if (message.type === "DISABLE") {
+      state = window.BVState.reduceExtensionState(state, { type: "DISABLE" });
+      persist(); render();
+    }
     else if (message.type === "OPEN_LABELING") openLabeling();
-    else if (message.type === "SET_DENSITY") { state.density = message.value; persist(); render(); }
-    else if (message.type === "SET_PANELS") { state.panels = Object.assign({}, state.panels, message.panels); persist(); render(); }
+    else if (message.type === "SET_DENSITY") { state = window.BVState.reduceExtensionState(state, { type: "SET_DENSITY", value: message.value }); persist(); render(); }
+    else if (message.type === "SET_PANELS") { state = window.BVState.reduceExtensionState(state, { type: "SET_PANELS", panels: message.panels }); persist(); render(); }
+    else if (message.type === "SET_TRACKER") { state = window.BVState.reduceExtensionState(state, message); persist(); render(); }
     else if (message.type === "STATE_UPDATE" && message.state) { applyStoredState(message.state); render(); }
     else if (message.type === "CAMERA_CUT") {
       state = window.BVState.reduceExtensionState(state, { type: "CAMERA_CUT" });
@@ -612,6 +753,7 @@
     var link = document.createElement("link"); link.rel = "stylesheet"; link.href = hasChrome() && chrome.runtime ? chrome.runtime.getURL("styles.css") : "styles.css"; shadow.appendChild(link);
     root = document.createElement("div"); root.className = "bv-overlay-root"; shadow.appendChild(root); document.documentElement.appendChild(host);
     window.addEventListener("resize", positionToVideo, { passive: true }); window.addEventListener("scroll", positionToVideo, { passive: true, capture: true });
+    window.addEventListener("keydown", handleKeyboardShortcuts);
     ["yt-navigate-start", "yt-navigate-finish", "popstate", "hashchange"].forEach(function (name) {
       var listener = handleNavigation;
       window.addEventListener(name, listener);

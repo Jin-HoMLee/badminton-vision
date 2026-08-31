@@ -44,6 +44,7 @@
         "calibration.js",
         "seed-card.js",
         "fixtures.js",
+        "review.js",
         "state.js",
         "ui.js",
         "content.js"

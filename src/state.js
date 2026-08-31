@@ -8,6 +8,11 @@
     stale: false,
     cameraCut: false,
     videoKey: null,
+    // Manual and accepted fixture events are video-local and survive popup /
+    // summary navigation without pretending to be production inference.
+    manualLabels: [],
+    lastEdit: null,
+    trackerSettings: {},
     // seedPoints are the committed, normalized outer-corner correspondences.
     seedPoints: [],
     // A draft is deliberately separate so Cancel can preserve a prior court.
@@ -20,7 +25,10 @@
     rally: 14,
     time: "12:04.320",
     density: "minimal",
-    panels: { feed: true, stats: false, map: false }
+    panels: { feed: true, stats: false, map: false },
+    // Explicit panel choices override density presets while the preference
+    // still gives Balanced/Full a useful default presentation.
+    panelOverrides: {}
   };
 
   function copyPoints(points) {
@@ -37,12 +45,55 @@
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
   }
 
+  function copyRecords(records) {
+    return Array.isArray(records) ? records.map(function (record) {
+      if (!record || typeof record !== "object") return record;
+      var copy = Object.assign({}, record);
+      if (record.axes && typeof record.axes === "object") copy.axes = Object.assign({}, record.axes);
+      return copy;
+    }) : [];
+  }
+
+  function copyEdit(edit) {
+    if (!edit || typeof edit !== "object") return null;
+    var copy = Object.assign({}, edit);
+    ["previousLabel", "previousStroke", "previousSuggestion"].forEach(function (key) {
+      if (edit[key] && typeof edit[key] === "object") copy[key] = Object.assign({}, edit[key]);
+    });
+    return copy;
+  }
+
+  function copyPanelOverrides(overrides) {
+    var result = {};
+    if (!overrides || typeof overrides !== "object") return result;
+    ["feed", "stats", "map"].forEach(function (key) {
+      if (overrides[key] != null) result[key] = Boolean(overrides[key]);
+    });
+    return result;
+  }
+
+  function panelsForDensity(density, overrides) {
+    var panels = {
+      feed: true,
+      stats: density !== "minimal",
+      map: density !== "minimal"
+    };
+    Object.keys(overrides || {}).forEach(function (key) {
+      panels[key] = Boolean(overrides[key]);
+    });
+    return panels;
+  }
+
   function initialExtensionState(overrides) {
     var value = Object.assign({}, defaults, overrides || {});
     value.panels = Object.assign({}, defaults.panels, (overrides && overrides.panels) || {});
+    value.panelOverrides = copyPanelOverrides(overrides && overrides.panelOverrides);
     value.seedPoints = copyPoints(overrides && overrides.seedPoints);
     value.seedDraftPoints = copyPoints(overrides && overrides.seedDraftPoints);
     value.seedCardPosition = copyCardPosition(overrides && overrides.seedCardPosition);
+    value.manualLabels = copyRecords(overrides && overrides.manualLabels);
+    value.lastEdit = copyEdit(overrides && overrides.lastEdit);
+    value.trackerSettings = Object.assign({}, defaults.trackerSettings, (overrides && overrides.trackerSettings) || {});
     return value;
   }
 
@@ -71,7 +122,9 @@
       seedDraftPoints: [],
       seedCardPosition: null,
       calibration: null,
-      calibrationError: null
+      calibrationError: null,
+      manualLabels: [],
+      lastEdit: null
     }));
   }
 
@@ -79,6 +132,8 @@
     var current = initialExtensionState(state);
     switch (action && action.type) {
       case "ENABLE": return Object.assign(current, { enabled: true, seeding: !current.seeded });
+      case "DISABLE": return Object.assign(current, { enabled: false, seeding: false, labeling: false, stale: false, cameraCut: false });
+      case "OPEN_OVERLAY": return Object.assign(current, { enabled: true, labeling: false });
       case "START_SEED": return Object.assign(current, { enabled: true, seeding: true, labeling: false, seedDraftPoints: [], calibrationError: null });
       case "SET_SEED_DRAFT": return Object.assign(current, { seedDraftPoints: copyPoints(action.points), calibrationError: action.error || null });
       case "SET_SEED_CARD_POSITION": return Object.assign(current, { seedCardPosition: copyCardPosition(action.position) });
@@ -106,8 +161,29 @@
       });
       case "OPEN_LABELING": return Object.assign(current, { enabled: true, labeling: true, seeding: false });
       case "CLOSE_LABELING": return Object.assign(current, { labeling: false });
-      case "SET_DENSITY": return Object.assign(current, { density: action.value });
-      case "TOGGLE_PANEL": return Object.assign(current, { panels: Object.assign({}, current.panels, { [action.panel]: Boolean(action.value) }) });
+      case "SET_DENSITY": {
+        var density = ["minimal", "balanced", "full"].indexOf(action.value) >= 0 ? action.value : current.density;
+        return Object.assign(current, { density: density, panels: panelsForDensity(density, current.panelOverrides) });
+      }
+      case "TOGGLE_PANEL": {
+        var panelValue = Boolean(action.value);
+        return Object.assign(current, {
+          panels: Object.assign({}, current.panels, { [action.panel]: panelValue }),
+          panelOverrides: Object.assign({}, current.panelOverrides, { [action.panel]: panelValue })
+        });
+      }
+      case "SET_PANELS": {
+        var nextPanels = Object.assign({}, current.panels);
+        var nextOverrides = Object.assign({}, current.panelOverrides);
+        Object.keys(action.panels || {}).forEach(function (key) {
+          if (["feed", "stats", "map"].indexOf(key) < 0) return;
+          nextPanels[key] = Boolean(action.panels[key]);
+          nextOverrides[key] = Boolean(action.panels[key]);
+        });
+        return Object.assign(current, { panels: nextPanels, panelOverrides: nextOverrides });
+      }
+      case "SET_TRACKER": return Object.assign(current, { trackerSettings: Object.assign({}, current.trackerSettings, { [action.tracker]: Boolean(action.value) }) });
+      case "SET_REVIEW_LABELS": return Object.assign(current, { manualLabels: copyRecords(action.labels), lastEdit: action.lastEdit ? copyEdit(action.lastEdit) : current.lastEdit });
       case "SET_STALE": return Object.assign(current, { stale: Boolean(action.value) });
       case "CAMERA_CUT": return Object.assign(current, {
         seeded: false,
