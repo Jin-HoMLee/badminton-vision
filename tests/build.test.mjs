@@ -35,7 +35,6 @@ const expectedFiles = [
   "common/protocol.js",
   "common/synchronization.js",
   "content/capture.js",
-  "content/overlay.js",
   "content/runtime.js",
   "content/video-discovery.js",
   "offscreen/analyzer.js",
@@ -88,6 +87,7 @@ test("production build contains only local runtime design-system assets", async 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.background.service_worker, "background/service-worker.js");
   assert.equal(manifest.permissions.includes("offscreen"), true);
+  assert.equal(manifest.permissions.includes("scripting"), true);
   assert.equal(Object.hasOwn(manifest, "message_serialization"), false);
   assert.equal(manifest.action.default_icon["16"], "design-system/assets/icon-16.svg");
   assert.equal(manifest.action.default_icon["32"], "design-system/assets/icon-32.svg");
@@ -114,6 +114,7 @@ test("production build contains only local runtime design-system assets", async 
   assert.ok(cssFiles.includes("styles.css"));
   assert.equal((await listFiles(dist)).includes("background.js"), false);
   assert.equal((await listFiles(dist)).includes("manifest.runtime.json"), false);
+  assert.equal((await listFiles(dist)).includes("content/overlay.js"), false);
   assert.match(await readFile(join(dist, "design-system/tokens/typography.css"), "utf8"), /Space Grotesk/);
   assert.doesNotMatch(await readFile(join(dist, "design-system/tokens/typography.css"), "utf8"), /@import/i);
   assert.match(await readFile(join(dist, "content.js"), "utf8"), /data-bso-frame-transport/);

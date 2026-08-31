@@ -79,7 +79,11 @@ test("seed-card rendering exposes readable contrast and accessible movement hook
   assert.match(content, /data-bso-seed-click-policy.*layer-only/);
   assert.match(content, /if \(state\.panels\.map\)/);
   assert.match(styles, /\.bv-seed-card[^\{]*\{[^}]*top: 35%/s);
+  assert.match(styles, /\.bv-seed-card[^\{]*\{[^}]*width: min\(560px, calc\(100% - 24px\)\)/s);
+  assert.match(styles, /\.bv-seed-card[^\{]*\{[^}]*border: 2px solid var\(--lime-500\)/s);
   assert.match(styles, /\.bv-seed-card[^\{]*\{[^}]*background: var\(--ink-900\)/s);
+  assert.doesNotMatch(styles, /\.bv-seed-card[^\{]*\{[^}]*backdrop-filter:/s);
+  assert.match(styles, /\.bv-seed-card[^\{]*\{[^}]*box-shadow: 0 8px 28px rgba\(0,0,0,\.72\)/s);
   assert.match(styles, /\.bv-seed-card-handle[^\{]*\{[^}]*cursor: grab/s);
   assert.match(styles, /\.bv-seed-card[^\{]*\{[^}]*z-index: 3/s);
 });

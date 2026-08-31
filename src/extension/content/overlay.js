@@ -1,4 +1,5 @@
 /* global globalThis */
+/* Geometry helper retained for isolated tests; the retired text overlay is not packaged. */
 (function installOverlay(root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;

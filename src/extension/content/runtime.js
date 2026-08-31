@@ -1,4 +1,4 @@
-/* global globalThis, BSOProtocol, BSOSynchronization, BSOCapabilities, BSOFrameTransport, BSOCapture, BSOOverlay, BSOVideoDiscovery */
+/* global globalThis, BSOProtocol, BSOSynchronization, BSOCapabilities, BSOFrameTransport, BSOCapture, BSOVideoDiscovery */
 (function installRuntime(root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -108,7 +108,10 @@
       documentRef = globalThis.document,
       windowRef = globalThis.window,
       chromeApi = globalThis.chrome,
-      overlay = new BSOOverlay.OverlayAnchor({ documentRef, windowRef }),
+      // The design-system content UI owns the visible overlay. Keeping this
+      // boundary null by default prevents the retired plain-text status layer
+      // from appearing when a controller is constructed directly.
+      overlay = null,
       bridge = null,
       onRuntimeMessage = () => {},
       onRuntimeStatus = () => {},
