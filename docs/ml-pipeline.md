@@ -21,18 +21,22 @@ The ML/AI inference pipeline provides production-ready real-time detection and a
 ## Components
 
 ### ONNX Runtime Manager (`onnx-runtime.js`)
+
 - Handles WebGPU (primary), WebGL (fallback), WASM (CPU) backend selection
 - Session caching and management
 - Automatic fallback chain
 
 ### Adapters
+
 - **BlazePose** (`blazepose-adapter.js`): 17-keypoint pose detection
-- **YOLOv8-Nano** (`yolov8-shuttle-adapter.js`): Shuttlecock detection  
+- **YOLOv8-Nano** (`yolov8-shuttle-adapter.js`): Shuttlecock detection
 - **TrackNetV3** (`tracknet-processor.js`): Temporal smoothing (post-processing)
 
 ### Parallelization
+
 - **Inference Pipeline** (`inference-pipeline.js`): Web Worker pool coordination
 - **Worker Pool** (`workers/inference-worker.js`): 2-4 parallel inference workers
 - **Main Thread Fallback** (`onnx-inference-adapter.js`): Fallback when workers busy
 
-See `docs/ml-pipeline-setup.md` for setup and deployment guide.
+See [`docs/ml-pipeline-setup.md`](ml-pipeline-setup.md) for the setup and
+deployment guide.
