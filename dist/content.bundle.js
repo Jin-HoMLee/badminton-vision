@@ -6056,7 +6056,10 @@
       // Evidence visibility is independent from analyzer execution. These
       // preferences survive every live result rerender; unavailable groups keep
       // their remembered value without implying that evidence exists.
-      trackerSettings: { court: true, players: true, body: true, shuttle: true, racket: true },
+      // The default video layer is evidence-only: pose, shuttle, and any
+      // supplied racket signal. Player boxes remain an explicit opt-in so the
+      // picture stays clear while the underlying runtime still analyzes them.
+      trackerSettings: { court: true, players: false, body: true, shuttle: true, racket: true },
       // seedPoints are the committed, normalized outer-corner correspondences.
       seedPoints: [],
       // A draft is deliberately separate so Cancel can preserve a prior court.
@@ -6072,10 +6075,17 @@
       rally: 14,
       time: "12:04.320",
       density: "minimal",
-      panels: { feed: true, stats: false, map: false, evidence: true },
+      // Panels are on-demand furniture. Minimal starts with only the normalized
+      // detection layer and the compact in-video access point; the popup is the
+      // canonical place to choose persistent panel visibility.
+      panels: { feed: false, stats: false, map: false, evidence: false, controls: false },
       // Explicit panel choices override density presets while the preference
-      // still gives Balanced/Full a useful default presentation.
+      // still gives Balanced/Full a useful default presentation. Both the
+      // effective values and overrides are scoped to the active video.
       panelOverrides: {},
+      panelsByVideo: {},
+      panelOverridesByVideo: {},
+      trackerSettingsByVideo: {},
       // Collapse state mirrors panel geometry: per panel, scoped by video, so a
       // collapsed panel stays collapsed for that video only.
       collapsedPanels: {},
@@ -6193,27 +6203,86 @@
   
     function copyEdit(edit) { return edit && typeof edit === "object" ? clone(edit) : null; }
   
-    function copyPanelOverrides(overrides) {
+    var PANEL_VISIBILITY_KEYS = ["feed", "stats", "map", "evidence", "controls"];
+    function copyPanelVisibility(panels) {
       var result = {};
-      if (!overrides || typeof overrides !== "object") return result;
-      ["feed", "stats", "map", "evidence"].forEach(function (key) {
-        if (overrides[key] != null) result[key] = Boolean(overrides[key]);
+      if (!panels || typeof panels !== "object") return result;
+      PANEL_VISIBILITY_KEYS.forEach(function (key) {
+        if (panels[key] != null) result[key] = Boolean(panels[key]);
       });
       return result;
     }
-  
+    function copyPanelVisibilityMap(raw) {
+      var result = {};
+      if (!raw || typeof raw !== "object") return result;
+      Object.keys(raw).forEach(function (key) {
+        var panels = copyPanelVisibility(raw[key]);
+        if (Object.keys(panels).length) result[String(key)] = panels;
+      });
+      return result;
+    }
+    function copyPanelOverrides(overrides) {
+      return copyPanelVisibility(overrides);
+    }
+    function copyPanelOverridesMap(raw) {
+      return copyPanelVisibilityMap(raw);
+    }
+    function copyTrackerSettings(settings) {
+      var result = {};
+      if (!settings || typeof settings !== "object") return result;
+      Object.keys(defaults.trackerSettings).forEach(function (key) {
+        if (settings[key] != null) result[key] = Boolean(settings[key]);
+      });
+      return result;
+    }
+    function copyTrackerSettingsMap(raw) {
+      var result = {};
+      if (!raw || typeof raw !== "object") return result;
+      Object.keys(raw).forEach(function (key) {
+        var settings = copyTrackerSettings(raw[key]);
+        if (Object.keys(settings).length) result[String(key)] = settings;
+      });
+      return result;
+    }
     function panelsForDensity(density, overrides) {
       var panels = {
-        feed: true,
+        // Minimal is deliberately evidence-only. Balanced and Full retain the
+        // existing richer presets without making them the default experience.
+        feed: density !== "minimal",
         stats: density !== "minimal",
-        map: density === "full"
+        map: density === "full",
+        evidence: density === "full",
+        controls: density !== "minimal"
       };
       Object.keys(overrides || {}).forEach(function (key) {
         panels[key] = Boolean(overrides[key]);
       });
       return panels;
     }
-  
+    function withPanelPreferences(current, panels, overrides) {
+      var panelMap = copyPanelVisibilityMap(current.panelsByVideo);
+      var overrideMap = copyPanelOverridesMap(current.panelOverridesByVideo);
+      var key = current.videoKey == null ? null : String(current.videoKey);
+      if (key) {
+        panelMap[key] = copyPanelVisibility(panels);
+        overrideMap[key] = copyPanelOverrides(overrides);
+      }
+      return initialExtensionState(Object.assign({}, current, {
+        panels: Object.assign({}, defaults.panels, panels || {}),
+        panelOverrides: copyPanelOverrides(overrides),
+        panelsByVideo: panelMap,
+        panelOverridesByVideo: overrideMap
+      }));
+    }
+    function withTrackerPreferences(current, trackerSettings) {
+      var trackerMap = copyTrackerSettingsMap(current.trackerSettingsByVideo);
+      var key = current.videoKey == null ? null : String(current.videoKey);
+      if (key) trackerMap[key] = copyTrackerSettings(trackerSettings);
+      return initialExtensionState(Object.assign({}, current, {
+        trackerSettings: Object.assign({}, defaults.trackerSettings, trackerSettings || {}),
+        trackerSettingsByVideo: trackerMap
+      }));
+    }
     function timestamp(value) {
       if (typeof value === "number" && Number.isFinite(value)) return value;
       if (typeof value !== "string" || !value.trim()) return null;
@@ -6423,6 +6492,9 @@
       var value = Object.assign({}, defaults, raw);
       value.panels = Object.assign({}, defaults.panels, raw.panels || {});
       value.panelOverrides = copyPanelOverrides(raw.panelOverrides);
+      value.panelsByVideo = copyPanelVisibilityMap(raw.panelsByVideo);
+      value.panelOverridesByVideo = copyPanelOverridesMap(raw.panelOverridesByVideo);
+      value.trackerSettingsByVideo = copyTrackerSettingsMap(raw.trackerSettingsByVideo);
       value.seedPoints = copyPoints(raw.seedPoints);
       value.seedDraftPoints = copyPoints(raw.seedDraftPoints);
       value.seedCardPosition = copyCardPosition(raw.seedCardPosition);
@@ -6440,6 +6512,21 @@
         if (value.panelLayoutsByVideo[panelVideoKey]) value.panelLayouts = copyPanelLayouts(value.panelLayoutsByVideo[panelVideoKey]);
         if (Object.keys(value.collapsedPanels).length) value.collapsedPanelsByVideo[panelVideoKey] = Object.assign({}, value.collapsedPanelsByVideo[panelVideoKey] || {}, copyPanelCollapseState(value.collapsedPanels));
         if (value.collapsedPanelsByVideo[panelVideoKey]) value.collapsedPanels = copyPanelCollapseState(value.collapsedPanelsByVideo[panelVideoKey]);
+        // Legacy states stored the active visibility preferences directly. Move
+        // those values into the video-local maps once, while new states always
+        // read the map entry instead of leaking another video's choices.
+        if (!Object.prototype.hasOwnProperty.call(raw, "panelsByVideo") && raw.panels) {
+          // The previous minimal default showed the feed and evidence controls.
+          // Treat that legacy shape as a migration, not as a fresh opt-in; keep
+          // deliberate SET_PANELS choices through panelOverrides and preserve a
+          // deliberately selected Balanced/Full density preset.
+          value.panelsByVideo[panelVideoKey] = copyPanelVisibility(panelsForDensity(raw.density || "minimal", raw.panelOverrides));
+        }
+        if (!Object.prototype.hasOwnProperty.call(raw, "panelOverridesByVideo") && raw.panelOverrides) value.panelOverridesByVideo[panelVideoKey] = copyPanelOverrides(raw.panelOverrides);
+        if (!Object.prototype.hasOwnProperty.call(raw, "trackerSettingsByVideo") && raw.trackerSettings) value.trackerSettingsByVideo[panelVideoKey] = copyTrackerSettings(raw.trackerSettings);
+        if (value.panelOverridesByVideo[panelVideoKey]) value.panelOverrides = copyPanelOverrides(value.panelOverridesByVideo[panelVideoKey]);
+        if (value.panelsByVideo[panelVideoKey]) value.panels = Object.assign({}, defaults.panels, value.panelsByVideo[panelVideoKey]);
+        if (value.trackerSettingsByVideo[panelVideoKey]) value.trackerSettings = Object.assign({}, defaults.trackerSettings, value.trackerSettingsByVideo[panelVideoKey]);
       }
       var labelOptions = options || {};
       var mapSource = raw.manualLabelsByVideo || raw.labelsByVideo || (raw.manualLabelStore && raw.manualLabelStore.videos) || {};
@@ -6484,6 +6571,12 @@
         seedCardPosition: null,
         calibration: null,
         calibrationError: null,
+        // Visibility is video-local too. Start a new video from the minimal
+        // evidence-only defaults, then let initialExtensionState apply any
+        // preferences explicitly saved for that key.
+        panels: defaults.panels,
+        panelOverrides: {},
+        trackerSettings: defaults.trackerSettings,
         panelLayouts: panelLayoutsForVideo(current, key),
         collapsedPanels: collapsedPanelsForVideo(current, key),
         manualLabels: labels,
@@ -6564,14 +6657,12 @@
           var density = ["minimal", "balanced", "full"].indexOf(action.value) >= 0 ? action.value : current.density;
           // Density presets decide only the density-driven panels; explicit
           // toggles (including Evidence visibility) always win and survive.
-          return Object.assign(current, { density: density, panels: Object.assign({}, current.panels, panelsForDensity(density, current.panelOverrides)) });
+          return withPanelPreferences(Object.assign({}, current, { density: density }), Object.assign({}, current.panels, panelsForDensity(density, current.panelOverrides)), current.panelOverrides);
         }
         case "TOGGLE_PANEL": {
+          if (PANEL_VISIBILITY_KEYS.indexOf(action.panel) < 0) return current;
           var panelValue = Boolean(action.value);
-          return Object.assign(current, {
-            panels: Object.assign({}, current.panels, { [action.panel]: panelValue }),
-            panelOverrides: Object.assign({}, current.panelOverrides, { [action.panel]: panelValue })
-          });
+          return withPanelPreferences(current, Object.assign({}, current.panels, { [action.panel]: panelValue }), Object.assign({}, current.panelOverrides, { [action.panel]: panelValue }));
         }
         case "TOGGLE_PANEL_COLLAPSE": {
           if (PANEL_COLLAPSE_KEYS.indexOf(action.panel) < 0) return current;
@@ -6596,13 +6687,13 @@
           var nextPanels = Object.assign({}, current.panels);
           var nextOverrides = Object.assign({}, current.panelOverrides);
           Object.keys(action.panels || {}).forEach(function (key) {
-            if (["feed", "stats", "map", "evidence"].indexOf(key) < 0) return;
+            if (PANEL_VISIBILITY_KEYS.indexOf(key) < 0) return;
             nextPanels[key] = Boolean(action.panels[key]);
             nextOverrides[key] = Boolean(action.panels[key]);
           });
-          return Object.assign(current, { panels: nextPanels, panelOverrides: nextOverrides });
+          return withPanelPreferences(current, nextPanels, nextOverrides);
         }
-        case "SET_TRACKER": return Object.assign(current, { trackerSettings: Object.assign({}, current.trackerSettings, { [action.tracker]: Boolean(action.value) }) });
+        case "SET_TRACKER": return withTrackerPreferences(current, Object.assign({}, current.trackerSettings, { [action.tracker]: Boolean(action.value) }));
         case "CREATE_LABEL":
         case "LABEL_CREATE":
         case "UPDATE_LABEL":
@@ -7072,6 +7163,10 @@
     var publishedRuntimeKey = null;
     var lastRuntimeRenderAt = 0;
     var panelGesture = null;
+    // The live video keeps one compact access point visible. Its on-demand menu
+    // is intentionally transient; durable panel/evidence choices live in the
+    // popup-backed, video-local state.
+    var overlayMenuOpen = false;
   
     function hasSeenMessage(message) {
       var requestId = message && message.requestId;
@@ -7368,6 +7463,7 @@
       calibration = null;
       seedPoints = [];
       panelGesture = null;
+      overlayMenuOpen = false;
       editingEventId = null;
       strokes = [];
       suggestion = null;
@@ -8106,6 +8202,61 @@
         ui.button("Summary", { size: "sm", icon: "table", onClick: openSummary })
       ]);
     }
+    function overlayPanelShortcut(label, panel, icon, description) {
+      var button = ui.button(label, {
+        variant: state.panels[panel] ? "secondary" : "ghost",
+        size: "sm",
+        icon: icon,
+        pressed: state.panels[panel],
+        title: description || "Show " + label.toLowerCase() + " on the video",
+        onClick: function () {
+          state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: panel, value: true });
+          overlayMenuOpen = false;
+          persist();
+          render();
+        }
+      });
+      button.setAttribute("data-bso-overlay-shortcut", panel);
+      return button;
+    }
+    function overlayAccessPoint() {
+      var access = ui.el("div", { className: "bv-overlay-access" });
+      var button = ui.button("Panels", {
+        variant: "ghost",
+        size: "sm",
+        icon: overlayMenuOpen ? "x" : "layout",
+        pressed: overlayMenuOpen,
+        title: overlayMenuOpen ? "Close overlay shortcuts" : "Open overlay shortcuts",
+        onClick: function () { overlayMenuOpen = !overlayMenuOpen; render(); }
+      });
+      button.setAttribute("aria-expanded", String(overlayMenuOpen));
+      button.setAttribute("aria-controls", "bv-overlay-shortcuts");
+      button.setAttribute("data-bso-overlay-access", "true");
+      access.appendChild(button);
+      var manualShortcut = ui.button("Label it myself", { variant: "ghost", size: "sm", icon: "pencil", onClick: function () { overlayMenuOpen = false; openLabeling(); } });
+      manualShortcut.setAttribute("data-bso-overlay-shortcut", "manual");
+      var menu = ui.el("div", {
+        className: "bv-overlay-menu",
+        id: "bv-overlay-shortcuts",
+        role: "menu",
+        "aria-label": "Overlay shortcuts",
+        "data-bso-overlay-menu": "true",
+        hidden: !overlayMenuOpen
+      }, [
+        ui.el("strong", { className: "bv-overlay-menu-title" }, ["Overlay shortcuts"]),
+        ui.el("span", { className: "bv-overlay-menu-help" }, ["Choose what to open over the video."]),
+        overlayPanelShortcut("Shots this rally", "feed", "list", "Show the live stroke feed"),
+        overlayPanelShortcut("Rally stats", "stats", "activity", "Show rally statistics"),
+        overlayPanelShortcut("Court map", "map", "crosshair", "Show the court map"),
+        overlayPanelShortcut("Evidence visibility", "evidence", "activity", "Show detection-layer visibility controls"),
+        overlayPanelShortcut("Live controls", "controls", "sliders", "Show density and summary shortcuts"),
+        manualShortcut,
+        ui.button("Density: " + state.density, { variant: "ghost", size: "sm", icon: "sliders", onClick: cycleDensity }),
+        ui.button("Summary", { variant: "ghost", size: "sm", icon: "table", onClick: openSummary })
+      ]);
+      access.appendChild(menu);
+      return access;
+    }
     function liveOverlay() {
       var overlay = ui.el("div", {
         className: "bv-overlay-root",
@@ -8121,27 +8272,19 @@
       // Evidence is drawn in normalized video coordinates and never intercepts
       // pointer input, so player/shuttle rendering cannot block playback or seed clicks.
       overlay.appendChild(runtimeEvidenceDrawing());
-      var stale = runtimeIsStale();
-      var statusState = runtimeView.phase === "fallback" ? "stale" : stale ? "stale" : "live";
-      var statusLabel = runtimeView.phase === "fallback" ? "Analysis fallback" : stale ? "Analysis behind" : "Rally " + state.rally;
-      var statusDetail = stale && Number.isFinite(runtimeView.ageSeconds)
-        ? "+" + runtimeView.ageSeconds.toFixed(1) + "s"
-        : state.time;
-      var leftChildren = [ui.statusChip(statusState, statusLabel, statusDetail, openLabeling)];
+      var leftChildren = [];
       if (state.density !== "minimal") leftChildren.push(ui.el("div", { className: "bv-runtime-note", role: "status" }, [ui.icon("info", 11), runtimeCaption()]));
       if (state.density === "full") leftChildren.push(ui.el("div", { className: "bv-runtime-signal", role: "status" }, ["players ", ui.badge(String(runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length), "info"), " · shuttle ", ui.badge(evidenceState(runtimeShuttle()), evidenceState(runtimeShuttle()) === "tracked" ? "in" : "unknown")]));
-      var left = ui.el("div", { className: "bv-overlay-stack left" }, leftChildren);
-      // Panel switches are independent controls: density sets the default
-      // presentation, while an explicit toggle always wins and reopens a panel.
-      // Evidence visibility is a panel like the rest: hideable and re-openable.
-      overlay.appendChild(left);
+      if (leftChildren.length) overlay.appendChild(ui.el("div", { className: "bv-overlay-stack left" }, leftChildren));
+      // The access point is the only default interactive surface. The popup is
+      // canonical for durable visibility choices; this menu is a small shortcut
+      // for opening an already-supported panel while watching.
+      overlay.appendChild(overlayAccessPoint());
       if (state.panels.evidence) overlay.appendChild(evidenceVisibilityPanel());
       if (state.panels.stats) overlay.appendChild(statsPanel());
       if (state.panels.map) overlay.appendChild(mapPanel());
       if (state.panels.feed) overlay.appendChild(feedPanel());
-      // Controls are a panel too: only their quiet header is draggable, while
-      // the buttons remain ordinary controls and never start a panel gesture.
-      overlay.appendChild(controlsPanel());
+      if (state.panels.controls) overlay.appendChild(controlsPanel());
       return overlay;
     }
   
@@ -8508,6 +8651,12 @@
       // Escape is a global dismiss affordance, including while a shot button is
       // focused. Other shortcuts yield to native controls so Enter/Space do not
       // accidentally save a draft when activating a picker button.
+      if (key === "escape" && overlayMenuOpen) {
+        event.preventDefault();
+        overlayMenuOpen = false;
+        render();
+        return;
+      }
       if (key === "escape" && state.labeling && !state.seeding) {
         event.preventDefault();
         closeLabeling();
@@ -8607,6 +8756,7 @@
         persist(); render();
       }
       else if (message.type === "DISABLE") {
+        overlayMenuOpen = false;
         stopRuntime("disabled");
         state = window.BVState.reduceExtensionState(state, { type: "DISABLE" });
         persist(); render();

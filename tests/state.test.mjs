@@ -14,6 +14,10 @@ test("public setup journey keeps minimal density and exposes reversible states",
   const state = await stateModule();
   let current = state.initialExtensionState();
   assert.equal(current.density, "minimal");
+  assert.deepEqual(JSON.parse(JSON.stringify(current.panels)), { feed: false, stats: false, map: false, evidence: false, controls: false });
+  assert.equal(current.trackerSettings.body, true);
+  assert.equal(current.trackerSettings.shuttle, true);
+  assert.equal(current.trackerSettings.players, false);
   assert.equal(current.panels.stats, false);
   current = state.reduceExtensionState(current, { type: "ENABLE" });
   assert.equal(current.seeding, true);
@@ -41,6 +45,36 @@ test("public setup journey keeps minimal density and exposes reversible states",
   assert.equal(current.enabled, false);
   assert.equal(current.panels.stats, true);
   assert.equal(current.panelOverrides.map, false);
+});
+
+test("default overlay preferences are evidence-only, video-local, and reversible", async () => {
+  const state = await stateModule();
+  const videoA = state.videoKeyForUrl("https://www.youtube.com/watch?v=alpha");
+  const videoB = state.videoKeyForUrl("https://www.youtube.com/watch?v=beta");
+  let current = state.stateForVideo(state.initialExtensionState(), videoA);
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL", panel: "stats", value: true });
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL", panel: "evidence", value: true });
+  current = state.reduceExtensionState(current, { type: "SET_TRACKER", tracker: "body", value: false });
+  assert.equal(current.panels.stats, true);
+  assert.equal(current.trackerSettings.body, false);
+  assert.deepEqual(JSON.parse(JSON.stringify(current.panelsByVideo[videoA])), { feed: false, stats: true, map: false, evidence: true, controls: false });
+
+  const otherVideo = state.stateForVideo(current, videoB);
+  assert.deepEqual(JSON.parse(JSON.stringify(otherVideo.panels)), { feed: false, stats: false, map: false, evidence: false, controls: false });
+  assert.equal(otherVideo.trackerSettings.body, true);
+  const restored = state.stateForVideo(current, videoA);
+  assert.equal(restored.panels.stats, true);
+  assert.equal(restored.trackerSettings.body, false);
+
+  current = state.reduceExtensionState(current, { type: "SET_DENSITY", value: "full" });
+  assert.equal(current.panels.feed, true);
+  assert.equal(current.panels.map, true);
+  assert.equal(current.panels.evidence, true);
+  current = state.reduceExtensionState(current, { type: "SET_DENSITY", value: "minimal" });
+  assert.equal(current.panels.stats, true, "an explicit panel choice survives a density change");
+  assert.equal(current.panels.feed, false);
+  assert.equal(current.panels.map, false);
+  assert.equal(current.panels.evidence, true, "an explicit evidence-panel choice survives a density change");
 });
 
 test("court instruction position is video-local, normalized, and safely reset", async () => {

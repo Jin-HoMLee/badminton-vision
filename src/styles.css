@@ -345,6 +345,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-overlay-root > * { pointer-events: none; }
 .bv-overlay-stack, .bv-overlay-empty,
 .bv-overlay-root > [data-bso-panel-layout]:not(.bv-panel), .bv-seed-layer { pointer-events: auto; }
+.bv-overlay-root > .bv-overlay-access { pointer-events: auto; }
 .bv-overlay-stack { position: absolute; display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
 .bv-overlay-stack.left { left: var(--overlay-gutter); top: var(--overlay-gutter); }
 .bv-overlay-stack.right { right: var(--overlay-gutter); top: var(--overlay-gutter); width: var(--overlay-panel-width); }
@@ -358,6 +359,18 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-overlay-root > [data-bso-panel="feed"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: var(--overlay-panel-width); }
 .bv-overlay-root > [data-bso-panel="manual"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: min(380px, calc(100% - 32px)); max-height: calc(100% - var(--overlay-gutter) - var(--overlay-controls-reserve)); }
 .bv-overlay-root > [data-bso-panel="controls"] { right: var(--overlay-gutter); bottom: var(--overlay-controls-reserve); width: auto; min-width: 180px; }
+/* One quiet access point keeps the default video layer to detection evidence.
+   Its menu is hidden until requested and sits at the top edge, away from the
+   native player control strip. */
+.bv-overlay-access { position: absolute; top: var(--overlay-gutter); right: var(--overlay-gutter); z-index: 5; display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-2); pointer-events: auto; }
+.bv-overlay-access > .bv-button { color: var(--text-body); border-color: var(--border-subtle); background: rgba(6,9,11,.78); box-shadow: var(--shadow-chip); }
+.bv-overlay-access > .bv-button[aria-pressed="true"] { color: var(--lime-500); background: var(--ink-900); }
+.bv-overlay-menu { display: flex; flex-direction: column; gap: var(--sp-2); width: 220px; padding: var(--sp-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--ink-900); box-shadow: var(--shadow-panel); }
+.bv-overlay-menu[hidden] { display: none; }
+.bv-overlay-menu-title { color: var(--text-primary); font: var(--type-ui-sm); }
+.bv-overlay-menu-help { margin-bottom: var(--sp-2); color: var(--text-faint); font: var(--type-ui-sm); font-size: var(--fs-11); }
+.bv-overlay-menu .bv-button { justify-content: flex-start; width: 100%; color: var(--text-body); }
+.bv-overlay-menu .bv-button[aria-pressed="true"] { color: var(--lime-500); background: var(--lime-tint); border-color: rgba(200,240,74,.35); }
 /* Panel chrome passes pointer events through except on actual controls: a
    panel's empty body can never intercept the player (including popups such
    as the settings menu) while every button, row, and scroll surface keeps
