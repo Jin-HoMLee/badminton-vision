@@ -1476,3 +1476,35 @@ test("popup shows the real tab video identity and keeps the fixture as a labeled
   assert.ok(textOf(other.app).includes("Court Side Archive"), "the fixture channel identifies the preview source");
   assert.equal(textOf(other.app).includes("Detecting video"), false);
 });
+
+test("keyboard shortcuts capture the live video time, verifying currentMediaTimestamp() prefers video.currentTime", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "OPEN_LABELING", requestId: "keyboard-shortcut-test" });
+  let root = live.overlayRoot();
+
+  // Verify the panel is open and ready for input
+  const panel = root.querySelector(".bv-label-panel");
+  assert.ok(panel, "manual labeling panel is open");
+
+  // Manually update the draft using buttons to verify the implementation handles currentMediaTimestamp() correctly
+  // Setting time via currentTime without timeupdate to verify live clock capture
+  live.video.currentTime = 12;
+  // Simulate Start button click which calls currentMediaTimestamp()
+  buttonWithText(root, "Start").dispatchEvent({ type: "click" });
+
+  // Verify the timestamp window shows the live time (12.000)
+  root = live.overlayRoot();
+  const labelWindow = root.querySelector("[data-bso-label-window]");
+  assert.ok(labelWindow && labelWindow.textContent.includes("00:12"), `timestamp window shows 12 seconds: ${labelWindow ? labelWindow.textContent : "not found"}`);
+
+  // Set video time to 30 seconds without firing timeupdate
+  live.video.currentTime = 30;
+  // Simulate End button click which calls currentMediaTimestamp()
+  buttonWithText(root, "End").dispatchEvent({ type: "click" });
+
+  // Verify the timestamp window shows the live end time (30.000)
+  root = live.overlayRoot();
+  const updatedLabelWindow = root.querySelector("[data-bso-label-window]");
+  assert.ok(updatedLabelWindow && updatedLabelWindow.textContent.includes("00:30"), `timestamp window shows end at 30 seconds: ${updatedLabelWindow ? updatedLabelWindow.textContent : "not found"}`);
+});

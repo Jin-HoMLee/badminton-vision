@@ -7108,6 +7108,10 @@
     var csvInput = null;
   
     function currentMediaTimestamp() {
+      // Prefer live video.currentTime to avoid stale cached mediaTime from prior playback events
+      if (video && Number.isFinite(video.currentTime) && video.currentTime >= 0) {
+        return video.currentTime;
+      }
       return Number.isFinite(mediaTime) && mediaTime >= 0 ? mediaTime : null;
     }
     function newDraft(record) {
@@ -8674,15 +8678,11 @@
         event.preventDefault();
         syncManualDraft();
       } else if (key === "s") {
-        // Read current time directly from video element to avoid stale cached value
-        var currentTime = video && Number.isFinite(video.currentTime) && video.currentTime >= 0 ? video.currentTime : mediaTime;
-        draft.start = formatMediaTime(currentTime);
+        draft.start = formatMediaTime(currentMediaTimestamp());
         event.preventDefault();
         syncManualDraft();
       } else if (key === "e") {
-        // Read current time directly from video element to avoid stale cached value
-        var currentTime = video && Number.isFinite(video.currentTime) && video.currentTime >= 0 ? video.currentTime : mediaTime;
-        draft.end = formatMediaTime(currentTime);
+        draft.end = formatMediaTime(currentMediaTimestamp());
         event.preventDefault();
         syncManualDraft();
       } else if (event.key === "Enter" && (draft.shot || suggestion)) {
