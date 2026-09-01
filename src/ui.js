@@ -38,7 +38,15 @@
     attrs = attrs || {};
     Object.keys(attrs).forEach(function (key) {
       var value = attrs[key];
-      if (value == null || value === false) return;
+      if (value == null) return;
+      // ARIA state is string-valued. Treating true as a presence-only
+      // attribute produced aria-checked="" and broke both styling and assistive
+      // state; false also needs to remain explicit for switches/radios.
+      if (key.slice(0, 5) === "aria-" && typeof value === "boolean") {
+        node.setAttribute(key, String(value));
+        return;
+      }
+      if (value === false) return;
       if (key === "className") node.className = value;
       else if (key === "text") node.textContent = value;
       else if (key === "style" && typeof value === "object") Object.assign(node.style, value);
@@ -144,7 +152,11 @@
   function toggle(label, description, checked, onChange, opts) {
     opts = opts || {};
     var sw = el("button", { className: "bv-toggle-switch", id: opts.id, type: "button", role: "switch", "aria-checked": Boolean(checked), disabled: opts.disabled, "aria-label": "Toggle " + label, onClick: function () { if (onChange && !opts.disabled) onChange(!checked); } }, [el("i")]);
-    return el("label", { className: "bv-toggle" + (opts.disabled ? " disabled" : ""), for: opts.id }, [el("span", { className: "bv-toggle-copy" }, [el("strong", {}, [label]), description ? el("span", {}, [description]) : null]), sw]);
+    // A label wrapping a button can synthesize a second activation in Chrome;
+    // that made one click look inert because the two toggles cancelled out.
+    // The switch is the sole interactive control, so keep the copy in a
+    // neutral container rather than using label activation semantics.
+    return el("div", { className: "bv-toggle" + (opts.disabled ? " disabled" : "") }, [el("span", { className: "bv-toggle-copy" }, [el("strong", {}, [label]), description ? el("span", {}, [description]) : null]), sw]);
   }
 
   function chip(text, selected, onClick, count) { return el("button", { className: "bv-chip", type: "button", "aria-pressed": Boolean(selected), onClick: onClick }, [text, count == null ? null : el("span", { className: "bv-mono", style: { fontSize: "var(--fs-11)" } }, [count])]); }

@@ -5,6 +5,9 @@
   var expanded = false;
   var detected = false;
   var runtimeStatus = null;
+  var messageSequence = 0;
+  var stateHydrated = false;
+  var pendingDispatches = [];
   var trackers = [
     { id: "court", label: "Court", health: "degraded", note: "not seeded", on: true },
     { id: "players", label: "Players", health: "degraded", note: "unknown · awaiting local runtime", on: true },
@@ -62,9 +65,16 @@
     });
   }
   function dispatch(action, message, onDone) {
+    if (!stateHydrated) {
+      pendingDispatches.push({ action: action, message: message, onDone: onDone });
+      return;
+    }
     state = window.BVState.reduceExtensionState(state, action);
     persist();
-    sendToTab(message || { type: "STATE_UPDATE", state: state }, onDone);
+    var outbound = Object.assign({}, message || { type: "STATE_UPDATE", state: state }, {
+      requestId: "popup-" + Date.now() + "-" + (++messageSequence)
+    });
+    sendToTab(outbound, onDone);
     render();
   }
   function summaryUrl(originUrl) {
@@ -85,6 +95,11 @@
   }
   function closePopup() { if (window.close) window.close(); }
   function isWatchPage(url) { return /^https?:\/\/(www\.)?youtube\.com\/watch(?:\?|$)/.test(url || ""); }
+  function replayPendingDispatches() {
+    var queued = pendingDispatches;
+    pendingDispatches = [];
+    queued.forEach(function (item) { dispatch(item.action, item.message, item.onDone); });
+  }
 
   function section(title, content, aside) {
     return ui.el("section", { className: "bv-section" }, [ui.el("div", { className: "bv-section-title" }, [title, aside ? ui.el("span", { className: "bv-section-aside" }, [aside]) : null]), content]);
@@ -196,11 +211,21 @@
   }
 
   function load() {
-    if (!chromeAvailable() || !chrome.tabs) { detected = true; render(); return; }
+    if (!chromeAvailable() || !chrome.tabs) {
+      detected = true;
+      stateHydrated = true;
+      render();
+      replayPendingDispatches();
+      return;
+    }
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       var tabUrl = tabs && tabs[0] && tabs[0].url;
       detected = isWatchPage(tabUrl);
       var activeVideoKey = window.BVState.videoKeyForUrl(tabUrl);
+      // Expose the detected page before storage hydration completes. Any
+      // action in this small window is queued and replayed against the stored
+      // video-local state rather than being overwritten by the read callback.
+      render();
       if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvRuntimeStatus"], function (result) {
         if (result && result.bvState) {
           state = detected
@@ -213,9 +238,16 @@
           state = window.BVState.stateForVideo(state, activeVideoKey);
         }
         if (result && result.bvRuntimeStatus) runtimeStatus = result.bvRuntimeStatus;
+        stateHydrated = true;
         persist();
         render();
-      }); else { state.videoKey = activeVideoKey; render(); }
+        replayPendingDispatches();
+      }); else {
+        state.videoKey = activeVideoKey;
+        stateHydrated = true;
+        render();
+        replayPendingDispatches();
+      }
     });
   }
   render();

@@ -26,9 +26,11 @@ retired. Runtime modules remain under `src/extension/`, but are copied by the
 canonical build only when referenced by the root manifest.
 
 Requires Node.js 20 or newer and Chrome 148 or newer with MV3
-offscreen-document support. Stable Chrome uses the serializable RGBA frame
-fallback described below; structured-clone messaging is an optional channel
-capability and is not declared in the public manifest. The manifest explicitly
+offscreen-document support. The manifest injects one generated
+`content.bundle.js` entrypoint; its guard makes declared injection and popup
+recovery share one content/UI/listener instance per tab. Stable Chrome uses the
+serializable RGBA frame fallback described below; structured-clone messaging is
+an optional channel capability and is not declared in the public manifest. The manifest explicitly
 allows `'wasm-unsafe-eval'` for the local LiteRT WebAssembly executor; without
 that extension-page CSP permission, model initialization fails and the UI must
 report unknown/fallback state. In Chrome, open `chrome://extensions`, enable
@@ -137,6 +139,19 @@ source links and SHA-256. LiteRT.js 2.5.3 and both selected WASM executors are
 Apache-2.0 and are packaged locally. The older `movenet-adapter.js` remains a
 contract-tested seam only: its official checkpoint is not bundled because the
 MoveNet model card does not state a weight redistribution license.
+
+### Native runtime log classification
+
+LiteRT's vendored WASM/WebGPU layers may print accelerator registration,
+compilation, weight-transfer, or long numeric tensor lines to the offscreen
+console. Those native diagnostics are not, by themselves, an inference failure:
+the authoritative signal is the capability/result envelope (`runtime.status`,
+`runtime.capabilities`, and `analysis.result`). A genuine initialization or
+inference failure emits a `fallback` phase with a reason and the popup shows
+**Production inference unavailable** while leaving playback and manual labels
+available. The launch build deliberately does not blanket-suppress vendor
+console output, because doing so could hide a real model/backend failure; the
+UI and tests classify fallback explicitly instead.
 
 ## MoveNet artifact release gate
 

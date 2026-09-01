@@ -3,6 +3,13 @@
  * rectangle; it never calls a playback mutator or writes to the video element.
  */
 (function () {
+  // All MV3 page actions enter through this one bundled content script. Keep
+  // the guard in this source file too: it protects direct recovery/tests and
+  // makes a second evaluation a no-op before any DOM or listener is created.
+  var singletonKey = "__BV_CONTENT_SINGLETON_V1__";
+  if (window[singletonKey]) return;
+  var singleton = window[singletonKey] = { version: 1, active: true };
+
   var ui = window.BVUI;
   var data = window.BVFixtures;
   var calibrationApi = window.BVCalibration;
@@ -13,6 +20,7 @@
   // overwrite a just-enabled live session and leave an empty overlay behind.
   var storageHydrated = false;
   var pendingMessages = [];
+  var seenMessageIds = [];
   // Fixture rows are only rendered after an explicit fixture-probe result is
   // received. A real session starts with no automatic stroke claims; manual
   // labels remain first-class and are merged into the current evidence.
@@ -76,6 +84,15 @@
   var lastRuntimeRenderAt = 0;
   var seedCardDrag = null;
 
+  function hasSeenMessage(message) {
+    var requestId = message && message.requestId;
+    if (!requestId) return false;
+    requestId = String(requestId);
+    if (seenMessageIds.indexOf(requestId) >= 0) return true;
+    seenMessageIds.push(requestId);
+    if (seenMessageIds.length > 64) seenMessageIds.shift();
+    return false;
+  }
   function hasChrome() { return typeof chrome !== "undefined"; }
   function persist() {
     var key = state.videoKey || activeVideoKey || currentVideoKey();
@@ -348,6 +365,27 @@
     positionToVideo();
   }
 
+  function stopRuntime(reason) {
+    var controller = runtimeController;
+    runtimeController = null;
+    publishedRuntimeKey = null;
+    if (controller && typeof controller.stop === "function") {
+      try { controller.stop(); } catch (_) {}
+    }
+    runtimeView = {
+      phase: "idle",
+      message: "Local runtime stopped",
+      reason: reason || "runtime-stopped",
+      analyzer: "none",
+      inference: false,
+      fallbacks: [],
+      capabilities: {},
+      result: null,
+      currentMediaTime: null,
+      ageSeconds: null,
+      stale: true
+    };
+  }
   function startRuntime() {
     if (runtimeController || !window.BVRuntime || !window.BVRuntime.startIntegratedRuntime) return;
     try {
@@ -717,7 +755,8 @@
       "data-bso-analysis-state": runtimeView.result && runtimeView.result.state || "unknown",
       "data-bso-player-state": runtimeView.result && runtimeView.result.tracking && runtimeView.result.tracking.state || "unknown",
       "data-bso-shuttle-state": runtimeView.result && runtimeView.result.shuttle && runtimeView.result.shuttle.state || "unknown",
-      "data-bso-court-state": courtDiagnosticState()
+      "data-bso-court-state": courtDiagnosticState(),
+      "data-bso-density": state.density
     });
     if (calibration) overlay.appendChild(calibrationDrawing());
     // Evidence is drawn in normalized video coordinates and never intercepts
@@ -729,11 +768,10 @@
     var statusDetail = stale && Number.isFinite(runtimeView.ageSeconds)
       ? "+" + runtimeView.ageSeconds.toFixed(1) + "s"
       : state.time;
-    var left = ui.el("div", { className: "bv-overlay-stack left" }, [
-      ui.statusChip(statusState, statusLabel, statusDetail, openLabeling),
-      ui.el("div", { className: "bv-runtime-note", role: "status" }, [ui.icon("info", 11), runtimeCaption()]),
-      ui.el("div", { className: "bv-runtime-signal", role: "status" }, ["players ", ui.badge(String((runtimeTracking() && runtimeTracking().players || []).filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length), "info"), " · shuttle ", ui.badge(evidenceState(runtimeShuttle()), evidenceState(runtimeShuttle()) === "tracked" ? "in" : "unknown")])
-    ]);
+    var leftChildren = [ui.statusChip(statusState, statusLabel, statusDetail, openLabeling)];
+    if (state.density !== "minimal") leftChildren.push(ui.el("div", { className: "bv-runtime-note", role: "status" }, [ui.icon("info", 11), runtimeCaption()]));
+    if (state.density === "full") leftChildren.push(ui.el("div", { className: "bv-runtime-signal", role: "status" }, ["players ", ui.badge(String((runtimeTracking() && runtimeTracking().players || []).filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length), "info"), " · shuttle ", ui.badge(evidenceState(runtimeShuttle()), evidenceState(runtimeShuttle()) === "tracked" ? "in" : "unknown")]));
+    var left = ui.el("div", { className: "bv-overlay-stack left" }, leftChildren);
     // Panel switches are independent controls: density sets the default
     // presentation, while an explicit toggle always wins and reopens a panel.
     if (state.panels.stats) left.appendChild(statsPanel());
@@ -1052,6 +1090,7 @@
       persist(); render();
     }
     else if (message.type === "DISABLE") {
+      stopRuntime("disabled");
       state = window.BVState.reduceExtensionState(state, { type: "DISABLE" });
       persist(); render();
     }
@@ -1070,7 +1109,7 @@
     }
   }
   function handleMessage(message) {
-    if (!message) return;
+    if (!message || hasSeenMessage(message)) return;
     if (!storageHydrated) {
       pendingMessages.push(message);
       return;
@@ -1090,12 +1129,24 @@
       else if (node && node.parentNode && typeof node.parentNode.removeChild === "function") node.parentNode.removeChild(node);
     });
   }
+  function removeRetiredContentHosts() {
+    if (!document || typeof document.querySelectorAll !== "function") return;
+    // Extension reloads invalidate the old isolated world but leave its DOM
+    // host behind. Remove that stale instance before mounting the new one;
+    // this is cleanup, not a second hidden panel or event-handler workaround.
+    document.querySelectorAll("[data-badminton-vision]").forEach(function (node) {
+      if (node && typeof node.remove === "function") node.remove();
+      else if (node && node.parentNode && typeof node.parentNode.removeChild === "function") node.parentNode.removeChild(node);
+    });
+  }
   function init() {
     // An extension reload can leave the old plain-text runtime node in the
     // page after its isolated world is invalidated. Remove that retired node
     // before mounting the boxed design-system overlay.
     removeRetiredRuntimeOverlays();
+    removeRetiredContentHosts();
     host = document.createElement("div"); host.className = "bv-overlay-anchor"; host.setAttribute("data-badminton-vision", "overlay");
+    singleton.host = host;
     host.style.position = "fixed"; host.style.zIndex = "2147483640"; host.style.pointerEvents = "none";
     shadow = host.attachShadow({ mode: "open" });
     var link = document.createElement("link"); link.rel = "stylesheet"; link.href = hasChrome() && chrome.runtime ? chrome.runtime.getURL("styles.css") : "styles.css"; shadow.appendChild(link);

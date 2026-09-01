@@ -63,9 +63,13 @@ extension internals from a page console.
 The toolbar action and native action popup are outside page CDP. They cannot
 be clicked by `chrome-devtools-axi`; use the normal toolbar action as the one
 manual step. The popup also recovers the common install/reload boundary: if the
-open YouTube tab has no content-script receiver, it injects the declared local
-YouTube content path before delivering the action. If that injection is denied,
-manually reload the same YouTube tab and click the toolbar action again. The
+open YouTube tab has no content-script receiver, it injects the single guarded
+`content.bundle.js` entrypoint before delivering the action. After either a clean
+load or recovery on an already-open tab, the disconfirming check is exactly one
+`[data-badminton-vision]` host, one shadow overlay root, and one court-seeding
+layer when setup is active; duplicate hosts/layers indicate a failed run. If
+that injection is denied, manually reload the same YouTube tab and click the
+toolbar action again. The
 experimental CDP `Extensions.triggerAction` path is a separate test setup: the
 Chrome DevTools MCP extension category requires a pipe-launched isolated browser
 with `--categoryExtensions` (and unsafe extension debugging enabled), while the
@@ -83,10 +87,9 @@ These actions are intentionally performed by the captain in the already-running
 dedicated Chrome. Do not substitute the ordinary browser, a new profile, or a
 page-console call:
 
-1. In `chrome://extensions/`, choose **Load unpacked**, select exactly
-   `/Users/jin-holee/.treehouse/badminton-statistics-11656a/7/badminton-statistics/dist`,
-   and confirm **Open**. If the card already points to that directory, use its
-   **Reload** button instead.
+1. In `chrome://extensions/`, choose **Load unpacked**, select exactly this
+   worktree's `dist/` directory, and confirm **Open**. If the card already
+   points to that directory, use its **Reload** button instead.
 2. Keep the existing YouTube match tab open. Use the toolbar action to open
    **Badminton Vision**, then click **Turn on — step 1 of 3**. Do not click the
    YouTube play, seek, mute, rate, theater, or fullscreen controls as part of

@@ -12,6 +12,7 @@ const projectRoot = dirname(root);
 const dist = join(projectRoot, "dist");
 
 const expectedFiles = [
+  "content.bundle.js",
   "analysis.js",
   "analysis-primitives.js",
   "calibration.js",
@@ -95,6 +96,8 @@ test("production build contains only local runtime design-system assets", async 
   assert.equal(manifest.icons["16"], "design-system/assets/icon-16.svg");
   assert.equal(manifest.icons["32"], "design-system/assets/icon-32.svg");
   assert.equal(manifest.web_accessible_resources.some((entry) => entry.resources.includes("design-system/tokens/*")), true);
+  assert.deepEqual(manifest.content_scripts?.flatMap((entry) => entry.js || []), ["content.bundle.js"]);
+  assert.match(await readFile(join(dist, "content.bundle.js"), "utf8"), /__BV_CONTENT_BUNDLE_LOADED__/);
 
   const cssFiles = (await listFiles(dist)).filter((file) => file.endsWith(".css"));
   const textFiles = await Promise.all((await listFiles(dist)).map(async (file) => ({

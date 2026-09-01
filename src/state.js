@@ -80,7 +80,7 @@
     var panels = {
       feed: true,
       stats: density !== "minimal",
-      map: density !== "minimal"
+      map: density === "full"
     };
     Object.keys(overrides || {}).forEach(function (key) {
       panels[key] = Boolean(overrides[key]);
