@@ -17,6 +17,88 @@
     };
   }
 
+  function clientRect(value) {
+    value = value || {};
+    return {
+      left: Number(value.left) || 0,
+      top: Number(value.top) || 0,
+      width: Math.max(0, Number(value.width) || 0),
+      height: Math.max(0, Number(value.height) || 0)
+    };
+  }
+
+  function geometryNumber(value) {
+    if (!Number.isFinite(value)) return 0;
+    var rounded = Math.round(value * 1e9) / 1e9;
+    return Math.abs(rounded) < 1e-9 ? 0 : rounded;
+  }
+
+  function objectPositionOffset(token, freeSpace, startKeyword, endKeyword) {
+    token = String(token || "50%").toLowerCase();
+    if (token === "center") return freeSpace / 2;
+    if (token === startKeyword) return 0;
+    if (token === endKeyword) return freeSpace;
+    if (/^-?\d+(?:\.\d+)?%$/.test(token)) return freeSpace * Number(token.slice(0, -1)) / 100;
+    if (/^-?\d+(?:\.\d+)?px$/.test(token)) return Number(token.slice(0, -2));
+    return freeSpace / 2;
+  }
+
+  /**
+   * Return the rectangle occupied by captured video pixels, not merely the
+   * HTMLVideoElement box. YouTube may letterbox that box with object-fit while
+   * switching theater/fullscreen layouts; normalized runtime coordinates must
+   * stay attached to the rendered pixels through those changes.
+   */
+  function videoContentRect(video, windowRef) {
+    if (!video || typeof video.getBoundingClientRect !== "function") return clientRect();
+    windowRef = windowRef || root;
+    var elementRect = clientRect(video.getBoundingClientRect());
+    var intrinsicWidth = Number(video.videoWidth);
+    var intrinsicHeight = Number(video.videoHeight);
+    if (!elementRect.width || !elementRect.height || !Number.isFinite(intrinsicWidth) || intrinsicWidth <= 0 || !Number.isFinite(intrinsicHeight) || intrinsicHeight <= 0) {
+      return Object.assign({}, elementRect, { elementRect: elementRect, objectFit: "fill", clipped: false });
+    }
+    var style = windowRef && typeof windowRef.getComputedStyle === "function" ? windowRef.getComputedStyle(video) : null;
+    var objectFit = String(style && style.objectFit || "fill").toLowerCase();
+    var scaleX = elementRect.width / intrinsicWidth;
+    var scaleY = elementRect.height / intrinsicHeight;
+    var renderedWidth = elementRect.width;
+    var renderedHeight = elementRect.height;
+    if (objectFit === "contain" || objectFit === "scale-down") {
+      var containScale = Math.min(scaleX, scaleY);
+      if (objectFit === "scale-down") containScale = Math.min(1, containScale);
+      renderedWidth = intrinsicWidth * containScale;
+      renderedHeight = intrinsicHeight * containScale;
+    } else if (objectFit === "cover") {
+      var coverScale = Math.max(scaleX, scaleY);
+      renderedWidth = intrinsicWidth * coverScale;
+      renderedHeight = intrinsicHeight * coverScale;
+    } else if (objectFit === "none") {
+      renderedWidth = intrinsicWidth;
+      renderedHeight = intrinsicHeight;
+    }
+    var position = String(style && style.objectPosition || "50% 50%").trim().split(/\s+/);
+    if (position.length === 1) position.push("50%");
+    var left = elementRect.left + objectPositionOffset(position[0], elementRect.width - renderedWidth, "left", "right");
+    var top = elementRect.top + objectPositionOffset(position[1], elementRect.height - renderedHeight, "top", "bottom");
+    var clipInsets = {
+      top: geometryNumber(Math.max(0, elementRect.top - top)),
+      right: geometryNumber(Math.max(0, left + renderedWidth - (elementRect.left + elementRect.width))),
+      bottom: geometryNumber(Math.max(0, top + renderedHeight - (elementRect.top + elementRect.height))),
+      left: geometryNumber(Math.max(0, elementRect.left - left))
+    };
+    return {
+      left: geometryNumber(left),
+      top: geometryNumber(top),
+      width: geometryNumber(renderedWidth),
+      height: geometryNumber(renderedHeight),
+      elementRect: elementRect,
+      objectFit: objectFit,
+      clipped: clipInsets.top > 0 || clipInsets.right > 0 || clipInsets.bottom > 0 || clipInsets.left > 0,
+      clipInsets: clipInsets
+    };
+  }
+
   function createPlaybackAdapter(video, onFrame) {
     var active = false;
     var callbackId = null;
@@ -99,6 +181,31 @@
       view = Object.assign({}, view, patch);
       publish();
     }
+    function resultUpdate(message, synchronizationView, currentMediaTime) {
+      var sync = synchronizationView || {};
+      var resultCapabilities = message.capabilities || message.capabilityState || {};
+      return {
+        phase: message.status === "fallback" ? "fallback" : "result",
+        message: message.result && message.result.note ? message.result.note : "Local analyzer result received",
+        reason: message.result && message.result.runtimeIntegrationTest
+          ? "runtime-integration-probe"
+          : message.status === "fallback" && !message.inferenceAvailable
+            ? (message.result && message.result.reason) || "local-inference-unavailable"
+            : "",
+        analyzer: message.inferenceAvailable ? (message.analyzer || resultCapabilities.analyzer || "none") : (resultCapabilities.analyzer || "none"),
+        inference: Boolean(message.inferenceAvailable),
+        fallbacks: Array.isArray(resultCapabilities.fallbacks) ? resultCapabilities.fallbacks.slice() : view.fallbacks,
+        capabilities: resultCapabilities,
+        result: message.result || null,
+        currentMediaTime: Number.isFinite(currentMediaTime) ? currentMediaTime : view.currentMediaTime,
+        ageSeconds: Number.isFinite(sync.ageSeconds) ? sync.ageSeconds : view.ageSeconds,
+        stale: sync.stale == null ? view.stale : Boolean(sync.stale)
+      };
+    }
+    function synchronizedEnvelope(synchronizationView) {
+      var sync = synchronizationView || {};
+      return sync.result && sync.result.type === "analysis.result" ? sync.result : null;
+    }
     function acceptMessage(message, synchronizationView, currentMediaTime) {
       if (!message) return;
       if (message.type === "runtime.capabilities") {
@@ -113,25 +220,20 @@
           capabilities: capabilityState
         });
       } else if (message.type === "analysis.result") {
-        var resultCapabilities = message.capabilities || message.capabilityState || {};
         var sync = synchronizationView || {};
-        update({
-          phase: message.status === "fallback" ? "fallback" : "result",
-          message: message.result && message.result.note ? message.result.note : "Local analyzer result received",
-          reason: message.result && message.result.runtimeIntegrationTest
-            ? "runtime-integration-probe"
-            : message.status === "fallback" && !message.inferenceAvailable
-              ? (message.result && message.result.reason) || "local-inference-unavailable"
-              : "",
-          analyzer: message.inferenceAvailable ? (message.analyzer || resultCapabilities.analyzer || "none") : (resultCapabilities.analyzer || "none"),
-          inference: Boolean(message.inferenceAvailable),
-          fallbacks: Array.isArray(resultCapabilities.fallbacks) ? resultCapabilities.fallbacks.slice() : view.fallbacks,
-          capabilities: resultCapabilities,
-          result: message.result || null,
-          currentMediaTime: Number.isFinite(currentMediaTime) ? currentMediaTime : view.currentMediaTime,
-          ageSeconds: Number.isFinite(sync.ageSeconds) ? sync.ageSeconds : view.ageSeconds,
-          stale: sync.stale == null ? view.stale : Boolean(sync.stale)
-        });
+        // RuntimeController always supplies a result key. If it is null, this
+        // envelope is still in the future and must not bypass synchronization.
+        // Direct seam consumers that omit the key retain the model-neutral
+        // compatibility path used by summaries/tests.
+        if (Object.prototype.hasOwnProperty.call(sync, "result")) {
+          var selected = synchronizedEnvelope(sync);
+          if (selected) update(resultUpdate(selected, sync, currentMediaTime));
+          else update({
+            currentMediaTime: Number.isFinite(currentMediaTime) ? currentMediaTime : view.currentMediaTime,
+            ageSeconds: Number.isFinite(sync.ageSeconds) ? sync.ageSeconds : null,
+            stale: sync.stale == null ? view.stale : Boolean(sync.stale)
+          });
+        } else update(resultUpdate(message, sync, currentMediaTime));
       } else if (message.type === "runtime.status") {
         var statusCapabilities = message.capabilities || {};
         update({
@@ -185,6 +287,11 @@
     }
     function acceptSynchronization(synchronizationView, currentMediaTime) {
       var sync = synchronizationView || {};
+      var selected = synchronizedEnvelope(sync);
+      if (selected) {
+        update(resultUpdate(selected, sync, currentMediaTime));
+        return;
+      }
       update({
         currentMediaTime: Number.isFinite(currentMediaTime) ? currentMediaTime : view.currentMediaTime,
         ageSeconds: Number.isFinite(sync.ageSeconds) ? sync.ageSeconds : null,
@@ -236,6 +343,7 @@
     createPlaybackAdapter: createPlaybackAdapter,
     createRuntimeUiSeam: createRuntimeUiSeam,
     startIntegratedRuntime: startIntegratedRuntime,
-    snapshot: snapshot
+    snapshot: snapshot,
+    videoContentRect: videoContentRect
   };
 })(typeof globalThis !== "undefined" ? globalThis : window);

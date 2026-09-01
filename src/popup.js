@@ -141,6 +141,7 @@
     var poseTracker = trackers.find(function (tracker) { return tracker.id === "body"; });
     var playerTracker = trackers.find(function (tracker) { return tracker.id === "players"; });
     var shuttleTracker = trackers.find(function (tracker) { return tracker.id === "shuttle"; });
+    var racketTracker = trackers.find(function (tracker) { return tracker.id === "racket"; });
     var productionReady = Boolean(runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer && runtimeStatus.analyzer !== "fixture-probe-v1");
     var fixtureReady = Boolean(runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer === "fixture-probe-v1");
     if (poseTracker) {
@@ -170,6 +171,13 @@
       shuttleTracker.disabled = false;
       shuttleTracker.health = productionReady && runtimeStatus.shuttleState === "tracked" ? "ok" : "degraded";
       shuttleTracker.note = productionReady ? (runtimeStatus.shuttleState || "unknown") + " · bounded local candidate" : fixtureReady ? "unknown · fixture probe" : "unknown · awaiting local runtime";
+    }
+    if (racketTracker) {
+      var racketSupported = Boolean(runtimeStatus && runtimeStatus.racketSupported);
+      racketTracker.disabled = !racketSupported;
+      racketTracker.health = racketSupported && runtimeStatus.racketState === "tracked" ? "ok" : racketSupported ? "degraded" : "unavailable";
+      racketTracker.on = racketSupported ? racketTracker.on : false;
+      racketTracker.note = racketSupported ? (runtimeStatus.racketState || "unknown") + " · runtime signal" : "unavailable · no runtime racket output";
     }
     trackers.forEach(function (tracker) {
       if (state.trackerSettings && state.trackerSettings[tracker.id] != null && !tracker.disabled) tracker.on = Boolean(state.trackerSettings[tracker.id]);

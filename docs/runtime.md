@@ -215,10 +215,22 @@ own discovery and capture. The content runtime:
 Capture backpressure is a bounded healthy condition while local inference catches up, and a media-time reset is a resynchronization state; neither is reported as production inference failure. Actual bridge, capture, or analyzer errors retain the explicit fallback state.
 
 The design-system overlay is a separate DOM sibling with `position: fixed`. It
-follows `getBoundingClientRect()` and re-anchors through `ResizeObserver`,
-window resize/scroll, fullscreen changes, mutations, navigation, and video
-replacement. Runtime status and result age are rendered through that existing
+re-anchors through `ResizeObserver`, window resize/scroll/orientation,
+fullscreen/transition changes, layout mutations, navigation, and video
+replacement. `BVRuntime.videoContentRect()` accounts for the video element's
+intrinsic aspect ratio and `object-fit`/`object-position`, so normalized pose and
+shuttle coordinates stay on the rendered YouTube pixels rather than a
+letterbox. Runtime status and result age are rendered through that existing
 overlay rather than mounting a second runtime-only status element.
+
+The live evidence SVG is rebuilt on each newly selected synchronized result:
+accepted runtime player keypoints are drawn with a named skeleton, a player box
+is drawn only when the runtime supplies a valid box, and explicit shuttle
+trajectory/candidate and racket fields are consumed without creating detections
+or confidence. Pose, player-box, racket, shuttle, and court-projection
+visibility switches are independent persisted UI state. Missing fields remain
+`unknown` or `unavailable`; the SVG and every child use `pointer-events: none`
+so court seeding and playback remain safe.
 
 ## Message protocol
 

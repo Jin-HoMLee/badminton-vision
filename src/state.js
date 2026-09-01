@@ -20,7 +20,10 @@
     labelUndoByVideo: {},
     manualLabelsVersion: LABEL_STORE_VERSION,
     lastEdit: null,
-    trackerSettings: {},
+    // Evidence visibility is independent from analyzer execution. These
+    // preferences survive every live result rerender; unavailable groups keep
+    // their remembered value without implying that evidence exists.
+    trackerSettings: { court: true, players: true, body: true, shuttle: true, racket: true },
     // seedPoints are the committed, normalized outer-corner correspondences.
     seedPoints: [],
     // A draft is deliberately separate so Cancel can preserve a prior court.
