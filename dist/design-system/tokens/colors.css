@@ -1,0 +1,51 @@
+:root,:host{
+/* ---- Base neutrals: cool "broadcast ink". The product lives on top of video, so
+   every surface is a dark, slightly blue-black glass. ---- */
+--ink-900:#0a0e11;--ink-800:#10161a;--ink-700:#161e23;--ink-600:#1e282e;--ink-500:#28343c;--ink-400:#38464f;
+--slate-400:#57676f;--slate-300:#6f8189;--slate-200:#97a6ad;--slate-100:#c3ced3;--paper:#f3f7f8;
+
+/* ---- Brand accent: "shuttle lime" — the feather-tip highlight. Used once per view. ---- */
+--lime-700:#7fa510;--lime-600:#a3cd25;--lime-500:#c8f04a;--lime-400:#d7f57c;--lime-300:#e6f9ad;
+--lime-tint:rgba(200,240,74,.14);
+
+/* ---- Court: the canonical court geometry + minimap. ---- */
+--court-line:#8fa3ac;--court-fill:#14343a;--court-fill-alt:#0f2a2f;--court-net:#c3ced3;
+
+/* ---- Semantic signals ---- */
+--signal-in:#3fd48b;--signal-out:#ff6b5a;--signal-warn:#ffb020;--signal-info:#62b6ff;--signal-unknown:#7a8b96;
+--signal-in-tint:rgba(63,212,139,.16);--signal-out-tint:rgba(255,107,90,.16);
+--signal-warn-tint:rgba(255,176,32,.16);--signal-info-tint:rgba(98,182,255,.16);--signal-unknown-tint:rgba(122,139,150,.16);
+
+/* ---- Player identity (max two, never brand-accent) ---- */
+--player-a:#62b6ff;--player-b:#ff9d5c;
+
+/* ================= Semantic aliases ================= */
+--surface-base:var(--ink-900);
+--surface-panel:rgba(16,22,26,.92);
+--surface-panel-solid:var(--ink-800);
+--surface-raised:var(--ink-700);
+--surface-input:var(--ink-600);
+--surface-hover:rgba(255,255,255,.05);
+--surface-active:rgba(255,255,255,.09);
+--surface-scrim:rgba(6,9,11,.72);
+
+--border-hairline:rgba(255,255,255,.08);
+--border-subtle:rgba(255,255,255,.13);
+--border-strong:rgba(255,255,255,.22);
+--border-accent:var(--lime-600);
+
+--text-primary:#eef4f6;
+--text-body:var(--slate-100);
+--text-muted:var(--slate-200);
+--text-faint:var(--slate-300);
+--text-on-accent:#101a02;
+--text-link:var(--lime-500);
+--text-link-hover:var(--lime-400);
+
+--accent:var(--lime-500);
+--accent-hover:var(--lime-400);
+--accent-press:var(--lime-600);
+
+/* Confidence ramp — the product's most-used semantic scale */
+--conf-high:var(--signal-in);--conf-medium:var(--signal-warn);--conf-low:var(--signal-out);--conf-unknown:var(--signal-unknown);
+}
