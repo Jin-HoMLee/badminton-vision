@@ -153,7 +153,7 @@ class FakeDocument extends FakeNode {
   }
 }
 
-async function createSession({ bundle = false, storedState = { videoKey: "youtube:real-match", enabled: false, seeded: false } } = {}) {
+async function createSession({ bundle = false, storedState = { videoKey: "youtube:real-match", enabled: false, seeded: false }, runtimeError = null } = {}) {
   const documentRef = new FakeDocument();
   const video = new FakeNode("video");
   Object.assign(video, { currentTime: 12, paused: false, muted: false, playbackRate: 1, readyState: 4, videoWidth: 640, videoHeight: 360 });
@@ -230,6 +230,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
       runtimeChange = options.onChange || null;
       runtimeStarts += 1;
       runtimeOnChange = options && options.onChange;
+      if (runtimeError) throw new Error(runtimeError);
       return { controller: { sessionId: "test-session", stop: () => { runtimeStops += 1; } } };
     };
   }
@@ -256,7 +257,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
   };
 }
 
-async function createPopupSession({ deferStorage = false } = {}) {
+async function createPopupSession({ deferStorage = false, failInjection = false } = {}) {
   const documentRef = new FakeDocument();
   const app = new FakeNode("main");
   app.setAttribute("id", "app");
@@ -286,8 +287,9 @@ async function createPopupSession({ deferStorage = false } = {}) {
     scripting: {
       executeScript: (details, callback) => {
         injection = details;
-        runtime.lastError = null;
+        runtime.lastError = failInjection ? { message: "Chrome rejected content bundle injection." } : null;
         callback?.();
+        runtime.lastError = null;
       }
     },
     storage: { local: {
@@ -394,6 +396,15 @@ function buttonWithText(root, label) {
   return root.querySelectorAll("button").find((button) => textOf(button).trim().includes(label));
 }
 
+test("popup keeps a failed recovery injection visible instead of closing silently", async () => {
+  const popup = await createPopupSession({ failInjection: true });
+  const primary = popup.app.querySelector('[data-bso-action="enable"]');
+  primary.dispatchEvent({ type: "click" });
+  assert.equal(popup.closed, false);
+  assert.ok(textOf(popup.app).includes("Could not reach the YouTube tab"));
+  assert.ok(textOf(popup.app).includes("Chrome rejected content bundle injection."));
+});
+
 test("popup mode and panel controls are single-activation and visibly stateful", async () => {
   const popup = await createPopupSession();
   const radioButtons = () => popup.app.querySelectorAll("button").filter((button) => button.getAttribute("role") === "radio");
@@ -448,6 +459,22 @@ test("the bundled content entrypoint is parse-safe and mounts one host, listener
   session.onMessage(request);
   assert.equal(session.overlayRoot().querySelectorAll("[data-bso-court-seeding]").length, 1);
   assert.equal(session.runtimeStarts, 1);
+});
+
+test("content runtime initialization failures remain visible and keep manual UI available", async () => {
+  const live = await createSession({
+    bundle: true,
+    storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false },
+    runtimeError: "runtime-start-failed"
+  });
+  live.flushStorage();
+  const host = live.host();
+  assert.equal(host.getAttribute("data-bso-runtime-phase"), "fallback");
+  assert.equal(host.getAttribute("data-bso-runtime-analyzer"), "none");
+  assert.match(host.getAttribute("data-bso-fallback"), /^content-runtime-initialization-failed,runtime-start-failed$/);
+  assert.equal(live.overlayRoot().querySelector('[data-bso-overlay-state="fallback"]') != null, true);
+  live.onMessage({ type: "OPEN_LABELING", requestId: "runtime-failure-label" });
+  assert.ok(live.overlayRoot().querySelector(".bv-label-panel"), "manual labeling remains available after runtime failure");
 });
 
 test("manual labeling survives three sequential saves, rerenders, reload, and CRUD", async () => {
