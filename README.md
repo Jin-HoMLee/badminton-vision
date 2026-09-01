@@ -255,6 +255,7 @@ video-local extension state and rendered without changing the player.
 
 The supplied design system is copied to `design-system/`; see `design-system/PROVENANCE.md` for source and exclusions. `src/styles.css` imports its local font-policy, color, type, spacing, elevation, motion, and base tokens. The content UI links that stylesheet inside a ShadowRoot, so every token sheet used by the overlay declares the design-system `:root,:host` contract; this keeps surfaces, geometry, offsets, and controls independent of YouTube's document CSS. The supplied system contains no redistributable font binaries, so `tokens/fonts.css` deliberately registers no remote font and the named typography families fall back to local/system fonts. No server, credentials, model binary, or private endpoint is included.
 
-For the overlay Shadow DOM/font packaging diagnosis and the repeatable live-page
-smoke sequence using the captain's already-open Chrome, see
-[`docs/overlay-ui.md`](docs/overlay-ui.md) and [`docs/e2e-smoke.md`](docs/e2e-smoke.md).
+For the overlay Shadow DOM/font packaging diagnosis, manual-labeling reliability
+reproduction, and the repeatable live-page smoke sequence using the captain's
+already-open Chrome, see [`docs/overlay-ui.md`](docs/overlay-ui.md),
+[`docs/manual-labeling.md`](docs/manual-labeling.md), and [`docs/e2e-smoke.md`](docs/e2e-smoke.md).
