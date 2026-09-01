@@ -328,6 +328,40 @@
     var remaining = seconds - minutes * 60;
     return String(minutes).padStart(2, "0") + ":" + remaining.toFixed(3).padStart(6, "0");
   }
+  function formatDuration(seconds) {
+    if (!Number.isFinite(Number(seconds)) || Number(seconds) < 0) return null;
+    var total = Math.round(Number(seconds));
+    var hours = Math.floor(total / 3600);
+    var minutes = Math.floor(total % 3600 / 60);
+    var secs = total % 60;
+    return hours > 0
+      ? hours + ":" + String(minutes).padStart(2, "0") + ":" + String(secs).padStart(2, "0")
+      : minutes + ":" + String(secs).padStart(2, "0");
+  }
+  // The popup shows the real current tab's video identity. The content script
+  // publishes only page-visible metadata (tab title, media duration, channel
+  // meta tag) so the popup never falls back to the demo fixture for a real tab.
+  var publishedVideoInfoKey = null;
+  function currentVideoInfo() {
+    if (!video) return null;
+    var title = document && document.title ? String(document.title).replace(/\s*-\s*YouTube\s*$/, "").trim() : null;
+    var channelNode = document && document.querySelector ? document.querySelector('meta[itemprop="channelName"], meta[name="channelName"]') : null;
+    var channel = channelNode && channelNode.getAttribute && channelNode.getAttribute("content") ? channelNode.getAttribute("content").trim() : null;
+    return {
+      url: window.location && /^https?:/.test(window.location.href) ? window.location.href : null,
+      title: title || null,
+      channel: channel || null,
+      duration: formatDuration(video.duration)
+    };
+  }
+  function publishVideoInfo() {
+    if (!hasChrome() || !chrome.storage || !chrome.storage.local) return;
+    var info = currentVideoInfo();
+    var key = JSON.stringify(info);
+    if (key === publishedVideoInfoKey) return;
+    publishedVideoInfoKey = key;
+    chrome.storage.local.set({ bvVideoInfo: info }, function () { void chrome.runtime.lastError; });
+  }
   function updateState(next) { state = window.BVState.initialExtensionState(next); persist(); render(); }
   function currentVideoKey() {
     return window.BVState.videoKeyForUrl(window.location && window.location.href);
@@ -449,6 +483,8 @@
           if (!state.stale) state.time = formatMediaTime(nextTime);
           if (state.labeling) refreshLabelingClock();
         }
+        // Duration becomes known once metadata loads; publish only on change.
+        publishVideoInfo();
       };
       videoGeometryListener = positionToVideo;
       video.addEventListener("timeupdate", mediaTimeListener);
@@ -457,6 +493,7 @@
     }
     resetVideoResizeObserver();
     positionToVideo();
+    publishVideoInfo();
   }
 
   function stopRuntime(reason) {
@@ -846,7 +883,6 @@
   }
   function evidenceAvailability(name) {
     var players = runtimePlayers();
-    if (name === "court") return calibration ? { state: "available", detail: "calibrated projection", disabled: false } : { state: "unknown", detail: "court not seeded", disabled: false };
     if (name === "racket") {
       var racket = runtimeRacketEvidence();
       return racket.supported ? { state: racket.state, detail: racket.state === "tracked" ? "runtime evidence supplied" : "runtime signal unknown", disabled: false } : { state: "unavailable", detail: "no runtime racket output", disabled: true };
@@ -877,8 +913,7 @@
       { name: "body", label: "Pose keypoints + skeleton", fallback: true },
       { name: "players", label: "Player boxes", fallback: true },
       { name: "racket", label: "Racket evidence", fallback: false },
-      { name: "shuttle", label: "Shuttle path + candidate", fallback: true },
-      { name: "court", label: "Court projection", fallback: true }
+      { name: "shuttle", label: "Shuttle path + candidate", fallback: true }
     ];
     var rows = groups.map(function (group) {
       var availability = evidenceAvailability(group.name);
@@ -888,13 +923,15 @@
       toggle.setAttribute("data-bso-evidence-state", availability.state);
       return toggle;
     });
-    // The court-setup line overlay is a per-video show/hide preference: the
-    // drawn projection stays available but is not forced on the video.
-    var linesVisible = courtLinesVisible();
-    var linesToggle = ui.toggle("Court setup lines", linesVisible ? "bright projection over the video" : "hidden until re-enabled", linesVisible, function (next) { setCourtLinesVisible(next); }, { id: "court-lines" });
-    linesToggle.setAttribute("data-bso-court-lines-toggle", "true");
-    rows.push(linesToggle);
-    return ui.panel("Evidence visibility", { layoutId: "evidence", icon: "activity", className: "bv-evidence-controls", bodyStyle: { padding: "6px" }, collapsed: panelCollapsed("evidence"), onToggleCollapse: function (value) { togglePanelCollapsed("evidence", value); }, actions: [ui.iconButton("chevron-up", "Hide evidence visibility", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "evidence", value: false }); persist(); render(); } })] }, rows);
+    // The calibrated court polygon over the video is one thing with one
+    // toggle: a per-video show/hide preference. During the four-corner setup
+    // the same projection always renders as the setup feedback; after the
+    // court is locked this toggle is the only control for it.
+    var projectionVisible = courtLinesVisible();
+    var projectionToggle = ui.toggle("Court projection", projectionVisible ? "calibrated court polygon over the video" : "hidden until re-enabled", projectionVisible, function (next) { setCourtLinesVisible(next); }, { id: "court-lines" });
+    projectionToggle.setAttribute("data-bso-court-projection-toggle", "true");
+    rows.push(projectionToggle);
+    return ui.panel("Evidence visibility", { layoutId: "evidence", icon: "activity", className: "bv-evidence-controls", bodyStyle: { padding: "6px" }, collapsed: panelCollapsed("evidence"), onToggleCollapse: function (value) { togglePanelCollapsed("evidence", value); }, actions: [ui.iconButton("x", "Hide evidence visibility", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "evidence", value: false }); persist(); render(); } })] }, rows);
   }
   function undoSeedPoint() {
     seedPoints.pop();
@@ -935,6 +972,13 @@
     var targets = [{ x: 22, y: 82 }, { x: 78, y: 82 }, { x: 63, y: 33 }, { x: 37, y: 33 }];
     var fitted = seedPoints.length === 4 && calibration;
     var invalid = seedPoints.length === 4 && !fitted;
+    // The seed layer keeps full-click capture only above the native player
+    // control strip: the strip itself passes pointer events through so pause,
+    // seek, the time bar, and settings stay reachable during setup. On small
+    // players the near-corner guide markers would fall inside the strip, so
+    // they are clamped above the reserve where they stay clickable.
+    var layerHeight = host && typeof host.getBoundingClientRect === "function" ? Number(host.getBoundingClientRect().height) || 0 : 0;
+    var maxGuideY = layerHeight > 0 ? 1 - (PLAYER_CONTROLS_RESERVE + 24) / layerHeight : 1;
     var layer = ui.el("div", {
       className: "bv-seed-layer",
       role: "dialog",
@@ -946,7 +990,10 @@
       "data-bso-seed-lockable": String(Boolean(fitted))
     });
     layer.appendChild(seedDrawing(seedPoints, fitted));
-    if (seedPoints.length < 4) layer.appendChild(ui.el("span", { className: "bv-seed-target", style: { left: targets[seedPoints.length].x + "%", top: targets[seedPoints.length].y + "%" } }));
+    if (seedPoints.length < 4) {
+      var guide = targets[seedPoints.length];
+      layer.appendChild(ui.el("span", { className: "bv-seed-target", "data-bso-seed-guide": String(seedPoints.length), style: { left: guide.x + "%", top: Math.min(guide.y / 100, Math.max(0, maxGuideY)) * 100 + "%" } }));
+    }
     seedPoints.forEach(function (point, index) { layer.appendChild(ui.el("span", { className: "bv-seed-point", style: seedPointStyle(point) }, [index + 1])); });
     var card = ui.el("section", { className: "bv-seed-card bv-panel-layout", role: "group", "aria-label": "Court setup instructions", "data-bso-seed-card": "true", "data-bso-contrast": "high", "data-bso-panel": "courtSetup", "data-bso-panel-layout": "true", "data-bso-panel-resizable": "true" });
     var title = fitted ? "Court ready to lock" : invalid ? "Court needs correction" : "Click the " + corners[seedPoints.length].toLowerCase() + " outer corner";
@@ -1037,7 +1084,7 @@
         ui.mixBar(segments)
       ]));
     }
-    return ui.panel("Stats", { layoutId: "stats", icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", collapsed: panelCollapsed("stats"), onToggleCollapse: function (value) { togglePanelCollapsed("stats", value); }, actions: [ui.iconButton("chevron-up", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, children);
+    return ui.panel("Stats", { layoutId: "stats", icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", collapsed: panelCollapsed("stats"), onToggleCollapse: function (value) { togglePanelCollapsed("stats", value); }, actions: [ui.iconButton("x", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, children);
   }
   function mapPanel() {
     var players = playerCourtPoints();
@@ -1046,7 +1093,7 @@
     var shuttle = runtimeShuttle();
     var shuttleState = evidenceState(shuttle);
     var mapNote = !calibration ? "Seed the court to project live coordinates." : shuttleState === "tracked" && landing ? "Candidate shown; line call remains unknown." : "No accepted shuttle landing evidence.";
-    return ui.panel("Court", { layoutId: "map", icon: "crosshair", mediaTime: state.time, className: "bv-court-panel bv-overlay-map", bodyStyle: { padding: "10px" }, collapsed: panelCollapsed("map"), onToggleCollapse: function (value) { togglePanelCollapsed("map", value); }, actions: [ui.iconButton("chevron-down", "Hide court map", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "map", value: false }); persist(); render(); } })] }, [
+    return ui.panel("Court", { layoutId: "map", icon: "crosshair", mediaTime: state.time, className: "bv-court-panel bv-overlay-map", bodyStyle: { padding: "10px" }, collapsed: panelCollapsed("map"), onToggleCollapse: function (value) { togglePanelCollapsed("map", value); }, actions: [ui.iconButton("x", "Hide court map", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "map", value: false }); persist(); render(); } })] }, [
       ui.courtDiagram({ renderWidth: 154, players: players, trajectory: trajectory, landing: landing, call: "UNKNOWN", ariaLabel: "Current court map; unknown values are not inferred" }),
       ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-4)" } }, [ui.badge(shuttleState === "tracked" ? "candidate" : "UNKNOWN", shuttleState === "tracked" ? "info" : "unknown"), ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-10)", color: "var(--text-faint)" } }, [mapNote])]),
       ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.confidence(null, { label: "geo", showWord: true })])
@@ -1070,7 +1117,7 @@
     if (suggestion) children.push(ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.suggestionRow(suggestion, acceptSuggestion, function () { openLabeling(); })]));
     var footerLabel = isFixtureRuntime() ? "rally 13 · index 74" : "rally unknown · index unavailable";
     var footer = ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.badge(footerLabel, isFixtureRuntime() ? "accent" : "unknown", false), ui.el("span", { className: "bv-runtime-footnote" }, [isFixtureRuntime() ? "fixture result · not production CV" : "automatic event evidence unknown"]), ui.button("Older rallies", { variant: "ghost", size: "sm", iconRight: "chevron-right", style: { marginLeft: "auto" }, onClick: openSummary })]);
-    return ui.panel("Stroke feed", { layoutId: "feed", icon: "list", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", bodyStyle: { padding: "6px" }, footer: footer, collapsed: panelCollapsed("feed"), onToggleCollapse: function (value) { togglePanelCollapsed("feed", value); }, actions: [ui.iconButton("pencil", "Open manual labeling (O)", { size: "sm", onClick: openLabeling }), ui.iconButton("chevron-up", "Hide stroke feed", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "feed", value: false }); persist(); render(); } })] }, children);
+    return ui.panel("Stroke feed", { layoutId: "feed", icon: "list", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", bodyStyle: { padding: "6px" }, footer: footer, collapsed: panelCollapsed("feed"), onToggleCollapse: function (value) { togglePanelCollapsed("feed", value); }, actions: [ui.iconButton("pencil", "Open manual labeling (O)", { size: "sm", onClick: openLabeling }), ui.iconButton("x", "Hide stroke feed", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "feed", value: false }); persist(); render(); } })] }, children);
   }
   function controlsPanel() {
     return ui.panel("Live controls", { layoutId: "controls", className: "bv-controls-panel", bodyStyle: { display: "flex", gap: "var(--sp-3)" }, collapsed: panelCollapsed("controls"), onToggleCollapse: function (value) { togglePanelCollapsed("controls", value); } }, [
@@ -1089,7 +1136,7 @@
       "data-bso-court-state": courtDiagnosticState(),
       "data-bso-density": state.density
     });
-    if (calibration && evidenceVisible("court", true) && courtLinesVisible()) overlay.appendChild(calibrationDrawing());
+    if (calibration && courtLinesVisible()) overlay.appendChild(calibrationDrawing());
     // Evidence is drawn in normalized video coordinates and never intercepts
     // pointer input, so player/shuttle rendering cannot block playback or seed clicks.
     overlay.appendChild(runtimeEvidenceDrawing());
@@ -1372,10 +1419,14 @@
       if (state.manualLabels && state.manualLabels.length) {
         var savedLabels = ui.el("div", { className: "bv-manual-saved", "aria-label": "Saved labels for this video" });
         savedLabels.appendChild(ui.el("span", { className: "bv-field-label" }, ["Saved labels for this video"]));
+        // Saved rows share the bounded, scrollable feed list contract so a
+        // long manual session stays navigable without growing over the video.
+        var savedFeed = ui.el("div", { className: "bv-feed" });
         state.manualLabels.forEach(function (label, index) {
           var savedRow = Object.assign({}, label, { sequence: label.sequence || index + 1 });
-          savedLabels.appendChild(ui.strokeFeedItem(savedRow, function () { openExistingLabel(label); }));
+          savedFeed.appendChild(ui.strokeFeedItem(savedRow, function () { openExistingLabel(label); }));
         });
+        savedLabels.appendChild(savedFeed);
         body.appendChild(savedLabels);
       }
     }
@@ -1637,6 +1688,10 @@
     host.style.position = "fixed"; host.style.zIndex = "2147483640"; host.style.pointerEvents = "none";
     shadow = host.attachShadow({ mode: "open" });
     var link = document.createElement("link"); link.rel = "stylesheet"; link.href = hasChrome() && chrome.runtime ? chrome.runtime.getURL("styles.css") : "styles.css"; shadow.appendChild(link);
+    // The stylesheet loads asynchronously; a panel measured before it applies
+    // has block-layout geometry. Re-anchor and re-clamp once it is live so a
+    // first render can never keep stale full-size panel rects over the video.
+    link.addEventListener("load", positionToVideo);
     root = document.createElement("div"); root.className = "bv-overlay-root"; shadow.appendChild(root); document.documentElement.appendChild(host);
     // Publish a base diagnostic state before asynchronous discovery/storage so
     // a runtime fault cannot leave an indistinguishable empty host behind.
