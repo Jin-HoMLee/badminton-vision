@@ -130,9 +130,17 @@
   }
 
   /**
-   * LiteRT's model input is NHWC RGB, normalized as (pixel - 128) / 256. The
-   * capture boundary is already capped to 4096 pixels; this bounded nearest
-   * neighbour copy does not allocate a frame-sized intermediate tensor.
+   * LiteRT's model input is NHWC, normalized as (pixel - 128) / 256. The
+   * published conversion card says RGB, but the weights are the original
+   * PyTorch checkpoint, which was trained on OpenCV BGR frames (the source
+   * repository's dataloader feeds cv2.imread buffers without a channel
+   * conversion). The deterministic real-model fixture shows that BGR input
+   * decodes two tracked poses with coherent confidence; an RGB-swapped input
+   * retains incidental peaks but degrades the weaker person. The full source
+   * frame is stretched onto the square model grid, so normalized keypoint
+   * coordinates are preserved exactly by this sampling. The capture boundary
+   * bounds the frame to a 256px long edge; this bounded nearest-neighbour copy
+   * does not allocate a frame-sized intermediate tensor.
    */
   function createInputPixels(pixels, dimension = DEFAULTS.inputDimension) {
     if (!pixels || !Number.isInteger(dimension) || dimension < 1) throw new TypeError('input pixels are unavailable');
@@ -143,9 +151,11 @@
         const sourceX = Math.min(pixels.width - 1, Math.floor(x * pixels.width / dimension));
         const sourceOffset = (sourceY * pixels.width + sourceX) * pixels.channels;
         const targetOffset = (y * dimension + x) * 3;
-        output[targetOffset] = ((Number(pixels.data[sourceOffset]) || 0) - 128) / 256;
+        // The model expects BGR: source channel 0 (red) lands in the blue
+        // slot and source channel 2 (blue) lands in the red slot.
+        output[targetOffset] = ((Number(pixels.data[sourceOffset + 2]) || 0) - 128) / 256;
         output[targetOffset + 1] = ((Number(pixels.data[sourceOffset + 1]) || 0) - 128) / 256;
-        output[targetOffset + 2] = ((Number(pixels.data[sourceOffset + 2]) || 0) - 128) / 256;
+        output[targetOffset + 2] = ((Number(pixels.data[sourceOffset]) || 0) - 128) / 256;
       }
     }
     return output;

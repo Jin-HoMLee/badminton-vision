@@ -133,8 +133,9 @@ four normalized candidates, and feeds them to `SessionPlayerTracker`; its
 result is placed under the existing model-neutral `analysis.result` envelope.
 It reports WebGPU compile failure, LiteRT's unsupported WebGL backend, and WASM
 fallback separately, and drops stale or concurrent frames without mutating the
-tracker. The model card explicitly clears the published conversion and source
-weights under Apache-2.0; `vendor/lite-openpose/MODEL-NOTICE.md` records the
+tracker. RGBA capture pixels are swapped into the artifact's BGR input contract
+before the bounded 256x256 model tensor is created. The model card explicitly
+clears the published conversion and source weights under Apache-2.0; `vendor/lite-openpose/MODEL-NOTICE.md` records the
 source links and SHA-256. LiteRT.js 2.5.3 and both selected WASM executors are
 Apache-2.0 and are packaged locally. The older `movenet-adapter.js` remains a
 contract-tested seam only: its official checkpoint is not bundled because the
@@ -146,12 +147,11 @@ LiteRT's vendored WASM/WebGPU layers may print accelerator registration,
 compilation, weight-transfer, or long numeric tensor lines to the offscreen
 console. Those native diagnostics are not, by themselves, an inference failure:
 the authoritative signal is the capability/result envelope (`runtime.status`,
-`runtime.capabilities`, and `analysis.result`). A genuine initialization or
-inference failure emits a `fallback` phase with a reason and the popup shows
-**Production inference unavailable** while leaving playback and manual labels
-available. The launch build deliberately does not blanket-suppress vendor
-console output, because doing so could hide a real model/backend failure; the
-UI and tests classify fallback explicitly instead.
+`runtime.capabilities`, and `analysis.result`). The offscreen entrypoint filters
+only known benign INFO registration lines; warnings and errors remain visible.
+A genuine initialization or inference failure emits a `fallback` phase with a
+reason and the popup shows **Production inference unavailable** while leaving
+playback and manual labels available.
 
 ## MoveNet artifact release gate
 
@@ -206,7 +206,7 @@ own discovery and capture. The content runtime:
 - observes the YouTube SPA and DOM for the current `HTMLVideoElement`;
 - uses `requestVideoFrameCallback` when available and reads `mediaTime`, dimensions, and playback rate;
 - throttles frame copies by wall-clock/media time and creates a real `ImageBitmap` snapshot;
-- uses `rgba-array-v1` on stable Chrome, downsampling the captured bitmap to at most 4096 pixels before messaging; a channel that explicitly supports structured clone may retain the `image-bitmap` path;
+- uses `rgba-array-v1` on stable Chrome, downsampling the captured bitmap to a 256px long edge (at most 65,536 pixels) before messaging; a channel that explicitly supports structured clone may retain the `image-bitmap` path;
 - limits pending `createImageBitmap` operations with an explicit one-sample default (`maxInFlight`), reports backpressure, and never builds an unbounded queue;
 - the offscreen scheduler allows one active inference and one newest pending frame, closes coalesced/stale bitmaps, and drops older work;
 - reports `timer-fallback` when `requestVideoFrameCallback` is unavailable, and `unavailable` when frame copying is unavailable;

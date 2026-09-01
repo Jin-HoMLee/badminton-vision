@@ -8,7 +8,12 @@
 
   const SERIALIZABLE_FORMAT = 'rgba-array-v1';
   const BITMAP_FORMAT = 'image-bitmap';
-  const DEFAULT_MAX_PIXELS = 4096;
+  // The production pose model reads a 256x256 input. Capping the serialized
+  // frame at a 256px long edge (256x144 for 16:9) keeps the model input
+  // usable while bounding message size; the pixel bound below is only a
+  // safety net for extreme aspect ratios.
+  const DEFAULT_MAX_LONG_EDGE = 256;
+  const DEFAULT_MAX_PIXELS = 65536;
 
   function positiveInteger(value) {
     return Number.isInteger(value) && value > 0;
@@ -34,13 +39,19 @@
     return supportsStructuredClone(chromeApi) ? BITMAP_FORMAT : SERIALIZABLE_FORMAT;
   }
 
-  function targetDimensions(width, height, maxPixels = DEFAULT_MAX_PIXELS) {
+  function targetDimensions(width, height, { maxPixels = DEFAULT_MAX_PIXELS, maxLongEdge = DEFAULT_MAX_LONG_EDGE } = {}) {
     if (!positiveInteger(width) || !positiveInteger(height)) throw new TypeError('frame dimensions must be positive integers');
     const limit = positiveInteger(maxPixels) ? maxPixels : DEFAULT_MAX_PIXELS;
-    const scale = Math.min(1, Math.sqrt(limit / (width * height)));
+    const edge = positiveInteger(maxLongEdge) ? maxLongEdge : DEFAULT_MAX_LONG_EDGE;
+    const scale = Math.min(1, Math.sqrt(limit / (width * height)), edge / Math.max(width, height));
     let targetWidth = Math.max(1, Math.round(width * scale));
     let targetHeight = Math.max(1, Math.round(height * scale));
     while (targetWidth * targetHeight > limit) {
+      if (targetWidth >= targetHeight && targetWidth > 1) targetWidth -= 1;
+      else if (targetHeight > 1) targetHeight -= 1;
+      else break;
+    }
+    while (Math.max(targetWidth, targetHeight) > edge) {
       if (targetWidth >= targetHeight && targetWidth > 1) targetWidth -= 1;
       else if (targetHeight > 1) targetHeight -= 1;
       else break;
@@ -67,16 +78,18 @@
    * primitive, but never sends an object that stable JSON serialization would
    * silently turn into `{}`. The fixture analyzer only needs sampled pixels,
    * so the fallback is intentionally capped rather than sending a full-size
-   * video frame through the service worker.
+   * video frame through the service worker. The bound is a 256px long edge,
+   * which is the production pose model's input width.
    */
   async function toSerializableFrame(frame, {
     environment = globalThis,
-    maxPixels = DEFAULT_MAX_PIXELS
+    maxPixels = DEFAULT_MAX_PIXELS,
+    maxLongEdge = DEFAULT_MAX_LONG_EDGE
   } = {}) {
     if (!frame || !positiveInteger(frame.width) || !positiveInteger(frame.height)) {
       throw new TypeError('captured frame dimensions are unavailable');
     }
-    const dimensions = targetDimensions(frame.width, frame.height, maxPixels);
+    const dimensions = targetDimensions(frame.width, frame.height, { maxPixels, maxLongEdge });
     const canvas = createCanvas(dimensions.width, dimensions.height, environment);
     if (!canvas || typeof canvas.getContext !== 'function') {
       throw new Error('frame serialization canvas unavailable');
@@ -106,7 +119,8 @@
   async function prepareFrame(frame, {
     mode = SERIALIZABLE_FORMAT,
     environment = globalThis,
-    maxPixels = DEFAULT_MAX_PIXELS
+    maxPixels = DEFAULT_MAX_PIXELS,
+    maxLongEdge = DEFAULT_MAX_LONG_EDGE
   } = {}) {
     if (mode === BITMAP_FORMAT) {
       return {
@@ -117,12 +131,13 @@
         sourceDimensions: { width: frame?.width || 0, height: frame?.height || 0 }
       };
     }
-    return toSerializableFrame(frame, { environment, maxPixels });
+    return toSerializableFrame(frame, { environment, maxPixels, maxLongEdge });
   }
 
   return Object.freeze({
     SERIALIZABLE_FORMAT,
     BITMAP_FORMAT,
+    DEFAULT_MAX_LONG_EDGE,
     DEFAULT_MAX_PIXELS,
     supportsStructuredClone,
     selectTransport,

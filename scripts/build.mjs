@@ -43,6 +43,7 @@ const runtimeFiles = [
   ["content/video-discovery.js", "content/video-discovery.js"],
   ["content/runtime.js", "content/runtime.js"],
   ["offscreen/analyzer.js", "offscreen/analyzer.js"],
+  ["offscreen/offscreen-console-filter.js", "offscreen/offscreen-console-filter.js"],
   ["offscreen/movenet-adapter.js", "offscreen/movenet-adapter.js"],
   ["offscreen/lite-runtime-loader.js", "offscreen/lite-runtime-loader.js"],
   ["offscreen/lite-openpose-adapter.js", "offscreen/lite-openpose-adapter.js"],

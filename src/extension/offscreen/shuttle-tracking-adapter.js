@@ -22,7 +22,11 @@
   });
 
   const DEFAULTS = Object.freeze({
-    maxPixels: 4096,
+    // The production capture transport now bounds frames to a 256px long
+    // edge (matching the pose model input); the shuttle scan keeps the same
+    // bound so both components analyze the same pixels.
+    maxPixels: 65536,
+    maxLongEdge: 256,
     minPixelDifference: 0.12,
     cutMeanDifference: 0.32,
     cutChangedFraction: 0.5,
@@ -75,13 +79,19 @@
     return result;
   }
 
-  function targetDimensions(width, height, maxPixels) {
+  function targetDimensions(width, height, maxPixels, maxLongEdge = DEFAULTS.maxLongEdge) {
     const limit = positiveInteger(maxPixels) ? maxPixels : DEFAULTS.maxPixels;
-    if (width * height <= limit) return { width, height };
-    const scale = Math.sqrt(limit / (width * height));
+    const edge = positiveInteger(maxLongEdge) ? maxLongEdge : DEFAULTS.maxLongEdge;
+    if (width * height <= limit && Math.max(width, height) <= edge) return { width, height };
+    const scale = Math.min(Math.sqrt(limit / (width * height)), edge / Math.max(width, height));
     let targetWidth = Math.max(1, Math.round(width * scale));
     let targetHeight = Math.max(1, Math.round(height * scale));
     while (targetWidth * targetHeight > limit) {
+      if (targetWidth >= targetHeight && targetWidth > 1) targetWidth -= 1;
+      else if (targetHeight > 1) targetHeight -= 1;
+      else break;
+    }
+    while (Math.max(targetWidth, targetHeight) > edge) {
       if (targetWidth >= targetHeight && targetWidth > 1) targetWidth -= 1;
       else if (targetHeight > 1) targetHeight -= 1;
       else break;
@@ -111,8 +121,8 @@
     };
   }
 
-  function resizePixels(pixels, maxPixels) {
-    const target = targetDimensions(pixels.width, pixels.height, maxPixels);
+  function resizePixels(pixels, maxPixels, maxLongEdge) {
+    const target = targetDimensions(pixels.width, pixels.height, maxPixels, maxLongEdge);
     if (target.width === pixels.width && target.height === pixels.height) return pixels;
     const data = new Array(target.width * target.height * pixels.channels);
     for (let y = 0; y < target.height; y += 1) {
@@ -149,12 +159,13 @@
    */
   async function readFramePixels(frame, {
     environment = defaultEnvironment,
-    maxPixels = DEFAULTS.maxPixels
+    maxPixels = DEFAULTS.maxPixels,
+    maxLongEdge = DEFAULTS.maxLongEdge
   } = {}) {
     const direct = directPixels(frame);
-    if (direct) return resizePixels(direct, maxPixels);
+    if (direct) return resizePixels(direct, maxPixels, maxLongEdge);
     if (!isObject(frame) || !positiveInteger(frame.width) || !positiveInteger(frame.height)) return null;
-    const dimensions = targetDimensions(frame.width, frame.height, maxPixels);
+    const dimensions = targetDimensions(frame.width, frame.height, maxPixels, maxLongEdge);
     const canvas = createCanvas(dimensions.width, dimensions.height, environment);
     if (!canvas || typeof canvas.getContext !== 'function') return null;
     const context = canvas.getContext('2d', { willReadFrequently: true });

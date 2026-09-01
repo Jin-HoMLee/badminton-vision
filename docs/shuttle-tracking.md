@@ -58,9 +58,10 @@ strength, contrast against the frame, compactness, component size, and temporal
 continuity; it is an evidence score, not a model probability or accuracy
 estimate.
 
-The default transport budget is 4,096 pixels per frame. Oversized readable
-frames are nearest-neighbour bounded before detection, and the work is linear
-in the bounded pixel count. There is one active asynchronous `analyze()` call;
+The default transport budget is a 256px long edge (at most 65,536 pixels per
+frame). Oversized readable frames are nearest-neighbour bounded before
+detection, and the work is linear in the bounded pixel count. There is one
+active asynchronous `analyze()` call;
 a concurrent call returns `unknown` with `reason: "backpressure"` without
 mutating state. The trajectory is capped at 32 points by default.
 
@@ -83,7 +84,7 @@ playback.
 
 This is a low-latency **candidate proposal heuristic**, not a validated shuttle
 tracker. Its intended work budget is one scan and one connected-component pass
-over the 4,096-pixel transport, with no inference model startup. Actual latency
+over the bounded 65,536-pixel transport, with no inference model startup. Actual latency
 still depends on frame extraction, canvas readback, MV3 messaging, and the
 browser's offscreen scheduler; this repository does not claim a device-specific
 millisecond benchmark. Use the runtime's existing stale/backpressure status

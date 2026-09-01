@@ -15,7 +15,24 @@ which is also Apache-2.0.
 - License: Apache-2.0; see `LICENSE` in this directory.
 
 The conversion is the heatmap-only 18-keypoint model described by its model
-card (`[1, 256, 256, 3]` RGB input and `[1, 32, 32, 19]` heatmap output). This
-package decodes its local peaks and reports anonymous pose coordinates only;
-it does not identify people. The model card's COCO 2017 training data is not
-redistributed by this extension.
+card (`[1, 256, 256, 3]` input and `[1, 32, 32, 19]` heatmap output). The card
+describes the input as RGB, but the bundled artifact's weights are the
+original PyTorch checkpoint, which was trained on OpenCV BGR frames (the
+source repository's dataloader feeds `cv2.imread` buffers without a channel
+conversion). The deterministic real-model regression fixture verifies that
+BGR input through this adapter decodes two tracked poses with coherent
+confidence; the RGB-swapped path retains incidental peaks but degrades the
+weaker person. This package therefore feeds BGR pixels normalized as
+`(pixel - 128) / 256`; the model card's RGB note is treated as a
+documentation error for this artifact. The full source frame is stretched
+onto the square model grid, so normalized keypoint coordinates are preserved
+exactly by the input sampler.
+
+`test/fixtures/pose-sample-256.bmp` is a 256x256 downscale of the model
+repository's own `samples/sample.png` (Apache-2.0, same repository as the
+artifact); it is used only as a deterministic regression fixture for the real-
+model input contract test and is not part of the packaged extension.
+
+This package decodes its local peaks and reports anonymous pose coordinates
+only; it does not identify people. The model card's COCO 2017 training data
+is not redistributed by this extension.
