@@ -36,8 +36,9 @@
       this.onnxManager = onnxManager || (OnnxRuntime ? new OnnxRuntime.OnnxRuntimeManager({ environment }) : null);
       this.session = null;
       this.sessionReady = null;
+      this.sessionId = `pose-session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       this.playerTracker = PlayerTracking && PlayerTracking.SessionPlayerTracker
-        ? new PlayerTracking.SessionPlayerTracker({ maxTracks: 4 })
+        ? new PlayerTracking.SessionPlayerTracker({ sessionId: this.sessionId, maxTracks: 4 })
         : null;
 
       this.identity = {

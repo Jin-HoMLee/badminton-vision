@@ -174,9 +174,9 @@
 
     /**
      * Decode YOLOv8 output to detections.
-     * YOLOv8 ONNX output: [1, 84, 8400] or [1, 25200] depending on export format
-     * For badminton, we expect one class (shuttlecock) at index 80 in the 84-element vector
-     * (80 classes in COCO + 4 bbox coords)
+     * Handles both multi-class COCO format and single-class fine-tuned formats.
+     * Fine-tuned on Roboflow: [1, num_detections, 6] (x, y, w, h, confidence, class_id)
+     * COCO format: [1, num_detections, 85] or [1, num_features]
      */
     _decodeOutput(outputTensor, inputDims, offsetX, offsetY, destWidth, destHeight, inputSize) {
       const data = outputTensor.data;
@@ -184,36 +184,60 @@
 
       // Handle different output formats
       let predictions = [];
+
       if (outputTensor.dims?.length === 3) {
-        // [1, num_detections, 85] format (x, y, w, h, objectness, class1...class80)
+        // [1, num_detections, per_detection_size] format
         const numDetections = outputTensor.dims[1];
-        for (let i = 0; i < numDetections; i++) {
-          const baseIdx = i * 85;
-          const x = data[baseIdx];
-          const y = data[baseIdx + 1];
-          const w = data[baseIdx + 2];
-          const h = data[baseIdx + 3];
-          const objectness = data[baseIdx + 4];
+        const elementsPerDetection = outputTensor.dims[2];
 
-          // Find class with highest confidence (assuming shuttlecock detection)
-          let maxClassConf = 0;
-          for (let c = 0; c < 80; c++) {
-            maxClassConf = Math.max(maxClassConf, data[baseIdx + 5 + c]);
+        // Detect format based on elements per detection
+        if (elementsPerDetection <= 6) {
+          // Single-class fine-tuned model: [x, y, w, h, confidence, class_id]
+          for (let i = 0; i < numDetections; i++) {
+            const baseIdx = i * elementsPerDetection;
+            const x = data[baseIdx];
+            const y = data[baseIdx + 1];
+            const w = data[baseIdx + 2];
+            const h = data[baseIdx + 3];
+            const confidence = data[baseIdx + 4] || 0;
+
+            if (confidence > this.confidenceThreshold) {
+              predictions.push({ x, y, w, h, confidence, class: 0 });
+            }
           }
+        } else {
+          // COCO multi-class format: [x, y, w, h, objectness, class1...class80]
+          for (let i = 0; i < numDetections; i++) {
+            const baseIdx = i * elementsPerDetection;
+            const x = data[baseIdx];
+            const y = data[baseIdx + 1];
+            const w = data[baseIdx + 2];
+            const h = data[baseIdx + 3];
+            const objectness = data[baseIdx + 4];
 
-          const confidence = objectness * maxClassConf;
-          if (confidence > this.confidenceThreshold) {
-            predictions.push({
-              x, y, w, h,
-              confidence,
-              class: 0 // Shuttlecock class (we fine-tune to have one class)
-            });
+            let maxClassConf = 0;
+            for (let c = 0; c < Math.min(80, elementsPerDetection - 5); c++) {
+              maxClassConf = Math.max(maxClassConf, data[baseIdx + 5 + c] || 0);
+            }
+
+            const confidence = objectness * maxClassConf;
+            if (confidence > this.confidenceThreshold) {
+              predictions.push({ x, y, w, h, confidence, class: 0 });
+            }
           }
         }
       } else if (outputTensor.dims?.length === 2) {
         // Flattened format [1, num_features]
-        const elementsPerDetection = 85;
-        const numDetections = Math.floor(data.length / elementsPerDetection);
+        // Try to infer if single-class or multi-class based on data length
+        const totalElements = data.length;
+
+        // Estimate based on typical detector outputs
+        let elementsPerDetection = 6; // Default to single-class
+        if (totalElements % 85 === 0 || totalElements % 8400 < totalElements % 6) {
+          elementsPerDetection = 85; // COCO format
+        }
+
+        const numDetections = Math.floor(totalElements / elementsPerDetection);
 
         for (let i = 0; i < numDetections && i < 8400; i++) {
           const baseIdx = i * elementsPerDetection;
@@ -221,20 +245,23 @@
           const y = data[baseIdx + 1];
           const w = data[baseIdx + 2];
           const h = data[baseIdx + 3];
-          const objectness = data[baseIdx + 4];
 
-          let maxClassConf = 0;
-          for (let c = 0; c < 80; c++) {
-            maxClassConf = Math.max(maxClassConf, data[baseIdx + 5 + c]);
+          let confidence;
+          if (elementsPerDetection <= 6) {
+            // Single-class: confidence at index 4
+            confidence = data[baseIdx + 4] || 0;
+          } else {
+            // Multi-class: objectness at 4, class conf at 5+
+            const objectness = data[baseIdx + 4];
+            let maxClassConf = 0;
+            for (let c = 0; c < Math.min(80, elementsPerDetection - 5); c++) {
+              maxClassConf = Math.max(maxClassConf, data[baseIdx + 5 + c] || 0);
+            }
+            confidence = objectness * maxClassConf;
           }
 
-          const confidence = objectness * maxClassConf;
           if (confidence > this.confidenceThreshold) {
-            predictions.push({
-              x, y, w, h,
-              confidence,
-              class: 0
-            });
+            predictions.push({ x, y, w, h, confidence, class: 0 });
           }
         }
       }

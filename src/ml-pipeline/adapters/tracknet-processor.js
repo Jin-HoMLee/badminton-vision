@@ -262,7 +262,8 @@
       const size = Math.sqrt(data.length);
       if (!Number.isInteger(size)) return null;
 
-      const height = width = size;
+      const height = size;
+      const width = size;
 
       // Find largest connected component above threshold
       const visited = new Uint8Array(data.length);

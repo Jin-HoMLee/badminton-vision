@@ -159,10 +159,11 @@
         throw new Error('Failed to initialize any Web Workers');
       }
 
-      // Set up message handlers
+      // Set up message handlers with proper closure to capture worker index
       for (let i = 0; i < this.workers.length; i++) {
+        const workerIdx = i;
         this.workers[i].instance.addEventListener('message', (event) => {
-          this._handleWorkerMessage(i, event);
+          this._handleWorkerMessage(workerIdx, event);
         });
       }
     }

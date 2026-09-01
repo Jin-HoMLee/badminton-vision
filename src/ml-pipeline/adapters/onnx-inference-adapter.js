@@ -40,9 +40,9 @@
 
       this.onStatus = typeof onStatus === 'function' ? onStatus : () => {};
       this.pipeline = null;
-      this.sessionId = null;
+      this.sessionId = `adapter-session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       this.playerTracker = PlayerTracking?.SessionPlayerTracker
-        ? new PlayerTracking.SessionPlayerTracker({ maxTracks: 4 })
+        ? new PlayerTracking.SessionPlayerTracker({ sessionId: this.sessionId, maxTracks: 4 })
         : null;
 
       this.identity = {
@@ -141,6 +141,12 @@
         // Process pose results through player tracker
         let tracking = { state: 'unknown', players: [] };
         if (this.playerTracker && inferenceResult.pose && inferenceResult.pose.poses) {
+          // Reset tracker if sessionId changes
+          if (this.sessionId !== sample.sessionId) {
+            this.sessionId = sample.sessionId;
+            this.playerTracker.reset('session-changed');
+          }
+
           const observations = inferenceResult.pose.poses.map(pose => ({
             keypoints: pose.keypoints,
             confidence: pose.confidence,
