@@ -1,4 +1,5 @@
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { Script } from "node:vm";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -103,6 +104,9 @@ async function copyFile(source, destination) {
 }
 
 async function writeContentBundle(destination) {
+  if (new Set(contentBundleSources).size !== contentBundleSources.length) {
+    throw new Error("Content bundle source list must not contain duplicate entrypoints");
+  }
   const sources = await Promise.all(contentBundleSources.map(async (file) => {
     const source = await readFile(join(root, file), "utf8");
     return `/* ${file} */\n${source}`;
@@ -116,6 +120,10 @@ async function writeContentBundle(destination) {
     "})(typeof globalThis === \"object\" ? globalThis : self);",
     ""
   ].join("\n");
+  // Parse the generated artifact before writing it. This catches accidental
+  // concatenation regressions (especially top-level lexical collisions) at
+  // build time rather than after Chrome has injected the content script.
+  new Script(bundle, { filename: relative(root, destination) });
   await writeFile(destination, bundle, "utf8");
 }
 

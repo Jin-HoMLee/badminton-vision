@@ -5,6 +5,7 @@
   var expanded = false;
   var detected = false;
   var runtimeStatus = null;
+  var actionError = null;
   var messageSequence = 0;
   var stateHydrated = false;
   var pendingDispatches = [];
@@ -32,24 +33,35 @@
     return entry && Array.isArray(entry.js) ? entry.js.slice() : [];
   }
   function injectContentScript(tabId, message, finish) {
-    if (!chrome.scripting || typeof chrome.scripting.executeScript !== "function") { finish(); return; }
+    if (!chrome.scripting || typeof chrome.scripting.executeScript !== "function") {
+      finish({ ok: false, reason: "Chrome cannot inject the content bundle into this tab." });
+      return;
+    }
     var files = contentScriptFiles();
-    if (!files.length) { finish(); return; }
+    if (!files.length) {
+      finish({ ok: false, reason: "The extension has no declared content entrypoint." });
+      return;
+    }
     chrome.scripting.executeScript({ target: { tabId: tabId }, files: files }, function () {
       var injectionError = chrome.runtime.lastError;
-      if (injectionError) { finish(); return; }
+      if (injectionError) {
+        finish({ ok: false, reason: injectionError.message || "Chrome rejected content bundle injection." });
+        return;
+      }
       chrome.tabs.sendMessage(tabId, message, function () {
-        void chrome.runtime.lastError;
-        finish();
+        var sendError = chrome.runtime.lastError;
+        finish(sendError
+          ? { ok: false, reason: sendError.message || "The injected content bundle did not respond." }
+          : { ok: true });
       });
     });
   }
   function sendToTab(message, onDone) {
     var finish = typeof onDone === "function" ? onDone : function () {};
-    if (!chromeAvailable() || !chrome.tabs) { finish(); return; }
+    if (!chromeAvailable() || !chrome.tabs) { finish({ ok: false, reason: "Chrome tab messaging is unavailable." }); return; }
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       var tab = tabs && tabs[0];
-      if (!tab || tab.id == null) { finish(); return; }
+      if (!tab || tab.id == null) { finish({ ok: false, reason: "No active YouTube tab is available." }); return; }
       chrome.tabs.sendMessage(tab.id, message, function () {
         var sendError = chrome.runtime.lastError;
         if (sendError) {
@@ -60,9 +72,18 @@
           injectContentScript(tab.id, message, finish);
           return;
         }
-        finish();
+        finish({ ok: true });
       });
     });
+  }
+  function finishAction(result) {
+    if (result && result.ok === false) {
+      actionError = result.reason || "Chrome could not reach the YouTube tab.";
+      render();
+      return;
+    }
+    actionError = null;
+    closePopup();
   }
   function dispatch(action, message, onDone) {
     if (!stateHydrated) {
@@ -70,6 +91,7 @@
       return;
     }
     state = window.BVState.reduceExtensionState(state, action);
+    actionError = null;
     persist();
     var outbound = Object.assign({}, message || { type: "STATE_UPDATE", state: state }, {
       requestId: "popup-" + Date.now() + "-" + (++messageSequence)
@@ -181,7 +203,7 @@
         : fixtureReady
           ? ui.callout("guide", "Local fixture demo", "Any fixture result is an integration probe, not production CV. Nothing is uploaded; labels and corrections stay local.")
           : ui.callout("guide", "Local runtime pending", "The local pose model is starting. Until evidence arrives, player, shuttle, shot, rally-end, and winner fields remain unknown.");
-    var intro = ui.el("div", { className: "bv-popup-intro" }, [ui.statusChip(statusState, statusLabel, statusDetail), ui.el("div", { className: "bv-detected" }, [ui.el("span", { className: "bv-detected-icon" }, [ui.icon(detected ? "check" : "info", 15)]), ui.el("span", { className: "bv-detected-copy" }, [ui.el("strong", {}, [detected ? fixture.video.title : "Open a YouTube match"]), ui.el("span", {}, [detected ? fixture.video.channel + " · " + fixture.video.duration : "Badminton Vision runs on youtube.com/watch pages only."])])]), !detected ? ui.callout("info", "Overlay unavailable here", "Open a youtube.com/watch page to use live overlay, court setup, or manual labeling. The summary remains available locally.") : backendNotice, !state.enabled && detected ? ui.callout("guide", "Three steps to get going", "Turn the overlay on, click the four court corners once, then keep watching — the video is never paused or moved.") : null, state.cameraCut ? ui.callout("warn", "Camera cut", "The court projection is stale. Re-seed the court; analysis stays paused while the video keeps playing.") : null]);
+    var intro = ui.el("div", { className: "bv-popup-intro" }, [ui.statusChip(statusState, statusLabel, statusDetail), ui.el("div", { className: "bv-detected" }, [ui.el("span", { className: "bv-detected-icon" }, [ui.icon(detected ? "check" : "info", 15)]), ui.el("span", { className: "bv-detected-copy" }, [ui.el("strong", {}, [detected ? fixture.video.title : "Open a YouTube match"]), ui.el("span", {}, [detected ? fixture.video.channel + " · " + fixture.video.duration : "Badminton Vision runs on youtube.com/watch pages only."])])]), actionError ? ui.callout("warn", "Could not reach the YouTube tab", actionError + " Reload the tab and try again.") : null, !detected ? ui.callout("info", "Overlay unavailable here", "Open a youtube.com/watch page to use live overlay, court setup, or manual labeling. The summary remains available locally.") : backendNotice, !state.enabled && detected ? ui.callout("guide", "Three steps to get going", "Turn the overlay on, click the four court corners once, then keep watching — the video is never paused or moved.") : null, state.cameraCut ? ui.callout("warn", "Camera cut", "The court projection is stale. Re-seed the court; analysis stays paused while the video keeps playing.") : null]);
 
     var barNodes = trackers.map(function (t) { return ui.el("i", { className: t.on ? (t.health === "degraded" ? "warn" : "") : "off" }); });
     var trackerHeader = ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-4)" } }, ["What's being tracked", ui.el("span", { className: "bv-tracker-bars" }, barNodes)]);
@@ -196,13 +218,13 @@
     var panelSection = section("Panels on the video", ui.el("div", { className: "bv-panel-toggles" }, [panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), ui.toggle("Compare with the pros", "Coming later — needs a licensed benchmark", false, null, { disabled: true, id: "panel-pro" })]));
 
     var primaryLabel = state.enabled ? "Open overlay" : "Turn on — step 1 of 3";
-    var primary = ui.button(primaryLabel, { variant: "primary", full: true, icon: state.enabled ? "layout" : "play", disabled: !detected, title: !detected ? "Open a YouTube watch page first" : null, onClick: function () { dispatch({ type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, { type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, closePopup); } });
+    var primary = ui.button(primaryLabel, { variant: "primary", full: true, icon: state.enabled ? "layout" : "play", disabled: !detected, title: !detected ? "Open a YouTube watch page first" : null, onClick: function () { dispatch({ type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, { type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, finishAction); } });
     primary.setAttribute("data-bso-action", state.enabled ? "open-overlay" : "enable");
-    var seedButton = ui.button(courtSeeded ? "Set up court again" : "Set up court", { icon: "crosshair", disabled: !detected, title: !detected ? "Court setup needs a YouTube watch page" : null, onClick: function () { dispatch({ type: "START_SEED" }, { type: "START_SEED" }, closePopup); } });
+    var seedButton = ui.button(courtSeeded ? "Set up court again" : "Set up court", { icon: "crosshair", disabled: !detected, title: !detected ? "Court setup needs a YouTube watch page" : null, onClick: function () { dispatch({ type: "START_SEED" }, { type: "START_SEED" }, finishAction); } });
     seedButton.setAttribute("data-bso-action", "seed-court");
-    var manualButton = ui.button("Label it myself", { icon: "pencil", disabled: !detected, title: !detected ? "Manual labeling needs a YouTube watch page" : null, onClick: function () { dispatch({ type: "OPEN_LABELING" }, { type: "OPEN_LABELING" }, closePopup); } });
+    var manualButton = ui.button("Label it myself", { icon: "pencil", disabled: !detected, title: !detected ? "Manual labeling needs a YouTube watch page" : null, onClick: function () { dispatch({ type: "OPEN_LABELING" }, { type: "OPEN_LABELING" }, finishAction); } });
     manualButton.setAttribute("data-bso-action", "manual-only");
-    var disableButton = state.enabled ? ui.button("Disable overlay", { variant: "ghost", icon: "pause", onClick: function () { dispatch({ type: "DISABLE" }, { type: "DISABLE" }, closePopup); } }) : null;
+    var disableButton = state.enabled ? ui.button("Disable overlay", { variant: "ghost", icon: "pause", onClick: function () { dispatch({ type: "DISABLE" }, { type: "DISABLE" }, finishAction); } }) : null;
     if (disableButton) disableButton.setAttribute("data-bso-action", "disable");
     var summaryButton = ui.button("See match summary · download data", { variant: "ghost", icon: "table", onClick: openSummary });
     summaryButton.setAttribute("data-bso-action", "export");

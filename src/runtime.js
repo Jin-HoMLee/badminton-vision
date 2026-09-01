@@ -160,6 +160,22 @@
         if (status.status === "timeline-reset") update({ phase: "resyncing", message: "Media timeline changed", reason: "timeline-reset" });
         return;
       }
+      if (status.type === "capture-status") {
+        // Backpressure is an expected bounded-capture condition, not a loss
+        // of inference. Keep the last capability/result state so a busy local
+        // analyzer does not flash the user-facing production fallback card.
+        if (status.status === "timeline-reset") {
+          update({ phase: "resyncing", message: "Media timeline changed", reason: "timeline-reset" });
+        } else if (status.status === "backpressure") {
+          update({
+            phase: view.phase === "idle" ? "starting" : view.phase,
+            message: "Local analyzer is catching up",
+            reason: "",
+            inference: view.inference
+          });
+        }
+        return;
+      }
       update({
         phase: status.type === "frame-transport-fallback" ? view.phase : "fallback",
         message: status.reason || "Runtime fallback",

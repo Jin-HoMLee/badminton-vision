@@ -48,6 +48,18 @@ test("runtime UI seam exposes capabilities, model-neutral player arrays, and ana
   assert.equal(view.result.players.length, 2);
   assert.equal(view.result.players[1].state, "unknown");
   assert.ok(views.length >= 2);
+
+  // Capture backpressure is a bounded, healthy condition while the local
+  // analyzer catches up. It must not erase the ready/inference state or turn
+  // into the user-visible production fallback card.
+  seam.acceptStatus({ type: "capture-status", status: "backpressure" });
+  assert.equal(seam.snapshot().phase, "result");
+  assert.equal(seam.snapshot().inference, true);
+  assert.equal(seam.snapshot().reason, "");
+  seam.acceptStatus({ type: "capture-status", status: "timeline-reset" });
+  assert.equal(seam.snapshot().phase, "resyncing");
+  assert.equal(seam.snapshot().reason, "timeline-reset");
+
   seam.reset("video-replaced");
   const reset = seam.snapshot();
   assert.equal(reset.phase, "resyncing");
