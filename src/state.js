@@ -39,10 +39,17 @@
     rally: 14,
     time: "12:04.320",
     density: "minimal",
-    panels: { feed: true, stats: false, map: false },
+    panels: { feed: true, stats: false, map: false, evidence: true },
     // Explicit panel choices override density presets while the preference
     // still gives Balanced/Full a useful default presentation.
-    panelOverrides: {}
+    panelOverrides: {},
+    // Collapse state mirrors panel geometry: per panel, scoped by video, so a
+    // collapsed panel stays collapsed for that video only.
+    collapsedPanels: {},
+    collapsedPanelsByVideo: {},
+    // The court-setup line overlay is a show/hide preference scoped by video.
+    // Absent entries mean visible (the default); only explicit hides are kept.
+    courtLinesByVideo: {},
   };
 
   function clone(value) {
@@ -109,6 +116,44 @@
     return copyPanelLayouts(map[String(videoKey)]);
   }
 
+  // Panels that are overlay furniture (not the transient court-setup card)
+  // get a header collapse/expand affordance; state mirrors layout persistence.
+  var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls", "evidence"];
+
+  function copyPanelCollapseState(collapsed) {
+    var result = {};
+    if (!collapsed || typeof collapsed !== "object") return result;
+    PANEL_COLLAPSE_KEYS.forEach(function (key) {
+      if (collapsed[key] === true) result[key] = true;
+    });
+    return result;
+  }
+
+  function copyPanelCollapseMap(raw) {
+    var result = {};
+    if (!raw || typeof raw !== "object") return result;
+    Object.keys(raw).forEach(function (key) {
+      var collapsed = copyPanelCollapseState(raw[key]);
+      if (Object.keys(collapsed).length) result[String(key)] = collapsed;
+    });
+    return result;
+  }
+
+  function collapsedPanelsForVideo(stateOrMap, videoKey) {
+    var map = stateOrMap && stateOrMap.collapsedPanelsByVideo ? stateOrMap.collapsedPanelsByVideo : stateOrMap;
+    if (!map || videoKey == null || !map[String(videoKey)]) return {};
+    return copyPanelCollapseState(map[String(videoKey)]);
+  }
+
+  function copyCourtLinesMap(raw) {
+    var result = {};
+    if (!raw || typeof raw !== "object") return result;
+    Object.keys(raw).forEach(function (key) {
+      if (raw[key] === false) result[String(key)] = false;
+    });
+    return result;
+  }
+
   function copyRecords(records) {
     return Array.isArray(records) ? records.map(clone) : [];
   }
@@ -118,7 +163,7 @@
   function copyPanelOverrides(overrides) {
     var result = {};
     if (!overrides || typeof overrides !== "object") return result;
-    ["feed", "stats", "map"].forEach(function (key) {
+    ["feed", "stats", "map", "evidence"].forEach(function (key) {
       if (overrides[key] != null) result[key] = Boolean(overrides[key]);
     });
     return result;
@@ -326,6 +371,7 @@
     if (key && !current.videoKey) {
       if (current.manualLabels.length && !mapKeys(current.manualLabelsByVideo).length) current.manualLabelsByVideo[key] = copyRecords(current.manualLabels);
       if (Object.keys(current.panelLayouts).length) current.panelLayoutsByVideo[key] = copyPanelLayouts(current.panelLayouts);
+      if (Object.keys(current.collapsedPanels).length) current.collapsedPanelsByVideo[key] = copyPanelCollapseState(current.collapsedPanels);
       current.videoKey = key;
     }
     if (!key || current.videoKey === key) {
@@ -349,6 +395,9 @@
     value.seedCardPosition = copyCardPosition(raw.seedCardPosition);
     value.panelLayoutsByVideo = copyPanelLayoutMap(raw.panelLayoutsByVideo);
     value.panelLayouts = copyPanelLayouts(raw.panelLayouts);
+    value.collapsedPanelsByVideo = copyPanelCollapseMap(raw.collapsedPanelsByVideo);
+    value.collapsedPanels = copyPanelCollapseState(raw.collapsedPanels);
+    value.courtLinesByVideo = copyCourtLinesMap(raw.courtLinesByVideo);
     // Migrate a saved court-card position without retaining the old visible
     // grip affordance. New writes use the generic per-panel layout contract.
     if (value.seedCardPosition && !value.panelLayouts.courtSetup) value.panelLayouts.courtSetup = copyPanelLayout(value.seedCardPosition);
@@ -356,6 +405,8 @@
       var panelVideoKey = String(raw.videoKey);
       if (Object.keys(value.panelLayouts).length) value.panelLayoutsByVideo[panelVideoKey] = Object.assign({}, value.panelLayoutsByVideo[panelVideoKey] || {}, copyPanelLayouts(value.panelLayouts));
       if (value.panelLayoutsByVideo[panelVideoKey]) value.panelLayouts = copyPanelLayouts(value.panelLayoutsByVideo[panelVideoKey]);
+      if (Object.keys(value.collapsedPanels).length) value.collapsedPanelsByVideo[panelVideoKey] = Object.assign({}, value.collapsedPanelsByVideo[panelVideoKey] || {}, copyPanelCollapseState(value.collapsedPanels));
+      if (value.collapsedPanelsByVideo[panelVideoKey]) value.collapsedPanels = copyPanelCollapseState(value.collapsedPanelsByVideo[panelVideoKey]);
     }
     var labelOptions = options || {};
     var mapSource = raw.manualLabelsByVideo || raw.labelsByVideo || (raw.manualLabelStore && raw.manualLabelStore.videos) || {};
@@ -401,6 +452,7 @@
       calibration: null,
       calibrationError: null,
       panelLayouts: panelLayoutsForVideo(current, key),
+      collapsedPanels: collapsedPanelsForVideo(current, key),
       manualLabels: labels,
       lastEdit: undo
     }), options);
@@ -477,7 +529,9 @@
       case "CLOSE_LABELING": return Object.assign(current, { labeling: false });
       case "SET_DENSITY": {
         var density = ["minimal", "balanced", "full"].indexOf(action.value) >= 0 ? action.value : current.density;
-        return Object.assign(current, { density: density, panels: panelsForDensity(density, current.panelOverrides) });
+        // Density presets decide only the density-driven panels; explicit
+        // toggles (including Evidence visibility) always win and survive.
+        return Object.assign(current, { density: density, panels: Object.assign({}, current.panels, panelsForDensity(density, current.panelOverrides)) });
       }
       case "TOGGLE_PANEL": {
         var panelValue = Boolean(action.value);
@@ -486,11 +540,30 @@
           panelOverrides: Object.assign({}, current.panelOverrides, { [action.panel]: panelValue })
         });
       }
+      case "TOGGLE_PANEL_COLLAPSE": {
+        if (PANEL_COLLAPSE_KEYS.indexOf(action.panel) < 0) return current;
+        var collapseKey = action.videoKey != null ? String(action.videoKey) : current.videoKey;
+        var nextCollapsed = collapseKey && current.videoKey !== collapseKey
+          ? collapsedPanelsForVideo(current, collapseKey)
+          : copyPanelCollapseState(current.collapsedPanels);
+        if (action.value === false) delete nextCollapsed[action.panel];
+        else nextCollapsed[action.panel] = true;
+        var nextCollapseMap = copyPanelCollapseMap(current.collapsedPanelsByVideo);
+        if (collapseKey) nextCollapseMap[collapseKey] = copyPanelCollapseState(nextCollapsed);
+        return initialExtensionState(Object.assign({}, current, { videoKey: collapseKey || current.videoKey, collapsedPanels: nextCollapsed, collapsedPanelsByVideo: nextCollapseMap }));
+      }
+      case "SET_COURT_LINES": {
+        var linesKey = action.videoKey != null ? String(action.videoKey) : current.videoKey;
+        var nextLines = copyCourtLinesMap(current.courtLinesByVideo);
+        if (action.value === false) nextLines[linesKey] = false;
+        else delete nextLines[linesKey];
+        return initialExtensionState(Object.assign({}, current, { videoKey: linesKey || current.videoKey, courtLinesByVideo: nextLines }));
+      }
       case "SET_PANELS": {
         var nextPanels = Object.assign({}, current.panels);
         var nextOverrides = Object.assign({}, current.panelOverrides);
         Object.keys(action.panels || {}).forEach(function (key) {
-          if (["feed", "stats", "map"].indexOf(key) < 0) return;
+          if (["feed", "stats", "map", "evidence"].indexOf(key) < 0) return;
           nextPanels[key] = Boolean(action.panels[key]);
           nextOverrides[key] = Boolean(action.panels[key]);
         });
@@ -576,7 +649,13 @@
     stateForVideo: stateForVideo,
     labelsForVideo: labelsForVideo,
     PANEL_LAYOUT_KEYS: PANEL_LAYOUT_KEYS.slice(),
+    PANEL_COLLAPSE_KEYS: PANEL_COLLAPSE_KEYS.slice(),
     panelLayoutsForVideo: panelLayoutsForVideo,
+    collapsedPanelsForVideo: collapsedPanelsForVideo,
+    courtLinesForVideo: function (stateOrMap, videoKey) {
+      var map = stateOrMap && stateOrMap.courtLinesByVideo ? stateOrMap.courtLinesByVideo : stateOrMap;
+      return map && videoKey != null && map[String(videoKey)] === false ? false : true;
+    },
     createManualEventId: createManualEventId,
     videoKeyForUrl: videoKeyForUrl,
     resetVideoLocalState: resetVideoLocalState,

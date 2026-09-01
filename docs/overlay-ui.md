@@ -43,6 +43,52 @@ accessible label and native tooltip, but no visible drag copy or grip button.
 The focused geometry and DOM regressions are in
 `tests/panel-layout.test.mjs` and `tests/live-onboarding.test.mjs`.
 
+## Native player controls stay interactive
+
+YouTube draws its bottom control strip (progress bar, play/pause, volume,
+settings) over the video's bottom edge. Overlay panels therefore reserve that
+strip: every panel constraint carries `bottomReserve`
+(`PLAYER_CONTROLS_RESERVE = 72` in `src/content.js`, exposed as
+`--overlay-controls-reserve` in `src/styles.css`), `src/panel-layout.js` clamps
+any move/resize/saved layout so a panel's bottom edge never enters the strip,
+and the CSS defaults for the bottom-anchored map/controls panels sit above it.
+The overlay root and the evidence/calibration layers stay `pointer-events:
+none`; only interactive panel surfaces re-enable input. The court-setup seed
+layer intentionally keeps full-click capture during the four-corner flow:
+its near-corner targets sit around y≈82% and can fall inside the strip on
+small players, so setup keeps priority until the court is locked. The focused
+gates are `tests/panel-layout.test.mjs` (reserve geometry) and
+the strip-clear/drag/resize regression in `tests/live-onboarding.test.mjs`.
+
+## Panel collapse and evidence visibility
+
+Every live panel (stats, court map, stroke feed, manual labeling, live
+controls, evidence visibility) has a header collapse/expand button
+(`data-bso-panel-collapse`, `aria-expanded`); a collapsed panel renders only
+its header bar (`bv-panel-collapsed`, no body/footer/resize surface) and keeps
+the header as its drag surface. Collapse state is per-panel and per-video
+(`collapsedPanelsByVideo`, `TOGGLE_PANEL_COLLAPSE`), mirroring the layout-state
+pattern. The Evidence visibility panel is now a panel like the rest: it is
+gated by `state.panels.evidence` (default on, preserved across density
+presets), hideable from its header, and re-openable from the popup's panel
+toggle list. The manual labeling panel rebuilds its body content only when
+expanded; nothing is lost by collapsing because the form is rebuilt on expand.
+
+## Court setup lines
+
+The court projection drawn during and after setup uses bright highlight
+tokens (`--court-setup-line: var(--lime-400)`, `--court-setup-net:
+var(--lime-300)`) instead of the muted diagram tokens. The after-setup
+projection is a per-video show/hide preference (`courtLinesByVideo`,
+`SET_COURT_LINES`): the Evidence visibility panel carries a **Court setup
+lines** toggle (`data-bso-court-lines-toggle`) so the projection is not forced
+over the video. During active seeding the lines always render (they are the
+setup feedback); only the persistent after-lock projection is toggleable.
+
+The regression gates for all three contracts are in
+`tests/panel-layout.test.mjs`, `tests/live-onboarding.test.mjs`,
+`tests/overlay-ui.test.mjs`, and `tests/state.test.mjs`.
+
 The latest supplied design system has no redistributable font binaries. The
 extension therefore does not fetch Google Fonts or any other remote resource.
 `design-system/tokens/fonts.css` is packaged as a local/system policy sheet and
@@ -82,7 +128,12 @@ all panel toggles, the Evidence visibility panel, **Set up court**, and
 separated, each panel header moves only
 its panel, resize handles stay within the video, setup corner clicks remain setup
 clicks, icon controls retain their hit area, and a manual label can be
-saved/corrected/exported while
+saved/corrected/exported. Confirm the native player controls (pause, seek,
+time bar, settings) stay clickable with the overlay active and that panels
+dragged toward the bottom clamp above the control strip; collapse and re-expand
+every panel from its header (state survives navigation/reload), hide and
+re-open Evidence visibility from the popup, and toggle **Court setup lines** in
+the Evidence visibility panel while
 `paused`, `muted`, `playbackRate`, and `src` remain unchanged. The exact
 procedure and playback boundary are in [`docs/e2e-smoke.md`](e2e-smoke.md);
 toolbar-popup clicks remain the one native manual step outside page CDP.

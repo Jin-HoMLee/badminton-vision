@@ -104,3 +104,51 @@ test("camera-cut invalidation requires a fresh seed", async () => {
   assert.equal(current.calibration, null);
   assert.equal(current.seedPoints.length, 0);
 });
+
+test("panel collapse and court-line visibility persist per video like layout state", async () => {
+  const state = await stateModule();
+  const videoA = state.videoKeyForUrl("https://www.youtube.com/watch?v=alpha");
+  const videoB = state.videoKeyForUrl("https://www.youtube.com/watch?v=beta");
+  let current = state.initialExtensionState({ videoKey: videoA });
+
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL_COLLAPSE", panel: "feed", videoKey: videoA, value: true });
+  assert.equal(current.collapsedPanels.feed, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(current.collapsedPanelsByVideo[videoA])), { feed: true });
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL_COLLAPSE", panel: "evidence", videoKey: videoA, value: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(current.collapsedPanels)), { feed: true, evidence: true });
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL_COLLAPSE", panel: "feed", videoKey: videoA, value: false });
+  assert.equal(current.collapsedPanels.feed, undefined);
+  // Non-collapsible panels (the transient setup card) are ignored.
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL_COLLAPSE", panel: "courtSetup", videoKey: videoA, value: true });
+  assert.equal(current.collapsedPanels.courtSetup, undefined);
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL_COLLAPSE", panel: "evidence", videoKey: videoA, value: true });
+
+  const persisted = JSON.parse(JSON.stringify(current));
+  const restoredA = state.stateForVideo(persisted, videoA);
+  const restoredB = state.stateForVideo(persisted, videoB);
+  assert.deepEqual(JSON.parse(JSON.stringify(restoredA.collapsedPanels)), { evidence: true }, "collapse is restored for the same video");
+  assert.deepEqual(JSON.parse(JSON.stringify(restoredB.collapsedPanels)), {}, "collapse does not leak to another video");
+
+  // Court-setup lines: explicit hides are video-scoped; default is visible.
+  assert.equal(state.courtLinesForVideo(current, videoA), true);
+  current = state.reduceExtensionState(current, { type: "SET_COURT_LINES", videoKey: videoA, value: false });
+  assert.equal(state.courtLinesForVideo(current, videoA), false);
+  assert.equal(state.courtLinesForVideo(current, videoB), true);
+  const restoredLines = state.stateForVideo(JSON.parse(JSON.stringify(current)), videoA);
+  assert.equal(state.courtLinesForVideo(restoredLines, videoA), false);
+  current = state.reduceExtensionState(current, { type: "SET_COURT_LINES", videoKey: videoA, value: true });
+  assert.equal(state.courtLinesForVideo(current, videoA), true);
+
+  // Evidence visibility is a panel like the rest: an explicit toggle survives
+  // density presets and partial SET_PANELS messages.
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL", panel: "evidence", value: false });
+  assert.equal(current.panels.evidence, false);
+  current = state.reduceExtensionState(current, { type: "SET_DENSITY", value: "full" });
+  assert.equal(current.panels.evidence, false, "density presets do not resurrect the evidence panel");
+  assert.equal(current.panels.stats, true);
+  current = state.reduceExtensionState(current, { type: "SET_PANELS", panels: { feed: false } });
+  assert.equal(current.panels.evidence, false, "partial panel messages keep other explicit toggles");
+  assert.equal(current.panels.feed, false);
+  current = state.reduceExtensionState(current, { type: "SET_PANELS", panels: { evidence: true } });
+  assert.equal(current.panels.evidence, true);
+});
