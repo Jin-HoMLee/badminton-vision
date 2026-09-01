@@ -90,8 +90,10 @@ The source repository contains no mark, so one was **designed here** at the user
 | Asset | Use |
 | --- | --- |
 | `assets/logo-mark.svg` | Transparent mark for lockups, docs, the popup header |
-| `assets/icon.svg` | Full extension tile (14px-radius ink square) at 128 / 48 |
-| `assets/icon-16.svg` | Simplified tile — solid shuttle, heavier brackets — for 32 / 16 |
+| `assets/icon.svg` | Vector source for the full extension tile at 128 / 48 |
+| `assets/icon-32.svg` | Vector source with simplified detail for 32 |
+| `assets/icon-16.svg` | Vector source with a solid shuttle for 16 |
+| `assets/icon-{16,32,48,128}.png` | Exact-size local raster derivatives used by the Chrome manifest |
 
 Lockup: mark at cap-height × 1.35, 14px gap, name in Space Grotesk Bold `-0.03em` in `--lime-500`. The in-product toolbar badge stays the two letters **BV** in a pill where a 16px mark would be too dense.
 
@@ -103,7 +105,7 @@ Lockup: mark at cap-height × 1.35, 14px gap, name in Space Grotesk Bold `-0.03e
 | --- | --- |
 | `styles.css` | The one file consumers link — `@import`s only |
 | `tokens/` | `fonts.css` · `colors.css` · `typography.css` · `spacing.css` · `elevation.css` · `motion.css` · `base.css` |
-| `assets/` | `logo-mark.svg` · `icon.svg` · `icon-16.svg` |
+| `assets/` | Authored SVG logo sources plus exact-size local PNG manifest icons |
 | `guidelines/` | 17 specimen cards: colour ramps, type, spacing, radii, elevation, scrims, motion, wordmark |
 | `components/` | Reusable primitives, grouped below |
 | `ui_kits/extension/` | The Chrome-extension UI kit: full click-through plus popup and summary screens |

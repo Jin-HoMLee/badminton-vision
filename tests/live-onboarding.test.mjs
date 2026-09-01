@@ -76,13 +76,19 @@ class FakeNode {
   }
 
   dispatchEvent(event) {
+    event = Object.assign({
+      target: this,
+      defaultPrevented: false,
+      preventDefault() { this.defaultPrevented = true; },
+      stopPropagation() {}
+    }, event);
     for (const listener of this.listeners[event.type] || []) listener.call(this, event);
   }
 
   click() { this.dispatchEvent({ type: "click", target: this }); }
 
   getBoundingClientRect() {
-    return { left: 0, top: 0, width: 640, height: 360 };
+    return this.rect || { left: 0, top: 0, width: 640, height: 360 };
   }
 
   attachShadow() {
@@ -163,9 +169,13 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
   }
   const storageReads = [];
   const storageWrites = [];
+  const windowListeners = Object.create(null);
   let onMessage;
   const messageListeners = [];
   let runtimeStarts = 0;
+  let runtimeChange = null;
+  let runtimeStops = 0;
+  let runtimeOnChange = null;
   const chromeApi = {
     runtime: {
       lastError: null,
@@ -195,16 +205,18 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
     crypto: { randomUUID: () => "test-session" }
   });
   context.window = context;
-  context.addEventListener = () => {};
-  context.removeEventListener = () => {};
+  context.addEventListener = (name, listener) => { (windowListeners[name] ||= []).push(listener); };
+  context.removeEventListener = (name, listener) => { windowListeners[name] = (windowListeners[name] || []).filter((item) => item !== listener); };
   const files = bundle
     ? []
-    : ["src/state.js", "src/calibration.js", "src/seed-card.js", "src/panel-layout.js", "src/fixtures.js", "src/review.js", "src/analysis.js", "src/ui.js", "src/content.js"];
+    : ["src/state.js", "analysis/index.js", "src/calibration.js", "src/panel-layout.js", "src/seed-card.js", "src/fixtures.js", "src/review.js", "src/analysis.js", "src/ui.js", "src/content.js"];
   if (!bundle) {
     context.BVRuntime = {
-      startIntegratedRuntime: () => {
+      startIntegratedRuntime: (options = {}) => {
+        runtimeChange = options.onChange || null;
         runtimeStarts += 1;
-        return { controller: { sessionId: "test-session" } };
+        runtimeOnChange = options && options.onChange;
+        return { controller: { sessionId: "test-session", stop: () => { runtimeStops += 1; } } };
       }
     };
   }
@@ -215,9 +227,11 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
     vm.runInContext(await loadContentBundle(), context, { filename: "dist/content.bundle.js" });
   }
   if (bundle) {
-    context.BVRuntime.startIntegratedRuntime = () => {
+    context.BVRuntime.startIntegratedRuntime = (options = {}) => {
+      runtimeChange = options.onChange || null;
       runtimeStarts += 1;
-      return { controller: { sessionId: "test-session" } };
+      runtimeOnChange = options && options.onChange;
+      return { controller: { sessionId: "test-session", stop: () => { runtimeStops += 1; } } };
     };
   }
 
@@ -230,6 +244,10 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
     messageListeners,
     get onMessage() { return onMessage; },
     get runtimeStarts() { return runtimeStarts; },
+    get runtimeStops() { return runtimeStops; },
+    runtimeUpdate(view) { runtimeChange?.(view); },
+    publishRuntimeView(view) { assert.equal(typeof runtimeOnChange, "function"); runtimeOnChange(view); },
+    emitWindow(name) { (windowListeners[name] || []).slice().forEach((listener) => listener({ type: name })); },
     flushStorage(value = storedState) {
       assert.equal(storageReads.length, 1);
       storageReads.shift()({ bvState: value });
@@ -335,6 +353,24 @@ test("Live Step 1 replays an early ENABLE after storage hydration instead of los
   assert.equal(manual.video.playbackRate, 1);
 });
 
+test("content anchor follows YouTube geometry changes without moving playback", async () => {
+  const session = await createSession();
+  session.flushStorage();
+  session.video.rect = { left: 24, top: 30, width: 640, height: 360 };
+  session.emitWindow("resize");
+  assert.equal(session.host().style.left, "24px");
+  assert.equal(session.host().style.top, "30px");
+  assert.equal(session.host().style.width, "640px");
+  assert.equal(session.host().style.height, "360px");
+
+  session.video.rect = { left: 0, top: 0, width: 1920, height: 1080 };
+  session.documentRef.dispatchEvent({ type: "fullscreenchange" });
+  assert.equal(session.host().style.width, "1920px");
+  assert.equal(session.host().style.height, "1080px");
+  assert.equal(session.video.paused, false);
+  assert.equal(session.video.currentTime, 12);
+});
+
 test("Live Step 1 injects the declared content path when the tab predates extension installation", async () => {
   const popup = await createPopupSession();
   const primary = popup.app.querySelector('[data-bso-action="enable"]');
@@ -415,14 +451,13 @@ test("the bundled content entrypoint is parse-safe and mounts one host, listener
   assert.equal(session.runtimeStarts, 1);
 });
 
-test("overlay panel surfaces expose independent move and resize semantics", async () => {
+test("all overlay panels expose independent move and resize semantics", async () => {
   const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
   live.flushStorage();
-  let root = live.overlayRoot();
   live.onMessage({ type: "SET_DENSITY", value: "full", requestId: "layout-full-1" });
-  root = live.overlayRoot();
+  let root = live.overlayRoot();
   const panelIds = root.querySelectorAll("[data-bso-panel-layout]").map((panel) => panel.getAttribute("data-bso-panel"));
-  assert.deepEqual(panelIds.sort(), ["controls", "feed", "map", "stats"]);
+  assert.deepEqual(panelIds.sort(), ["controls", "evidence", "feed", "map", "stats"]);
   for (const panelId of panelIds) {
     const panel = root.querySelector(`[data-bso-panel="${panelId}"]`);
     assert.ok(panel.querySelector("[data-bso-panel-drag-handle]"), `${panelId} has a natural header drag surface`);
@@ -471,14 +506,21 @@ test("panel movement and controls remain separate, with layout retained across r
   pointer(resize, "pointerup", 2000, 2000, 9);
   const resized = live.storageWrites.at(-1).bvState.panelLayouts.feed;
   assert.ok(resized.width <= 0.875 && resized.height <= 1, "resize is capped to the video bounds");
+
+  const evidence = root.querySelector('[data-bso-panel="evidence"]');
+  const evidenceHeader = evidence.querySelector("[data-bso-panel-drag-handle]");
+  pointer(evidenceHeader, "pointerdown", 10, 10, 10);
+  pointer(evidenceHeader, "pointermove", 150, 100, 10);
+  pointer(evidenceHeader, "pointerup", 150, 100, 10);
+  assert.ok(live.storageWrites.at(-1).bvState.panelLayoutsByVideo["youtube:real-match"].evidence, "evidence visibility layout is persisted independently");
 });
 
 test("court setup keeps corners clickable without a visible drag instruction", async () => {
   const live = await createSession();
   live.flushStorage();
   live.onMessage({ type: "START_SEED", requestId: "layout-seed-1" });
-  let root = live.overlayRoot();
-  let layer = root.querySelector("[data-bso-court-seeding]");
+  const root = live.overlayRoot();
+  const layer = root.querySelector("[data-bso-court-seeding]");
   const card = layer.querySelector("[data-bso-seed-card]");
   const header = card.querySelector("[data-bso-panel-drag-handle]");
   assert.equal(card.querySelector(".bv-seed-card-handle-text"), null);
@@ -494,6 +536,162 @@ test("court setup keeps corners clickable without a visible drag instruction", a
   assert.equal(live.host().getAttribute("data-bso-seed-count"), "0", "moving the setup header does not seed a point");
   layer.dispatchEvent({ type: "click", target: layer, clientX: 80, clientY: 280 });
   assert.equal(live.host().getAttribute("data-bso-seed-count"), "1", "a click on the layer remains a court-corner action");
+});
+
+test("manual labeling survives three sequential saves, rerenders, reload, and CRUD", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "OPEN_LABELING", requestId: "manual-three-open" });
+  let root = live.overlayRoot();
+  let panel = root.querySelector(".bv-label-panel");
+  assert.ok(panel, "the real manual-label entry path opens the panel");
+  const playbackBefore = { paused: live.video.paused, muted: live.video.muted, playbackRate: live.video.playbackRate, src: live.video.currentSrc || live.video.src };
+
+  function setTime(seconds) {
+    live.video.currentTime = seconds;
+    live.video.dispatchEvent({ type: "timeupdate", target: live.video });
+  }
+  function clickData(node, attribute, value) {
+    const button = node.querySelectorAll(`[${attribute}]`).find((item) => value == null || item.getAttribute(attribute) === value);
+    assert.ok(button, `control ${attribute}=${value || ""} exists`);
+    button.dispatchEvent({ type: "click", target: button });
+    return button;
+  }
+  function savedRows(node) {
+    const saved = node.querySelector(".bv-manual-saved");
+    return saved ? saved.querySelectorAll('[data-bso-label-source="manual"]') : [];
+  }
+  function saveCurrent(node) {
+    clickData(node, "data-bso-label-save", "true");
+    return live.overlayRoot();
+  }
+  function markSegment(start, end, shot) {
+    setTime(start);
+    assert.ok(root.querySelector("[data-bso-label-window]"), "the segment display survives the clock update");
+    const startButton = buttonWithText(root, "Start");
+    assert.ok(startButton);
+    startButton.dispatchEvent({ type: "click", target: startButton });
+    setTime(end);
+    const endButton = buttonWithText(root, "End");
+    assert.ok(endButton);
+    endButton.dispatchEvent({ type: "click", target: endButton });
+    clickData(root, "data-bso-shot", shot);
+    root = live.overlayRoot();
+  }
+
+  // First successful interaction: no runtime result is allowed to replace the
+  // panel while the user marks the first segment.
+  markSegment(20, 20.5, "Serve");
+  assert.equal(root.querySelector(".bv-label-panel"), panel, "the first control keeps the live panel node");
+  root = saveCurrent(root);
+  assert.ok(root.querySelector(".bv-label-panel"), "saving the first label keeps Manual labeling open");
+  assert.equal(savedRows(root).length, 1);
+
+  markSegment(22, 22.5, "Clear");
+  root = saveCurrent(root);
+  assert.equal(savedRows(root).length, 2, "the second save appends a per-video record");
+
+  // Captain-reported failure reproduction: the third interaction is masked by
+  // an asynchronous media/runtime update. Before this fix, publishRuntimeView
+  // and timeupdate called render(), replacing the form between pointerdown and
+  // pointerup; the visible symptom was that Start/End or a picker click did
+  // nothing, usually from the third shot onward. The first click could pass
+  // when it happened between render ticks.
+  panel = root.querySelector(".bv-label-panel");
+  live.runtimeUpdate({ phase: "result", message: "new runtime frame", reason: "", analyzer: "test", inference: false, fallbacks: [], capabilities: {}, stale: false, ageSeconds: null, result: { kind: "test", state: "unknown", players: [], tracking: null, shuttle: null, strokeEvents: [], rally: { state: "unknown" }, rallyEnd: { state: "unknown" }, winner: { state: "unknown" } } });
+  assert.equal(root.querySelector(".bv-label-panel"), panel, "a runtime result does not replace an in-flight manual form");
+  markSegment(24, 24.75, "Drive");
+  panel = root.querySelector(".bv-label-panel");
+  assert.equal(panel.getAttribute("data-bso-draft-state"), "dirty");
+
+  // Exercise every third-label control without allowing one control's handler
+  // to invalidate the next control's DOM reference.
+  const shotButtons = root.querySelectorAll("[data-bso-shot]");
+  assert.equal(shotButtons.length, 11);
+  shotButtons.forEach((button) => {
+    button.dispatchEvent({ type: "click", target: button });
+    assert.equal(root.querySelector(".bv-label-panel"), panel);
+  });
+  clickData(root, "data-bso-shot", "Drive");
+  assert.equal(root.querySelector('[data-bso-shot="Drive"]').getAttribute("aria-pressed"), "true");
+  const playerButtons = root.querySelectorAll("[data-bso-player-id]");
+  assert.equal(playerButtons.length, 3);
+  playerButtons.forEach((button) => {
+    button.dispatchEvent({ type: "click", target: button });
+    assert.equal(root.querySelector(".bv-label-panel"), panel);
+  });
+  assert.equal(root.querySelector('[data-bso-player-id="B"]').getAttribute("aria-checked"), "true");
+  const axisNodes = root.querySelectorAll("[data-bso-axis]");
+  assert.equal(axisNodes.length, 6);
+  axisNodes.forEach((axis) => {
+    const options = axis.querySelectorAll("[data-bso-axis-option]");
+    assert.equal(options.length, 3);
+    options.forEach((button) => {
+      button.dispatchEvent({ type: "click", target: button });
+      assert.equal(root.querySelector(".bv-label-panel"), panel);
+    });
+    assert.equal(axis.querySelectorAll(".selected").length, 1);
+  });
+  root = saveCurrent(root);
+  assert.ok(root.querySelector(".bv-label-panel"), "the third save leaves the panel open");
+  assert.equal(root.querySelector("[data-bso-label-mode]").getAttribute("data-bso-label-mode"), "create", "a new save exits edit mode");
+  assert.equal(root.querySelector("[data-bso-draft-state]").getAttribute("data-bso-draft-state"), "ready", "the next-label draft is clean");
+  assert.equal(root.querySelectorAll("[data-bso-shot]").filter((button) => button.className.split(/\s+/).includes("selected")).length, 0, "the next draft has no selected shot");
+  assert.equal(root.querySelector("[data-bso-label-save]").disabled, true, "the next draft cannot save until a shot is chosen");
+  assert.equal(savedRows(root).length, 3);
+  const persisted = live.storageWrites.at(-1).bvState;
+  const videoKey = "youtube:real-match";
+  assert.equal(persisted.manualLabelsByVideo[videoKey].length, 3, "all three labels are stored under the active video");
+  assert.deepEqual(JSON.parse(JSON.stringify(persisted.manualLabelsByVideo[videoKey].map((label) => label.shot))), ["Serve", "Clear", "Drive"]);
+  assert.equal(persisted.manualLabelsByVideo[videoKey][2].playerId, "B");
+  assert.equal(Object.keys(persisted.manualLabelsByVideo[videoKey][2].axes).length, 6);
+
+  // A fresh content instance must reload the same per-video records and a
+  // clean draft at the current media time, rather than leaking another video.
+  const reloaded = await createSession({ storedState: JSON.parse(JSON.stringify(persisted)) });
+  reloaded.flushStorage();
+  root = reloaded.overlayRoot();
+  assert.ok(root.querySelector(".bv-label-panel"), "the persisted labeling panel remains available after reload");
+  assert.equal(savedRows(root).length, 3);
+  assert.equal(root.querySelector("[data-bso-draft-state]").getAttribute("data-bso-draft-state"), "ready");
+  assert.match(textOf(root.querySelector("[data-bso-label-window]")), /^00:12\.000 → —$/);
+
+  // Existing-label edit preserves the event id and remains an intentional edit
+  // mode; deleting then undoing restores the deterministic saved record.
+  let rows = savedRows(root);
+  const editedId = rows[0].getAttribute("data-bso-event-id");
+  rows[0].dispatchEvent({ type: "click", target: rows[0] });
+  root = reloaded.overlayRoot();
+  assert.equal(root.querySelector("[data-bso-label-mode]").getAttribute("data-bso-label-mode"), "edit");
+  clickData(root, "data-bso-shot", "Drop");
+  clickData(root, "data-bso-label-save", "true");
+  root = reloaded.overlayRoot();
+  assert.equal(savedRows(root).length, 3);
+  assert.equal(savedRows(root)[0].getAttribute("data-bso-event-id"), editedId);
+  assert.equal(root.querySelector("[data-bso-draft-state]").getAttribute("data-bso-draft-state"), "ready");
+
+  rows = savedRows(root);
+  rows[1].dispatchEvent({ type: "click", target: rows[1] });
+  root = reloaded.overlayRoot();
+  const deleteButton = buttonWithText(root, "Delete label");
+  assert.ok(deleteButton);
+  deleteButton.dispatchEvent({ type: "click", target: deleteButton });
+  root = reloaded.overlayRoot();
+  assert.equal(savedRows(root).length, 2, "delete removes only the selected manual record");
+  const undoButton = buttonWithText(root, "Undo");
+  assert.ok(undoButton);
+  undoButton.dispatchEvent({ type: "click", target: undoButton });
+  root = reloaded.overlayRoot();
+  assert.equal(savedRows(root).length, 3, "undo restores the deleted record");
+  assert.doesNotThrow(() => buttonWithText(root, "Export CSV").dispatchEvent({ type: "click", target: buttonWithText(root, "Export CSV") }));
+  assert.ok(reloaded.documentRef.created.some((node) => node.tagName === "A" && node.download === "badminton-vision-shots.csv"));
+
+  const closeButton = buttonWithText(root, "Close");
+  assert.ok(closeButton);
+  closeButton.dispatchEvent({ type: "click", target: closeButton });
+  assert.equal(reloaded.overlayRoot().querySelector(".bv-label-panel"), null, "only explicit Close closes the normal labeling session");
+  const playbackAfter = { paused: reloaded.video.paused, muted: reloaded.video.muted, playbackRate: reloaded.video.playbackRate, src: reloaded.video.currentSrc || reloaded.video.src };
+  assert.deepEqual(playbackAfter, playbackBefore, "manual labeling never mutates playback");
 });
 
 test("popup and content controls visibly change density, panels, and manual labels", async () => {
@@ -557,4 +755,130 @@ test("popup and content controls visibly change density, panels, and manual labe
   root = live.overlayRoot();
   assert.doesNotThrow(() => buttonWithText(root, "Export CSV").dispatchEvent({ type: "click" }));
   assert.ok(live.documentRef.created.some((node) => node.tagName === "A" && node.download === "badminton-vision-shots.csv"));
+});
+
+function evidenceResult({ mediaTime = 12, keypointOffset = 0, includeRacket = true, includeBox = true, unknown = false } = {}) {
+  const names = ["nose", "neck", "left_shoulder", "left_elbow", "left_wrist", "right_shoulder", "right_elbow", "right_wrist", "left_hip", "left_knee", "left_ankle", "right_hip", "right_knee", "right_ankle", "left_eye", "right_eye", "left_ear", "right_ear"];
+  const keypoints = unknown ? [] : names.map((name, index) => ({
+    name,
+    x: 0.18 + (index % 4) * 0.035 + keypointOffset,
+    y: 0.18 + Math.floor(index / 4) * 0.045,
+    confidence: 0.9
+  }));
+  const player = {
+    trackId: "live-session:player-1",
+    state: unknown ? "unknown" : "tracked",
+    confidence: unknown ? null : 0.9,
+    bbox: unknown || !includeBox ? null : { x: 0.15 + keypointOffset, y: 0.14, width: 0.2, height: 0.55 },
+    keypoints
+  };
+  const result = {
+    kind: "lightweight-openpose-pose-shuttle",
+    state: unknown ? "unknown" : "tracked",
+    players: [player],
+    tracking: { state: unknown ? "unknown" : "tracked", accepted: true, players: [player] },
+    shuttle: unknown
+      ? { state: "unknown", confidence: null, accepted: false, trajectory: [], candidate: null }
+      : { state: "tracked", confidence: 0.75, accepted: true, trajectory: [{ x: 0.4, y: 0.5 }, { x: 0.5, y: 0.4 }], candidate: { x: 0.5, y: 0.4, accepted: true } },
+    rally: { state: "unknown" }, rallyEnd: { state: "unknown" }, winner: { state: "unknown" }, strokeEvents: []
+  };
+  if (includeRacket) result.racket = unknown
+    ? { state: "unknown", confidence: null }
+    : { state: "tracked", confidence: 0.8, segment: { start: { x: 0.31, y: 0.33 }, end: { x: 0.39, y: 0.28 } } };
+  return result;
+}
+
+function resultView(result) {
+  return {
+    phase: "result", message: "Local analyzer result received", reason: "", analyzer: "lightweight-openpose-lite-256-v1",
+    inference: true, fallbacks: [], capabilities: { inference: true, analyzer: "lightweight-openpose-lite-256-v1", backend: "wasm" },
+    result, currentMediaTime: result.mediaTime || 12, ageSeconds: 0, stale: false
+  };
+}
+
+async function createLiveEvidenceSession() {
+  const session = await createSession();
+  session.flushStorage();
+  session.onMessage({ type: "ENABLE", requestId: "live-evidence-enable" });
+  const corners = [[64, 324], [576, 324], [576, 36], [64, 36]];
+  for (const [clientX, clientY] of corners) {
+    const layer = session.overlayRoot().querySelector("[data-bso-court-seeding]");
+    layer.dispatchEvent({ type: "click", target: layer, clientX, clientY, defaultPrevented: false });
+  }
+  const lock = buttonWithText(session.overlayRoot(), "Lock court");
+  assert.ok(lock, "the fitted seed exposes a lock action");
+  lock.dispatchEvent({ type: "click", target: lock });
+  assert.equal(session.overlayRoot().querySelector("[data-bso-court-seeding]"), null);
+  return session;
+}
+
+test("live result updates redraw accepted pose, shuttle, and supplied racket evidence without blocking input", async () => {
+  const session = await createLiveEvidenceSession();
+  const first = evidenceResult({ mediaTime: 12 });
+  session.publishRuntimeView(resultView(first));
+  let root = session.overlayRoot();
+  let drawing = root.querySelector(".bv-runtime-evidence");
+  assert.ok(drawing);
+  assert.equal(drawing.getAttribute("pointer-events"), "none");
+  assert.equal(drawing.style.pointerEvents, "none");
+  assert.equal(drawing.querySelectorAll(".bv-pose-keypoint").length, 18);
+  assert.ok(drawing.querySelectorAll(".bv-pose-bone").length >= 10, "named body points are connected");
+  assert.equal(drawing.querySelectorAll(".bv-player-box").length, 1);
+  assert.equal(drawing.querySelectorAll(".bv-shuttle-trajectory").length, 1);
+  assert.equal(drawing.querySelectorAll(".bv-shuttle-point").length, 1);
+  assert.equal(drawing.querySelectorAll(".bv-racket-signal").length, 1);
+
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.05, includeBox: false })));
+  drawing = session.overlayRoot().querySelector(".bv-runtime-evidence");
+  assert.equal(drawing.querySelectorAll(".bv-pose-keypoint").length, 18, "pose points remain available without a box");
+  assert.equal(drawing.querySelectorAll(".bv-player-box").length, 0, "the renderer never synthesizes a box from keypoints");
+
+  const second = evidenceResult({ mediaTime: 12.1, keypointOffset: 0.02 });
+  session.publishRuntimeView(resultView(second));
+  root = session.overlayRoot();
+  drawing = root.querySelector(".bv-runtime-evidence");
+  const nose = drawing.querySelectorAll(".bv-pose-keypoint").find((point) => point.getAttribute("data-keypoint") === "nose");
+  assert.ok(Math.abs(Number(nose.getAttribute("cx")) - 0.2) < 1e-9, "a newer accepted result replaces the rendered pose");
+  const box = drawing.querySelectorAll(".bv-player-box").find((node) => node.getAttribute("data-box-source") === "runtime");
+  assert.equal(box.getAttribute("data-player-state"), "tracked");
+});
+
+test("live evidence visibility switches are independent, persistent across result rerenders, and honest about missing signals", async () => {
+  const session = await createLiveEvidenceSession();
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12 })));
+  const toggle = (name) => session.overlayRoot().querySelector(`[data-bso-evidence-control="${name}"]`).querySelector("button");
+  const has = (selector) => Boolean(session.overlayRoot().querySelector(".bv-runtime-evidence").querySelector(selector));
+
+  toggle("body").dispatchEvent({ type: "click" });
+  assert.equal(has(".bv-pose-keypoint"), false);
+  assert.equal(has(".bv-player-box"), true);
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.1, keypointOffset: 0.01 })));
+  assert.equal(has(".bv-pose-keypoint"), false, "pose visibility survives a result rerender");
+
+  toggle("players").dispatchEvent({ type: "click" });
+  assert.equal(has(".bv-player-box"), false);
+  assert.equal(has(".bv-pose-keypoint"), false);
+  toggle("shuttle").dispatchEvent({ type: "click" });
+  assert.equal(has(".bv-shuttle-trajectory"), false);
+  assert.equal(has(".bv-shuttle-point"), false);
+  toggle("racket").dispatchEvent({ type: "click" });
+  assert.equal(has(".bv-racket-signal"), false);
+  toggle("court").dispatchEvent({ type: "click" });
+  assert.equal(session.overlayRoot().querySelector(".bv-calibration-court"), null);
+
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.2, includeRacket: false, unknown: true })));
+  assert.equal(toggle("racket").getAttribute("aria-checked"), "false", "explicit racket visibility remains off");
+  const racketControl = session.overlayRoot().querySelector('[data-bso-evidence-control="racket"]');
+  assert.equal(racketControl.getAttribute("data-bso-evidence-state"), "unavailable", "missing racket output is unavailable, not guessed");
+  assert.equal(toggle("racket").disabled, true);
+  assert.equal(session.overlayRoot().querySelector('[data-bso-evidence-control="shuttle"]').getAttribute("data-bso-evidence-state"), "unknown");
+  assert.equal(has(".bv-racket-signal"), false);
+  assert.equal(has(".bv-shuttle-point"), false);
+  assert.equal(has(".bv-player-box"), false);
+
+  session.onMessage({ type: "DISABLE", requestId: "live-evidence-disable" });
+  assert.equal(session.runtimeStops, 1, "disabling the overlay stops the runtime session");
+  assert.equal(session.overlayRoot().children.length, 0, "disable removes all live evidence and controls");
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.3 })));
+  assert.equal(session.overlayRoot().children.length, 0, "a late result cannot resurrect disabled evidence");
 });

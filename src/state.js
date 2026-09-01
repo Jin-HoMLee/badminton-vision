@@ -20,7 +20,10 @@
     labelUndoByVideo: {},
     manualLabelsVersion: LABEL_STORE_VERSION,
     lastEdit: null,
-    trackerSettings: {},
+    // Evidence visibility is independent from analyzer execution. These
+    // preferences survive every live result rerender; unavailable groups keep
+    // their remembered value without implying that evidence exists.
+    trackerSettings: { court: true, players: true, body: true, shuttle: true, racket: true },
     // seedPoints are the committed, normalized outer-corner correspondences.
     seedPoints: [],
     // A draft is deliberately separate so Cancel can preserve a prior court.
@@ -64,7 +67,7 @@
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
   }
 
-  var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls"];
+  var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls", "evidence"];
 
   function copyPanelLayout(layout) {
     if (!layout || typeof layout !== "object") return null;

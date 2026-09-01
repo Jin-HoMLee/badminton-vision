@@ -77,6 +77,9 @@
   var domObserver = null;
   var navigationListeners = [];
   var mediaTimeListener = null;
+  var videoGeometryListener = null;
+  var videoResizeObserver = null;
+  var layoutResizeObserver = null;
   var runtimeController = null;
   var runtimeView = {
     phase: "idle", message: "Local runtime starting", reason: "", analyzer: "none",
@@ -129,14 +132,17 @@
     host.setAttribute("data-bso-analysis-state", result && result.state ? result.state : "unknown");
     host.setAttribute("data-bso-player-state", result && result.tracking && result.tracking.state || "unknown");
     host.setAttribute("data-bso-shuttle-state", result && result.shuttle && result.shuttle.state || "unknown");
-    host.setAttribute("data-bso-player-count", String(result && Array.isArray(result.players) ? result.players.filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length : 0));
+    host.setAttribute("data-bso-player-count", String(runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length));
+    host.setAttribute("data-bso-racket-state", runtimeRacketEvidence().state);
     host.setAttribute("data-bso-shuttle-confidence", String(result && result.shuttle && result.shuttle.confidence != null ? result.shuttle.confidence : "unknown"));
     host.setAttribute("data-bso-frame-transport", runtimeView.capabilities && runtimeView.capabilities.frameTransport || "unknown");
     host.setAttribute("data-bso-backend", runtimeView.capabilities && runtimeView.capabilities.backend || "unknown");
     host.setAttribute("data-bso-fallback", fallbackReasons.filter(Boolean).join(",") || "none");
   }
   function publishRuntimeView(view) {
+    var previousResult = runtimeView && runtimeView.result;
     runtimeView = view;
+    var resultChanged = Boolean(view && view.result !== previousResult);
     if (view && view.result && view.result.cameraCut && !state.cameraCut && (state.seeded || calibration)) {
       state = window.BVState.reduceExtensionState(state, { type: "CAMERA_CUT" });
       calibration = null;
@@ -147,9 +153,8 @@
     restoreReviewState();
     updateDiagnosticsMarkers();
     var result = view.result;
-    var playerCount = result && Array.isArray(result.players)
-      ? result.players.filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length
-      : null;
+    var playerCount = result ? runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length : null;
+    var racketEvidence = runtimeRacketEvidence();
     var status = {
       phase: view.phase,
       message: view.message,
@@ -169,9 +174,11 @@
         kind: result.kind || null,
         state: result.state || "unknown",
         cameraCut: Boolean(result.cameraCut),
-        players: Array.isArray(result.players) ? result.players : [],
+        players: runtimePlayers(),
         tracking: result.tracking || null,
         shuttle: result.shuttle || null,
+        racket: result.racket || null,
+        rackets: Array.isArray(result.rackets) ? result.rackets : [],
         strokeEvents: Array.isArray(result.strokeEvents) ? result.strokeEvents : [],
         rally: result.rally || { state: "unknown" },
         rallyEnd: result.rallyEnd || { state: "unknown" },
@@ -181,10 +188,12 @@
       playerState: result && result.tracking ? result.tracking.state : "unknown",
       shuttleState: result && result.shuttle ? result.shuttle.state : "unknown",
       shuttleConfidence: result && result.shuttle && result.shuttle.confidence != null ? result.shuttle.confidence : null,
+      racketSupported: racketEvidence.supported,
+      racketState: racketEvidence.state,
       backend: view.capabilities && view.capabilities.backend || null,
       sessionId: runtimeController && runtimeController.sessionId ? runtimeController.sessionId : null
     };
-    var key = JSON.stringify([status.phase, status.analyzer, status.inference, status.reason, status.frameTransport, status.backend, status.stale, status.resultKind, status.playerCount, status.playerState, status.shuttleState, status.shuttleConfidence]);
+    var key = JSON.stringify([status.phase, status.analyzer, status.inference, status.reason, status.frameTransport, status.backend, status.stale, status.resultKind, status.playerCount, status.playerState, status.shuttleState, status.shuttleConfidence, status.racketSupported, status.racketState]);
     var now = Date.now();
     var statusChanged = key !== publishedRuntimeKey;
     if (hasChrome() && chrome.storage && chrome.storage.local && statusChanged) {
@@ -193,9 +202,16 @@
     }
     // Synchronization is driven by every observed video frame, but the
     // design-system DOM only needs a modest refresh cadence for age/time labels.
-    if (statusChanged || now - lastRuntimeRenderAt >= 250) {
+    // Every newly synchronized result gets one immediate evidence refresh.
+    // Age-only frame ticks remain bounded so labels do not rebuild at rVFC rate.
+    if (resultChanged || statusChanged || now - lastRuntimeRenderAt >= 250) {
       lastRuntimeRenderAt = now;
-      render();
+      // Runtime/media updates can land between pointerdown and pointerup. Do
+      // not replace the manual form under an in-flight user gesture; its
+      // controls read the latest clock when invoked and only need the visible
+      // timestamp patched in place.
+      if (state.labeling) refreshLabelingClock();
+      else render();
     }
   }
   function runtimeIsStale() { return Boolean(state.stale || runtimeView.stale); }
@@ -204,7 +220,39 @@
   }
   function runtimeResult() { return runtimeView && runtimeView.result && typeof runtimeView.result === "object" ? runtimeView.result : null; }
   function runtimeTracking() { var result = runtimeResult(); return result && result.tracking || null; }
+  function runtimePlayers() {
+    var result = runtimeResult();
+    var tracking = runtimeTracking();
+    if (tracking && tracking.accepted === false) return [];
+    // Older/runtime-compatible envelopes may put the accepted tracks only in
+    // tracking.players. Prefer the top-level projection when it is populated,
+    // but do not hide real tracks behind an empty compatibility array.
+    if (result && Array.isArray(result.players) && result.players.length) return result.players;
+    return tracking && Array.isArray(tracking.players)
+      ? tracking.players
+      : result && Array.isArray(result.players) ? result.players : [];
+  }
   function runtimeShuttle() { var result = runtimeResult(); return result && result.shuttle || null; }
+  function runtimeRacketEvidence() {
+    var result = runtimeResult();
+    if (!result) return { supported: false, state: "unavailable", items: [] };
+    // Consume only an explicit runtime field. The current production
+    // composition does not emit racket detections, so this remains unavailable
+    // there rather than synthesizing a racket from a hand/keypoint.
+    var fields = ["racket", "rackets", "racketSignal", "racketSignals"];
+    var suppliedField = fields.find(function (field) { return Object.prototype.hasOwnProperty.call(result, field); });
+    if (!suppliedField) return { supported: false, state: "unavailable", items: [] };
+    var supplied = result[suppliedField];
+    var items = Array.isArray(supplied) ? supplied.filter(Boolean) : supplied ? [supplied] : [];
+    var visible = items.filter(function (item) { return item && typeof item === "object" && item.state !== "unknown"; });
+    var stateValue = visible.some(function (item) { return item.state === "tracked" || item.accepted === true; })
+      ? "tracked"
+      : visible.length ? "available" : "unknown";
+    return { supported: true, state: stateValue, items: items };
+  }
+  function evidenceVisible(name, fallback) {
+    return state.trackerSettings && state.trackerSettings[name] != null ? Boolean(state.trackerSettings[name]) : fallback !== false;
+  }
   function runtimeCaption() {
     if (isFixtureRuntime()) return "fixture result observed · not production CV";
     if (runtimeView.phase === "fallback") return "local production analysis unavailable · playback unaffected";
@@ -222,9 +270,8 @@
     } catch (_) { return null; }
   }
   function playerCourtPoints() {
-    var tracking = runtimeTracking();
-    if (!tracking || !Array.isArray(tracking.players)) return [];
-    return tracking.players.map(function (player, index) {
+    var players = runtimePlayers();
+    return players.map(function (player, index) {
       if (!player || !player.bbox || player.state === "unknown") return null;
       var imagePoint = { x: player.bbox.x + player.bbox.width / 2, y: player.bbox.y + player.bbox.height / 2 };
       var court = imagePointToCourt(imagePoint);
@@ -332,22 +379,43 @@
 
   function positionToVideo() {
     if (!host || !video || typeof video.getBoundingClientRect !== "function") return;
-    var rect = video.getBoundingClientRect();
-    var visible = rect.width > 0 && rect.height > 0;
+    var rect = window.BVRuntime && typeof window.BVRuntime.videoContentRect === "function"
+      ? window.BVRuntime.videoContentRect(video, window)
+      : video.getBoundingClientRect();
+    var visible = video.isConnected !== false && rect.width > 0 && rect.height > 0;
     host.style.display = visible ? "block" : "none";
     if (!visible) return;
     host.style.left = rect.left + "px";
     host.style.top = rect.top + "px";
     host.style.width = rect.width + "px";
     host.style.height = rect.height + "px";
+    host.style.clipPath = rect.clipped && rect.clipInsets
+      ? "inset(" + rect.clipInsets.top + "px " + rect.clipInsets.right + "px " + rect.clipInsets.bottom + "px " + rect.clipInsets.left + "px)"
+      : "none";
+    host.setAttribute("data-bso-video-geometry", "rendered-content-box");
     refreshPanelLayouts();
+  }
+  function resetVideoResizeObserver() {
+    if (videoResizeObserver) videoResizeObserver.disconnect();
+    videoResizeObserver = null;
+    var ResizeObserverImpl = window.ResizeObserver || (typeof ResizeObserver !== "undefined" ? ResizeObserver : null);
+    if (video && ResizeObserverImpl) {
+      videoResizeObserver = new ResizeObserverImpl(positionToVideo);
+      videoResizeObserver.observe(video);
+    }
   }
   function attachVideo() {
     var next = document.querySelector("video");
     if (next === video) { positionToVideo(); return; }
     if (video && next !== video) {
       if (mediaTimeListener) video.removeEventListener("timeupdate", mediaTimeListener);
+      if (videoGeometryListener) {
+        video.removeEventListener("loadedmetadata", videoGeometryListener);
+        video.removeEventListener("resize", videoGeometryListener);
+      }
       mediaTimeListener = null;
+      videoGeometryListener = null;
+      resetVideoResizeObserver();
       resetVideoLocalState("video-replacement");
     }
     video = next;
@@ -360,11 +428,15 @@
         if (Number.isFinite(nextTime) && nextTime >= 0) {
           mediaTime = nextTime;
           if (!state.stale) state.time = formatMediaTime(nextTime);
-          if (state.labeling) render();
+          if (state.labeling) refreshLabelingClock();
         }
       };
+      videoGeometryListener = positionToVideo;
       video.addEventListener("timeupdate", mediaTimeListener);
+      video.addEventListener("loadedmetadata", videoGeometryListener);
+      video.addEventListener("resize", videoGeometryListener);
     }
+    resetVideoResizeObserver();
     positionToVideo();
   }
 
@@ -449,7 +521,8 @@
     map: { minWidth: 176, minHeight: 190, maxWidth: 360, maxHeight: 520 },
     feed: { minWidth: 280, minHeight: 128, maxWidth: 560, maxHeight: 520 },
     manual: { minWidth: 320, minHeight: 300, maxWidth: 620, maxHeight: 690 },
-    controls: { minWidth: 180, minHeight: 84, maxWidth: 360, maxHeight: 220 }
+    controls: { minWidth: 180, minHeight: 84, maxWidth: 360, maxHeight: 220 },
+    evidence: { minWidth: 220, minHeight: 180, maxWidth: 420, maxHeight: 520 }
   };
   function panelConstraints(panelId) { return PANEL_LAYOUT_CONSTRAINTS[panelId] || {}; }
   function panelMetrics(container, panel) {
@@ -473,12 +546,9 @@
   function applyPanelLayout(container, panel, panelId, layout) {
     if (!panel || !panelLayoutApi || typeof panelLayoutApi.pixelPanelLayout !== "function") return null;
     var metrics = panelMetrics(container, panel);
-    if (!layout) {
-      panel.style.left = ""; panel.style.top = ""; panel.style.right = ""; panel.style.bottom = "";
-      panel.style.width = ""; panel.style.height = ""; panel.style.transform = "";
-      panel.setAttribute("data-bso-panel-bounds", "default");
-      return null;
-    }
+    // Resolve the CSS default once into the same bounded pixel contract used
+    // by saved layouts. This keeps a newly rendered panel inside the video on
+    // small players without persisting a viewport-specific default.
     var result = panelLayoutApi.pixelPanelLayout(layout, metrics.viewport, metrics.rendered, panelConstraints(panelId));
     panel.style.left = result.left + "px"; panel.style.top = result.top + "px";
     panel.style.right = "auto"; panel.style.bottom = "auto";
@@ -635,37 +705,149 @@
     drawing.setAttribute("class", "bv-calibration-court");
     return drawing;
   }
+  var SKELETON_EDGES = [
+    ["nose", "neck"], ["nose", "left_eye"], ["nose", "right_eye"], ["left_eye", "left_ear"], ["right_eye", "right_ear"],
+    ["neck", "left_shoulder"], ["neck", "right_shoulder"], ["left_shoulder", "right_shoulder"],
+    ["left_shoulder", "left_elbow"], ["left_elbow", "left_wrist"], ["right_shoulder", "right_elbow"], ["right_elbow", "right_wrist"],
+    ["neck", "left_hip"], ["neck", "right_hip"], ["left_shoulder", "left_hip"], ["right_shoulder", "right_hip"], ["left_hip", "right_hip"],
+    ["left_hip", "left_knee"], ["left_knee", "left_ankle"], ["right_hip", "right_knee"], ["right_knee", "right_ankle"]
+  ];
+  function normalizedPoint(point) {
+    return point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)) && Number(point.x) >= 0 && Number(point.x) <= 1 && Number(point.y) >= 0 && Number(point.y) <= 1;
+  }
   function runtimeEvidenceDrawing() {
     var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("class", "bv-runtime-evidence");
     svg.setAttribute("viewBox", "0 0 1 1");
     svg.setAttribute("preserveAspectRatio", "none");
-    svg.setAttribute("aria-label", "Live local player and shuttle evidence");
+    svg.setAttribute("aria-label", "Live local player, racket, and shuttle evidence");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("pointer-events", "none");
     svg.setAttribute("data-bso-production-evidence", String(!isFixtureRuntime()));
+    svg.style.pointerEvents = "none";
     function add(tag, attrs) {
       var node = document.createElementNS("http://www.w3.org/2000/svg", tag);
       Object.keys(attrs).forEach(function (key) { node.setAttribute(key, attrs[key]); });
+      node.setAttribute("pointer-events", "none");
       svg.appendChild(node);
+      return node;
     }
-    var tracking = runtimeTracking();
-    (tracking && Array.isArray(tracking.players) ? tracking.players : []).forEach(function (player, index) {
-      if (!player || !player.bbox || player.state === "unknown") return;
-      add("rect", {
-        x: player.bbox.x, y: player.bbox.y, width: player.bbox.width, height: player.bbox.height,
-        class: "bv-player-box " + (index % 2 ? "b" : "a"),
-        "stroke-dasharray": player.state === "partial" ? ".012 .008" : "none",
-        "data-track-id": player.trackId || "unknown-track",
-        "data-player-state": player.state
+    runtimePlayers().forEach(function (player, index) {
+      if (!player || player.state === "unknown") return;
+      var trackId = player.trackId || "unknown-track";
+      var side = index % 2 ? "b" : "a";
+      var pointsByName = Object.create(null);
+      (Array.isArray(player.keypoints) ? player.keypoints : []).forEach(function (point) {
+        if (normalizedPoint(point) && point.name) pointsByName[String(point.name).toLowerCase().replace(/-/g, "_")] = point;
       });
+      if (evidenceVisible("body", true)) {
+        SKELETON_EDGES.forEach(function (edge) {
+          var start = pointsByName[edge[0]];
+          var end = pointsByName[edge[1]];
+          if (!start || !end) return;
+          add("line", {
+            x1: start.x, y1: start.y, x2: end.x, y2: end.y,
+            class: "bv-pose-bone " + side,
+            "data-track-id": trackId,
+            "data-keypoints": edge.join("|")
+          });
+        });
+        Object.keys(pointsByName).forEach(function (name) {
+          var point = pointsByName[name];
+          add("circle", {
+            cx: point.x, cy: point.y, r: ".0065",
+            class: "bv-pose-keypoint " + side,
+            "data-track-id": trackId,
+            "data-keypoint": name,
+            "data-keypoint-confidence": point.confidence == null ? "unknown" : point.confidence
+          });
+        });
+      }
+      // Never synthesize a box from keypoints. A rect appears only when the
+      // selected runtime player explicitly supplies a normalized bbox.
+      if (evidenceVisible("players", true) && player.bbox && normalizedPoint(player.bbox) && Number(player.bbox.width) > 0 && Number(player.bbox.height) > 0) {
+        add("rect", {
+          x: player.bbox.x, y: player.bbox.y, width: player.bbox.width, height: player.bbox.height,
+          class: "bv-player-box " + side,
+          "stroke-dasharray": player.state === "partial" ? "6 5" : "none",
+          "data-track-id": trackId,
+          "data-player-state": player.state,
+          "data-box-source": "runtime"
+        });
+      }
     });
-    var shuttle = runtimeShuttle();
-    if (shuttle && Array.isArray(shuttle.trajectory) && shuttle.trajectory.length > 1) {
-      add("polyline", { points: shuttle.trajectory.map(function (point) { return point.x + "," + point.y; }).join(" "), class: "bv-shuttle-trajectory", "data-shuttle-state": shuttle.state || "unknown" });
+    var racket = runtimeRacketEvidence();
+    if (evidenceVisible("racket", false) && racket.supported) {
+      racket.items.forEach(function (item, index) {
+        if (!item || item.state === "unknown") return;
+        var segment = item.segment || item.line;
+        if (segment && normalizedPoint(segment.start) && normalizedPoint(segment.end)) {
+          add("line", { x1: segment.start.x, y1: segment.start.y, x2: segment.end.x, y2: segment.end.y, class: "bv-racket-signal", "data-racket-index": index, "data-racket-state": item.state || "available" });
+        }
+        if (Array.isArray(item.points) && item.points.length > 1 && item.points.every(normalizedPoint)) {
+          add("polyline", { points: item.points.map(function (point) { return point.x + "," + point.y; }).join(" "), class: "bv-racket-signal", "data-racket-index": index, "data-racket-state": item.state || "available" });
+        }
+        if (item.bbox && normalizedPoint(item.bbox) && Number(item.bbox.width) > 0 && Number(item.bbox.height) > 0) {
+          add("rect", { x: item.bbox.x, y: item.bbox.y, width: item.bbox.width, height: item.bbox.height, class: "bv-racket-box", "data-racket-index": index, "data-racket-state": item.state || "available", "data-box-source": "runtime" });
+        }
+        if (normalizedPoint(item)) add("circle", { cx: item.x, cy: item.y, r: ".007", class: "bv-racket-point", "data-racket-index": index, "data-racket-state": item.state || "available" });
+      });
     }
-    if (shuttle && shuttle.state === "tracked" && shuttle.candidate && shuttle.candidate.accepted === true) {
-      add("circle", { cx: shuttle.candidate.x, cy: shuttle.candidate.y, r: ".012", class: "bv-shuttle-point", "data-shuttle-state": "tracked" });
+    var shuttle = runtimeShuttle();
+    if (evidenceVisible("shuttle", true) && shuttle && Array.isArray(shuttle.trajectory)) {
+      var trajectory = shuttle.trajectory.filter(normalizedPoint);
+      if (trajectory.length > 1) add("polyline", { points: trajectory.map(function (point) { return point.x + "," + point.y; }).join(" "), class: "bv-shuttle-trajectory", "data-shuttle-state": shuttle.state || "unknown" });
+    }
+    if (evidenceVisible("shuttle", true) && shuttle && shuttle.state === "tracked" && shuttle.accepted === true && shuttle.candidate && shuttle.candidate.accepted === true && normalizedPoint(shuttle.candidate)) {
+      add("circle", { cx: shuttle.candidate.x, cy: shuttle.candidate.y, r: ".009", class: "bv-shuttle-point", "data-shuttle-state": "tracked", "data-candidate-source": "runtime" });
     }
     return svg;
+  }
+  function evidenceAvailability(name) {
+    var players = runtimePlayers();
+    if (name === "court") return calibration ? { state: "available", detail: "calibrated projection", disabled: false } : { state: "unknown", detail: "court not seeded", disabled: false };
+    if (name === "racket") {
+      var racket = runtimeRacketEvidence();
+      return racket.supported ? { state: racket.state, detail: racket.state === "tracked" ? "runtime evidence supplied" : "runtime signal unknown", disabled: false } : { state: "unavailable", detail: "no runtime racket output", disabled: true };
+    }
+    if (name === "body") {
+      var points = players.reduce(function (count, player) { return count + (Array.isArray(player && player.keypoints) ? player.keypoints.filter(normalizedPoint).length : 0); }, 0);
+      if (points) return { state: "available", detail: points + " keypoint" + (points === 1 ? "" : "s"), disabled: false };
+      if (runtimeView.phase === "fallback" || isFixtureRuntime()) return { state: "unavailable", detail: "pose output unavailable", disabled: true };
+      return { state: "unknown", detail: "no accepted keypoints yet", disabled: false };
+    }
+    if (name === "players") {
+      var boxes = players.filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length;
+      return boxes ? { state: "available", detail: boxes + " runtime box" + (boxes === 1 ? "" : "es"), disabled: false } : { state: "unknown", detail: "no runtime boxes supplied", disabled: false };
+    }
+    var shuttle = runtimeShuttle();
+    if (isFixtureRuntime()) return { state: "unavailable", detail: "fixture has no shuttle signal", disabled: true };
+    return shuttle && shuttle.state === "tracked" && shuttle.accepted === true
+      ? { state: "available", detail: "accepted path / candidate", disabled: false }
+      : { state: "unknown", detail: "candidate not accepted", disabled: false };
+  }
+  function setEvidenceVisibility(name, value) {
+    state = window.BVState.reduceExtensionState(state, { type: "SET_TRACKER", tracker: name, value: value });
+    persist();
+    render();
+  }
+  function evidenceVisibilityPanel() {
+    var groups = [
+      { name: "body", label: "Pose keypoints + skeleton", fallback: true },
+      { name: "players", label: "Player boxes", fallback: true },
+      { name: "racket", label: "Racket evidence", fallback: false },
+      { name: "shuttle", label: "Shuttle path + candidate", fallback: true },
+      { name: "court", label: "Court projection", fallback: true }
+    ];
+    var rows = groups.map(function (group) {
+      var availability = evidenceAvailability(group.name);
+      var visible = evidenceVisible(group.name, group.fallback);
+      var toggle = ui.toggle(group.label, availability.state + " · " + availability.detail, visible, function (next) { setEvidenceVisibility(group.name, next); }, { disabled: availability.disabled, id: "evidence-" + group.name });
+      toggle.setAttribute("data-bso-evidence-control", group.name);
+      toggle.setAttribute("data-bso-evidence-state", availability.state);
+      return toggle;
+    });
+    return ui.panel("Evidence visibility", { layoutId: "evidence", icon: "activity", className: "bv-evidence-controls", bodyStyle: { padding: "6px" } }, rows);
   }
   function undoSeedPoint() {
     seedPoints.pop();
@@ -820,7 +1002,7 @@
       "data-bso-court-state": courtDiagnosticState(),
       "data-bso-density": state.density
     });
-    if (calibration) overlay.appendChild(calibrationDrawing());
+    if (calibration && evidenceVisible("court", true)) overlay.appendChild(calibrationDrawing());
     // Evidence is drawn in normalized video coordinates and never intercepts
     // pointer input, so player/shuttle rendering cannot block playback or seed clicks.
     overlay.appendChild(runtimeEvidenceDrawing());
@@ -832,11 +1014,12 @@
       : state.time;
     var leftChildren = [ui.statusChip(statusState, statusLabel, statusDetail, openLabeling)];
     if (state.density !== "minimal") leftChildren.push(ui.el("div", { className: "bv-runtime-note", role: "status" }, [ui.icon("info", 11), runtimeCaption()]));
-    if (state.density === "full") leftChildren.push(ui.el("div", { className: "bv-runtime-signal", role: "status" }, ["players ", ui.badge(String((runtimeTracking() && runtimeTracking().players || []).filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length), "info"), " · shuttle ", ui.badge(evidenceState(runtimeShuttle()), evidenceState(runtimeShuttle()) === "tracked" ? "in" : "unknown")]));
+    if (state.density === "full") leftChildren.push(ui.el("div", { className: "bv-runtime-signal", role: "status" }, ["players ", ui.badge(String(runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length), "info"), " · shuttle ", ui.badge(evidenceState(runtimeShuttle()), evidenceState(runtimeShuttle()) === "tracked" ? "in" : "unknown")]));
     var left = ui.el("div", { className: "bv-overlay-stack left" }, leftChildren);
     // Panel switches are independent controls: density sets the default
     // presentation, while an explicit toggle always wins and reopens a panel.
     overlay.appendChild(left);
+    overlay.appendChild(evidenceVisibilityPanel());
     if (state.panels.stats) overlay.appendChild(statsPanel());
     if (state.panels.map) overlay.appendChild(mapPanel());
     if (state.panels.feed) overlay.appendChild(feedPanel());
@@ -848,7 +1031,9 @@
 
   function openLabeling(record) {
     state = window.BVState.reduceExtensionState(state, { type: "OPEN_LABELING" });
-    if (record && record.eventId != null) editingEventId = String(record.eventId);
+    // Opening a fresh draft must never inherit the id of a previously edited
+    // row. Existing-label mode is entered only through an explicit record.
+    editingEventId = record && record.eventId != null ? String(record.eventId) : null;
     draft = record ? newDraft(record) : newDraft();
     persist();
     render();
@@ -901,7 +1086,12 @@
     if (!saved) return;
     send({ type: "ACCEPT_SUGGESTION", eventId: accepted.eventId });
     suggestion = null;
-    closeLabeling();
+    if (state.labeling) {
+      editingEventId = null;
+      draft = newDraft();
+      persist();
+    }
+    render();
   }
   function undoLastEdit() {
     var edit = state.lastEdit;
@@ -909,6 +1099,10 @@
     state = window.BVState.reduceExtensionState(state, { type: "UNDO_LABEL", videoKey: activeVideoKey, edit: edit, labels: window.BVReview.undoLabelMutation(state.manualLabels, edit) });
     strokes = reviewStrokes();
     suggestion = edit.previousSuggestion ? window.BVReview.clone(edit.previousSuggestion) : null;
+    if (state.labeling) {
+      editingEventId = null;
+      draft = newDraft();
+    }
     persist();
     send({ type: "UNDO_LABEL", eventId: edit.eventId });
     render();
@@ -950,6 +1144,53 @@
     });
     var link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([window.BVAnalysis.toShotsCsv(rows)], { type: "text/csv" })); link.download = "badminton-vision-shots.csv"; link.click(); setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
   }
+  function refreshLabelingClock() {
+    if (!state.labeling || !root || typeof root.querySelector !== "function") return false;
+    var panel = root.querySelector(".bv-label-panel");
+    if (!panel) return false;
+    var time = panel.querySelector(".bv-panel-time");
+    if (time) time.textContent = state.time || "";
+    panel.setAttribute("data-bso-media-time", state.time || "");
+    return true;
+  }
+  function syncManualDraft() {
+    if (!state.labeling || !root || typeof root.querySelector !== "function") return false;
+    var panel = root.querySelector(".bv-label-panel");
+    if (!panel) return false;
+    var activeSuggestion = state.enabled ? suggestion : null;
+    var saveLabel = draft.shot || (activeSuggestion && activeSuggestion.shot);
+    var windowLabel = panel.querySelector("[data-bso-label-window]");
+    if (windowLabel) windowLabel.textContent = (draft.start || "current timestamp") + " → " + (draft.end || "—");
+    panel.querySelectorAll("[data-bso-shot]").forEach(function (button) {
+      var shot = button.getAttribute("data-bso-shot");
+      var selected = draft.shot === shot;
+      button.className = "bv-shot" + (selected ? " selected" : activeSuggestion && activeSuggestion.shot === shot ? " suggested" : "");
+      button.setAttribute("aria-pressed", String(selected));
+      var shortcut = button.querySelector(".bv-kbd");
+      if (shortcut) shortcut.className = "bv-kbd" + (selected ? " accent" : "");
+    });
+    panel.querySelectorAll("[data-bso-player-id]").forEach(function (button) {
+      button.setAttribute("aria-checked", String(button.getAttribute("data-bso-player-id") === (draft.playerId || "")));
+    });
+    panel.querySelectorAll("[data-bso-axis]").forEach(function (axis) {
+      var value = draft.axes[axis.getAttribute("data-bso-axis")];
+      axis.querySelectorAll("[data-bso-axis-option]").forEach(function (button) {
+        var selected = button.getAttribute("data-bso-axis-option") === value;
+        button.className = "bv-axis-option" + (selected ? " selected" : "");
+        button.setAttribute("aria-pressed", String(selected));
+      });
+    });
+    var save = panel.querySelector("[data-bso-label-save]");
+    if (save) {
+      var actionLabel = editingEventId ? "Save correction" : draft.shot ? "Save label" : activeSuggestion ? "Accept suggestion" : "Save label";
+      save.disabled = !saveLabel;
+      if (save.textContent !== actionLabel) save.replaceChildren(document.createTextNode(actionLabel));
+    }
+    panel.setAttribute("data-bso-label-mode", editingEventId ? "edit" : "create");
+    panel.setAttribute("data-bso-draft-state", saveLabel ? "dirty" : "ready");
+    refreshLabelingClock();
+    return true;
+  }
   function manualPanel() {
     // Offline mode has no suggestion source. Fixture suggestions only enter
     // the correction path when the live overlay is explicitly enabled.
@@ -957,10 +1198,26 @@
     var saveLabel = draft.shot || (activeSuggestion && activeSuggestion.shot);
     var saveActionLabel = editingEventId ? "Save correction" : draft.shot ? "Save label" : activeSuggestion ? "Accept suggestion" : "Save label";
     var canDelete = Boolean(editingEventId && labelForEvent(editingEventId));
-    var panel = ui.panel("Manual labeling", { layoutId: "manual", icon: "pencil", mediaTime: state.time, className: "bv-label-panel bv-overlay-label", bodyStyle: { flex: "1" }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), state.lastEdit ? ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit }) : null, canDelete ? ui.button("Delete label", { variant: "danger", size: "sm", onClick: deleteExistingLabel }) : null, ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Cancel", { variant: "ghost", size: "sm", onClick: closeLabeling }), ui.button(saveActionLabel, { variant: "primary", size: "sm", disabled: !saveLabel, onClick: saveDraft })])]) }, []);
+    var saveButton = ui.button(saveActionLabel, { variant: "primary", size: "sm", disabled: !saveLabel, onClick: saveDraft });
+    saveButton.setAttribute("data-bso-label-save", "true");
+    var panel = ui.panel("Manual labeling", { layoutId: "manual", icon: "pencil", mediaTime: state.time, className: "bv-label-panel bv-overlay-label", bodyStyle: { flex: "1" }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), state.lastEdit ? ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit }) : null, canDelete ? ui.button("Delete label", { variant: "danger", size: "sm", onClick: deleteExistingLabel }) : null, ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Close", { variant: "ghost", size: "sm", onClick: closeLabeling }), saveButton])]) }, []);
     panel.tabIndex = 0;
+    panel.setAttribute("data-bso-label-mode", editingEventId ? "edit" : "create");
+    panel.setAttribute("data-bso-draft-state", saveLabel ? "dirty" : "ready");
+    panel.setAttribute("data-bso-media-time", state.time || "");
     var body = panel.querySelector(".bv-panel-body");
     body.appendChild(ui.callout("guide", "Manual / offline mode", "Playback is read-only. No court seed, inference model, or production CV evidence is required."));
+    body.appendChild(ui.el("div", { className: "bv-segment-window" }, [ui.el("span", { className: "bv-mono", "data-bso-label-window": "true" }, [(draft.start || "current timestamp") + " → " + (draft.end || "—")]), ui.el("span", { className: "bv-segment-controls" }, [ui.button("Start", { variant: "ghost", size: "sm", disabled: currentMediaTimestamp() == null, onClick: function () { if (currentMediaTimestamp() != null) draft.start = formatMediaTime(currentMediaTimestamp()); syncManualDraft(); } }), ui.button("End", { variant: "ghost", size: "sm", disabled: currentMediaTimestamp() == null, onClick: function () { if (currentMediaTimestamp() != null) draft.end = formatMediaTime(currentMediaTimestamp()); syncManualDraft(); } })]) ]));
+    if (activeSuggestion) body.appendChild(ui.el("div", { className: "bv-manual-suggestion" }, [ui.badge("auto suggestion", "warn"), ui.el("span", { className: "bv-feed-shot" + (draft.shot ? " replaced" : "") }, [activeSuggestion.shot]), ui.confidence(activeSuggestion.confidence, { showWord: true }), ui.el("span", { style: { marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "var(--sp-2)", font: "var(--type-ui-sm)", color: "var(--text-faint)" } }, ["accept", ui.kbd("↵", true)])]));
+    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Shot family"]));
+    body.appendChild(ui.shotPicker(draft.shot, activeSuggestion && activeSuggestion.shot, function (shot) { draft.shot = shot; syncManualDraft(); }));
+    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Player identity (optional)"]));
+    body.appendChild(ui.segmented([{ value: "", label: "Unknown" }, { value: "A", label: "Player A" }, { value: "B", label: "Player B" }], draft.playerId || "", function (player) { draft.playerId = player || null; syncManualDraft(); }, true, "data-bso-player-id"));
+    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Dimensions (optional)"]));
+    var axisList = ui.el("div", { className: "bv-axis-list" });
+    data.axes.forEach(function (axis) { axisList.appendChild(ui.dimensionAxis(axis.label, axis.options, draft.axes[axis.label], function (value) { draft.axes[axis.label] = value; syncManualDraft(); })); });
+    body.appendChild(axisList);
+    body.appendChild(ui.el("p", { className: "bv-helper" }, ["Manual labels are first-class records. Saving updates the same event id and appends provenance — it never creates a duplicate or invents CV evidence."]));
     if (state.manualLabels && state.manualLabels.length) {
       var savedLabels = ui.el("div", { className: "bv-manual-saved", "aria-label": "Saved labels for this video" });
       savedLabels.appendChild(ui.el("span", { className: "bv-field-label" }, ["Saved labels for this video"]));
@@ -970,18 +1227,9 @@
       });
       body.appendChild(savedLabels);
     }
-    body.appendChild(ui.el("div", { className: "bv-segment-window" }, [ui.el("span", { className: "bv-mono" }, [(draft.start || "current timestamp") + " → " + (draft.end || "—")]), ui.el("span", { className: "bv-segment-controls" }, [ui.button("Start", { variant: "ghost", size: "sm", disabled: currentMediaTimestamp() == null, onClick: function () { if (currentMediaTimestamp() != null) draft.start = formatMediaTime(currentMediaTimestamp()); render(); } }), ui.button("End", { variant: "ghost", size: "sm", disabled: currentMediaTimestamp() == null, onClick: function () { if (currentMediaTimestamp() != null) draft.end = formatMediaTime(currentMediaTimestamp()); render(); } })]) ]));
-    if (activeSuggestion) body.appendChild(ui.el("div", { className: "bv-manual-suggestion" }, [ui.badge("auto suggestion", "warn"), ui.el("span", { className: "bv-feed-shot" + (draft.shot ? " replaced" : "") }, [activeSuggestion.shot]), ui.confidence(activeSuggestion.confidence, { showWord: true }), ui.el("span", { style: { marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "var(--sp-2)", font: "var(--type-ui-sm)", color: "var(--text-faint)" } }, ["accept", ui.kbd("↵", true)])]));
-    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Shot family"]));
-    body.appendChild(ui.shotPicker(draft.shot, activeSuggestion && activeSuggestion.shot, function (shot) { draft.shot = shot; render(); }));
-    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Player identity (optional)"]));
-    body.appendChild(ui.segmented([{ value: "", label: "Unknown" }, { value: "A", label: "Player A" }, { value: "B", label: "Player B" }], draft.playerId || "", function (player) { draft.playerId = player || null; render(); }, true));
-    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Dimensions (optional)"]));
-    var axisList = ui.el("div", { className: "bv-axis-list" });
-    data.axes.forEach(function (axis) { axisList.appendChild(ui.dimensionAxis(axis.label, axis.options, draft.axes[axis.label], function (value) { draft.axes[axis.label] = value; render(); })); });
-    body.appendChild(axisList);
-    body.appendChild(ui.el("p", { className: "bv-helper" }, ["Manual labels are first-class records. Saving updates the same event id and appends provenance — it never creates a duplicate or invents CV evidence."]));
-    setTimeout(function () { panel.focus(); }, 0);
+    setTimeout(function () {
+      if (panel.isConnected && state.labeling && root && root.querySelector(".bv-label-panel") === panel) panel.focus();
+    }, 0);
     return panel;
   }
   function saveDraft() {
@@ -1031,7 +1279,12 @@
     if (!saved) return;
     send({ type: "LABEL_EVENT", eventId: eventId, shot: shot, provenance: "manual", startSec: startSec, endSec: endSec });
     if (activeSuggestion) suggestion = null;
-    closeLabeling();
+    // A save completes this draft, not the labeling session. Keep the panel
+    // open with a fresh event id and freshly bound controls for the next shot.
+    editingEventId = null;
+    draft = newDraft();
+    persist();
+    render();
   }
   function deleteExistingLabel() {
     var existing = editingEventId && labelForEvent(editingEventId);
@@ -1049,7 +1302,9 @@
     persist();
     send({ type: "DELETE_LABEL", eventId: existing.eventId, provenance: "manual" });
     editingEventId = null;
-    closeLabeling();
+    draft = newDraft();
+    persist();
+    render();
   }
   function closeLabeling() {
     state = window.BVState.reduceExtensionState(state, { type: "CLOSE_LABELING" });
@@ -1083,15 +1338,15 @@
     if (key >= "1" && key <= "9") {
       draft.shot = ["Serve", "Clear", "Drop", "Smash", "Half Smash", "Lift", "Net Shot", "Net Kill", "Push"][Number(key) - 1];
       event.preventDefault();
-      render();
+      syncManualDraft();
     } else if (key === "s") {
       draft.start = formatMediaTime(mediaTime);
       event.preventDefault();
-      render();
+      syncManualDraft();
     } else if (key === "e") {
       draft.end = formatMediaTime(mediaTime);
       event.preventDefault();
-      render();
+      syncManualDraft();
     } else if (event.key === "Enter" && (draft.shot || suggestion)) {
       event.preventDefault();
       saveDraft();
@@ -1114,6 +1369,7 @@
   }
   function applyStoredState(nextState) {
     var key = currentVideoKey();
+    var wasLabeling = state.labeling;
     state = window.BVState.stateForVideo(nextState, key);
     if (key) {
       state.videoKey = key;
@@ -1128,6 +1384,14 @@
     }
     activeVideoKey = key;
     if (video && Number.isFinite(video.currentTime) && !state.stale) state.time = formatMediaTime(video.currentTime);
+    // A restored open panel starts a new draft at the actual media clock. Do
+    // not carry the module's pre-video 00:00 draft into a reloaded page, while
+    // preserving an in-progress draft when an external state update arrives
+    // during an already-open labeling session.
+    if (state.labeling && !wasLabeling) {
+      editingEventId = null;
+      draft = newDraft();
+    }
     restoreCalibrationState();
     if (state.enabled) startRuntime();
     persist();
@@ -1223,6 +1487,10 @@
     // a runtime fault cannot leave an indistinguishable empty host behind.
     updateDiagnosticsMarkers();
     window.addEventListener("resize", positionToVideo, { passive: true }); window.addEventListener("scroll", positionToVideo, { passive: true, capture: true });
+    window.addEventListener("orientationchange", positionToVideo, { passive: true });
+    window.addEventListener("transitionend", positionToVideo, { passive: true, capture: true });
+    document.addEventListener("fullscreenchange", positionToVideo);
+    document.addEventListener("webkitfullscreenchange", positionToVideo);
     window.addEventListener("keydown", handleKeyboardShortcuts);
     // Pointer capture covers normal browsers; the window listeners keep a
     // gesture alive in embedded/recovery DOMs that do not implement capture.
@@ -1234,8 +1502,15 @@
       window.addEventListener(name, listener);
       navigationListeners.push([name, listener]);
     });
-    if (typeof ResizeObserver !== "undefined") new ResizeObserver(positionToVideo).observe(document.documentElement);
-    domObserver = new MutationObserver(attachVideo); domObserver.observe(document.documentElement, { childList: true, subtree: true }); attachVideo();
+    var LayoutResizeObserver = window.ResizeObserver || (typeof ResizeObserver !== "undefined" ? ResizeObserver : null);
+    if (LayoutResizeObserver) {
+      layoutResizeObserver = new LayoutResizeObserver(positionToVideo);
+      layoutResizeObserver.observe(document.documentElement);
+    }
+    // YouTube toggles theater/fullscreen mostly through ancestor class/style
+    // mutations. Pair those signals with ResizeObserver so the final measured
+    // rendered video content box wins after layout settles.
+    domObserver = new MutationObserver(attachVideo); domObserver.observe(document.documentElement, { childList: true, attributes: true, attributeFilter: ["class", "style"], subtree: true }); attachVideo();
     // Manual/offline labeling intentionally does not start the runtime. It
     // reads the media clock only; live inference begins on ENABLE/OPEN_OVERLAY.
     if (hasChrome() && chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(handleMessage);

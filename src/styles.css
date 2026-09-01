@@ -338,6 +338,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-overlay-feed { width: var(--overlay-panel-width); }
 .bv-overlay-label { position: absolute; right: var(--overlay-gutter); top: var(--overlay-gutter); bottom: var(--overlay-gutter); width: min(380px, calc(100% - 32px)); pointer-events: auto; }
 .bv-overlay-actions { position: absolute; right: var(--overlay-gutter); bottom: 56px; display: flex; gap: var(--sp-3); pointer-events: auto; }
+.bv-overlay-root > [data-bso-panel="evidence"] { left: var(--overlay-gutter); top: 58px; width: min(268px, calc(100% - 32px)); }
 .bv-overlay-root > [data-bso-panel="stats"] { left: var(--overlay-gutter); top: 58px; width: var(--overlay-panel-width); }
 .bv-overlay-root > [data-bso-panel="map"] { left: var(--overlay-gutter); bottom: 16px; width: 176px; }
 .bv-overlay-root > [data-bso-panel="feed"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: var(--overlay-panel-width); }
@@ -345,11 +346,24 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-overlay-root > [data-bso-panel="controls"] { right: var(--overlay-gutter); bottom: 56px; width: auto; min-width: 180px; }
 .bv-controls-panel .bv-panel-body { display: flex; flex-wrap: wrap; align-items: center; }
 .bv-runtime-evidence { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.bv-runtime-evidence * { pointer-events: none; }
 .bv-overlay-root > .bv-runtime-evidence { pointer-events: none; }
-.bv-player-box { fill: rgba(200,240,74,.08); stroke: var(--player-a); stroke-width: .003; vector-effect: non-scaling-stroke; }
+.bv-player-box { fill: rgba(200,240,74,.07); stroke: var(--player-a); stroke-width: 2px; vector-effect: non-scaling-stroke; }
 .bv-player-box.b { stroke: var(--player-b); }
-.bv-shuttle-trajectory { fill: none; stroke: var(--lime-500); stroke-width: .006; stroke-linecap: round; stroke-dasharray: .012 .008; vector-effect: non-scaling-stroke; opacity: .9; }
-.bv-shuttle-point { fill: var(--lime-500); stroke: var(--ink-900); stroke-width: .004; vector-effect: non-scaling-stroke; }
+.bv-pose-bone { stroke: var(--player-a); stroke-width: 3px; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: .92; }
+.bv-pose-bone.b { stroke: var(--player-b); }
+.bv-pose-keypoint { fill: var(--player-a); stroke: var(--ink-900); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.bv-pose-keypoint.b { fill: var(--player-b); }
+.bv-racket-signal { fill: none; stroke: var(--signal-warn); stroke-width: 3px; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.bv-racket-box { fill: rgba(255,184,77,.06); stroke: var(--signal-warn); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.bv-racket-point { fill: var(--signal-warn); stroke: var(--ink-900); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.bv-shuttle-trajectory { fill: none; stroke: var(--lime-500); stroke-width: 3px; stroke-linecap: round; stroke-dasharray: 8 6; vector-effect: non-scaling-stroke; opacity: .95; }
+.bv-shuttle-point { fill: var(--lime-500); stroke: var(--ink-900); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.bv-evidence-controls { width: min(268px, calc(100vw - 32px)); }
+.bv-evidence-controls .bv-panel-body { display: flex; flex-direction: column; gap: var(--sp-3); }
+.bv-evidence-controls .bv-toggle { gap: var(--sp-3); }
+.bv-evidence-controls .bv-toggle-copy strong { font-size: var(--fs-11); }
+.bv-evidence-controls .bv-toggle-copy span { font-size: var(--fs-10); }
 .bv-runtime-signal { display: inline-flex; align-items: center; gap: var(--sp-2); padding: 3px 5px; border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); background: var(--ink-900); color: var(--text-body); font: var(--type-mono); font-size: var(--fs-10); }
 .bv-seed-layer { position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: auto; background: rgba(6,9,11,.42); cursor: crosshair; }
 .bv-seed-drawing, .bv-calibration-court { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }

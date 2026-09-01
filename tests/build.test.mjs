@@ -10,6 +10,12 @@ const execFileAsync = promisify(execFile);
 const root = dirname(fileURLToPath(import.meta.url));
 const projectRoot = dirname(root);
 const dist = join(projectRoot, "dist");
+const manifestIcons = {
+  "16": "design-system/assets/icon-16.png",
+  "32": "design-system/assets/icon-32.png",
+  "48": "design-system/assets/icon-48.png",
+  "128": "design-system/assets/icon-128.png"
+};
 
 const expectedFiles = [
   "content.bundle.js",
@@ -62,6 +68,10 @@ const expectedFiles = [
   "design-system/assets/icon-32.svg",
   "design-system/assets/icon.svg",
   "design-system/assets/logo-mark.svg",
+  "design-system/assets/icon-16.png",
+  "design-system/assets/icon-32.png",
+  "design-system/assets/icon-48.png",
+  "design-system/assets/icon-128.png",
   "design-system/tokens/base.css",
   "design-system/tokens/colors.css",
   "design-system/tokens/fonts.css",
@@ -82,6 +92,49 @@ async function listFiles(directory) {
   return files;
 }
 
+function assertPngSize(buffer, expectedSize, file) {
+  assert.deepEqual(buffer.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), `${file} has a PNG signature`);
+  assert.equal(buffer.readUInt32BE(8), 13, `${file} starts with a valid IHDR chunk`);
+  assert.equal(buffer.toString("ascii", 12, 16), "IHDR", `${file} starts with a valid IHDR chunk`);
+  assert.equal(buffer.readUInt32BE(16), expectedSize, `${file} has the declared width`);
+  assert.equal(buffer.readUInt32BE(20), expectedSize, `${file} has the declared height`);
+  assert.equal(buffer.toString("ascii", buffer.length - 8, buffer.length - 4), "IEND", `${file} has a PNG terminator`);
+}
+
+function assertValidSvg(source, file) {
+  const xml = source.replace(/<!--[\s\S]*?-->/g, "");
+  assert.doesNotMatch(xml, /<!DOCTYPE|<!ENTITY|<\?(?!xml\b)|<(?:script|foreignObject)\b/i, `${file} has safe SVG content`);
+  assert.doesNotMatch(xml, /\b(?:href|xlink:href)\s*=|\burl\s*\(/i, `${file} is self-contained`);
+
+  const stack = [];
+  let cursor = 0;
+  let roots = 0;
+  const tags = /<(\/?)\s*([A-Za-z_][\w:.-]*)([^<>]*?)(\/?)>/g;
+  for (const match of xml.matchAll(tags)) {
+    assert.equal(xml.slice(cursor, match.index).trim(), "", `${file} has parseable XML markup`);
+    cursor = match.index + match[0].length;
+    const [, closing, name, attributes, selfClosing] = match;
+    if (closing) {
+      assert.equal(attributes.trim(), "", `${file} closing tags have no attributes`);
+      assert.equal(selfClosing, "", `${file} closing tags are not self-closing`);
+      assert.equal(stack.pop(), name, `${file} has matched ${name} tags`);
+    } else {
+      if (!stack.length) {
+        roots += 1;
+        assert.equal(name, "svg", `${file} has an SVG root`);
+        assert.match(attributes, /\sxmlns=["']http:\/\/www\.w3\.org\/2000\/svg["']/, `${file} declares the SVG namespace`);
+        assert.match(attributes, /\sviewBox=["'](?:[-+]?\d*\.?\d+[\s,]+){3}[-+]?\d*\.?\d+["']/, `${file} has a numeric viewBox`);
+        assert.match(attributes, /\swidth=["']\d+(?:\.\d+)?["']/, `${file} has a numeric width`);
+        assert.match(attributes, /\sheight=["']\d+(?:\.\d+)?["']/, `${file} has a numeric height`);
+      }
+      if (!selfClosing) stack.push(name);
+    }
+  }
+  assert.equal(xml.slice(cursor).trim(), "", `${file} has no unparsed markup`);
+  assert.deepEqual(stack, [], `${file} has no unclosed tags`);
+  assert.equal(roots, 1, `${file} has exactly one root`);
+}
+
 test("production build contains only local runtime design-system assets", async () => {
   await execFileAsync(process.execPath, ["scripts/build.mjs"], { cwd: projectRoot });
 
@@ -92,10 +145,17 @@ test("production build contains only local runtime design-system assets", async 
   assert.equal(manifest.permissions.includes("offscreen"), true);
   assert.equal(manifest.permissions.includes("scripting"), true);
   assert.equal(Object.hasOwn(manifest, "message_serialization"), false);
-  assert.equal(manifest.action.default_icon["16"], "design-system/assets/icon-16.svg");
-  assert.equal(manifest.action.default_icon["32"], "design-system/assets/icon-32.svg");
-  assert.equal(manifest.icons["16"], "design-system/assets/icon-16.svg");
-  assert.equal(manifest.icons["32"], "design-system/assets/icon-32.svg");
+  assert.deepEqual(manifest.action.default_icon, manifestIcons);
+  assert.deepEqual(manifest.icons, manifestIcons);
+  assert.deepEqual([...new Set([...Object.values(manifest.action.default_icon), ...Object.values(manifest.icons)])].sort(), Object.values(manifestIcons).sort());
+  for (const [size, file] of Object.entries(manifestIcons)) {
+    assert.equal((await listFiles(dist)).includes(file), true, `${file} is packaged`);
+    assert.match(file, /^design-system\/assets\/[a-z0-9-]+\.png$/, `${file} is a local Chrome-compatible image path`);
+    assertPngSize(await readFile(join(dist, file)), Number(size), file);
+  }
+  for (const file of ["icon-16.svg", "icon-32.svg", "icon.svg", "logo-mark.svg"]) {
+    assertValidSvg(await readFile(join(dist, "design-system/assets", file), "utf8"), `design-system/assets/${file}`);
+  }
   assert.equal(manifest.web_accessible_resources.some((entry) => entry.resources.includes("design-system/tokens/*")), true);
   assert.deepEqual(manifest.content_scripts?.flatMap((entry) => entry.js || []), ["content.bundle.js"]);
   assert.match(await readFile(join(dist, "content.bundle.js"), "utf8"), /__BV_CONTENT_BUNDLE_LOADED__/);

@@ -18,7 +18,8 @@ const panels = {
   map: { minWidth: 176, minHeight: 190, maxWidth: 360, maxHeight: 520 },
   feed: { minWidth: 280, minHeight: 128, maxWidth: 560, maxHeight: 520 },
   manual: { minWidth: 320, minHeight: 300, maxWidth: 620, maxHeight: 690 },
-  controls: { minWidth: 180, minHeight: 84, maxWidth: 360, maxHeight: 220 }
+  controls: { minWidth: 180, minHeight: 84, maxWidth: 360, maxHeight: 220 },
+  evidence: { minWidth: 220, minHeight: 180, maxWidth: 420, maxHeight: 520 }
 };
 
  test("all overlay panel layouts clamp movement and resize to the video viewport", async () => {

@@ -34,8 +34,9 @@ mask after extension reload.
 The current path keeps one guarded content host, waits for hydration, and makes
 only each panel's non-interactive header a move surface. Buttons, court-layer
 clicks, video playback, and the normalized evidence SVG remain outside that
-surface. Court setup, stats, court map, stroke feed, manual labeling, and live
-controls use video-local normalized layout state. Resize handles clamp to the
+surface. Court setup, stats, court map, stroke feed, manual labeling, live
+controls, and the live Evidence visibility panel use video-local normalized
+layout state. Resize handles clamp to the
 video viewport and expose arrow/Home keyboard behavior; a rerender reapplies
 the saved layout without changing playback. The setup header retains an
 accessible label and native tooltip, but no visible drag copy or grip button.
@@ -52,13 +53,33 @@ installed. If licensed binaries are supplied later, they must be added as
 extension resources and registered from document-level CSS; do not restore a
 remote import inside the shadow tree.
 
+## Toolbar icon packaging
+
+[Chrome manifest icons use raster image formats, not SVG](https://developer.chrome.com/docs/extensions/develop/ui/configure-icons).
+The original
+`action.default_icon` and top-level `icons` paths were present in a clean
+`dist/`, and all four supplied logo SVGs were well-formed and self-contained,
+so the generic puzzle icon was not caused by a missing path, invalid logo, or
+stale build output. It was Chrome rejecting an otherwise valid SVG in an
+unsupported manifest surface.
+
+The manifest now references checked-in 16, 32, 48, and 128px PNG derivatives
+of the design-system SVG sources. `scripts/build.mjs` copies that explicit set,
+verifies both manifest surfaces, dimensions, local-only paths, and source SVG
+structure, while `tests/build.test.mjs` checks the clean package inventory.
+Chrome may continue showing an icon cached from a previously loaded unpacked
+extension until that extension is reloaded (or removed and loaded again); that
+post-fix profile state is distinct from the package failure and should not be
+worked around by changing asset names or replacing the supplied logo.
+
 ## Manual browser check still required
 
 Using only the captain-approved dedicated Chrome instance, load/reload this
 worktree's fresh `dist/`, open the existing YouTube watch tab, and use the
 native toolbar action. Confirm that Minimal, Balanced, and Full density choices,
-all panel toggles, **Set up court**, and **Label it myself** work. Confirm the
-overlay panels are visibly treated and separated, each panel header moves only
+all panel toggles, the Evidence visibility panel, **Set up court**, and
+**Label it myself** work. Confirm the overlay panels are visibly treated and
+separated, each panel header moves only
 its panel, resize handles stay within the video, setup corner clicks remain setup
 clicks, icon controls retain their hit area, and a manual label can be
 saved/corrected/exported while
