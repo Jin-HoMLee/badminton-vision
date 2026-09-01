@@ -195,7 +195,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-panel-resize-handle { position: absolute; right: 2px; bottom: 2px; z-index: 4; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-faint); cursor: nwse-resize; touch-action: none; opacity: .7; }
 .bv-panel-resize-handle:hover, .bv-panel-resize-handle:focus-visible { color: var(--lime-500); background: var(--lime-tint); opacity: 1; }
 .bv-panel-resize-handle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.bv-panel-layout .bv-panel-body { min-width: 0; min-height: 0; }
+.bv-panel-layout .bv-panel-body { min-width: 0; min-height: 0; overflow: auto; }
 .bv-panel-header h2 { margin: 0; font: var(--type-label); letter-spacing: var(--ls-caps); text-transform: uppercase; color: var(--text-muted); }
 .bv-panel-time { font: var(--type-mono); font-size: var(--fs-10); color: var(--text-faint); }
 .bv-panel-time.stale { color: var(--signal-warn); }

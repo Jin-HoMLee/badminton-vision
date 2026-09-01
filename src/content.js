@@ -631,7 +631,10 @@
     }, 0);
   }
   function keyboardPanelInteraction(event, container, panel, panelId, surface, kind) {
-    if (eventHasInteractiveAncestor(event.target, surface)) return;
+    // The resize surface is an intentional button, so its own key events must
+    // remain available even though descendant controls are excluded from drag
+    // handling on ordinary headers.
+    if (event.target !== surface && eventHasInteractiveAncestor(event.target, surface)) return;
     var key = event.key;
     if (key !== "Home" && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].indexOf(key) < 0) return;
     if (event.preventDefault) event.preventDefault();

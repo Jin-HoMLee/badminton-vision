@@ -513,6 +513,10 @@ test("panel movement and controls remain separate, with layout retained across r
   pointer(evidenceHeader, "pointermove", 150, 100, 10);
   pointer(evidenceHeader, "pointerup", 150, 100, 10);
   assert.ok(live.storageWrites.at(-1).bvState.panelLayoutsByVideo["youtube:real-match"].evidence, "evidence visibility layout is persisted independently");
+  const evidenceResize = evidence.querySelector("[data-bso-panel-resize-handle]");
+  const beforeEvidenceWidth = live.storageWrites.at(-1).bvState.panelLayouts.evidence.width;
+  evidenceResize.dispatchEvent({ type: "keydown", target: evidenceResize, key: "ArrowRight", preventDefault() {}, stopPropagation() {} });
+  assert.ok(live.storageWrites.at(-1).bvState.panelLayouts.evidence.width >= beforeEvidenceWidth, "resize keyboard affordance changes only the panel size");
 });
 
 test("court setup keeps corners clickable without a visible drag instruction", async () => {
