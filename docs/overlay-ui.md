@@ -29,6 +29,25 @@ installed. If licensed binaries are supplied later, they must be added as
 extension resources and registered from document-level CSS; do not restore a
 remote import inside the shadow tree.
 
+## Toolbar icon packaging
+
+[Chrome manifest icons use raster image formats, not SVG](https://developer.chrome.com/docs/extensions/develop/ui/configure-icons).
+The original
+`action.default_icon` and top-level `icons` paths were present in a clean
+`dist/`, and all four supplied logo SVGs were well-formed and self-contained,
+so the generic puzzle icon was not caused by a missing path, invalid logo, or
+stale build output. It was Chrome rejecting an otherwise valid SVG in an
+unsupported manifest surface.
+
+The manifest now references checked-in 16, 32, 48, and 128px PNG derivatives
+of the design-system SVG sources. `scripts/build.mjs` copies that explicit set,
+verifies both manifest surfaces, dimensions, local-only paths, and source SVG
+structure, while `tests/build.test.mjs` checks the clean package inventory.
+Chrome may continue showing an icon cached from a previously loaded unpacked
+extension until that extension is reloaded (or removed and loaded again); that
+post-fix profile state is distinct from the package failure and should not be
+worked around by changing asset names or replacing the supplied logo.
+
 ## Manual browser check still required
 
 Using only the captain-approved dedicated Chrome instance, load/reload this

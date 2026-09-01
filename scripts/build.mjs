@@ -62,6 +62,12 @@ const runtimeFiles = [
   ["offscreen/offscreen.html", "offscreen/offscreen.html"],
   ["offscreen/offscreen.js", "offscreen/offscreen.js"]
 ];
+const manifestIcons = {
+  "16": "design-system/assets/icon-16.png",
+  "32": "design-system/assets/icon-32.png",
+  "48": "design-system/assets/icon-48.png",
+  "128": "design-system/assets/icon-128.png"
+};
 const designSystemFiles = [
   "tokens/fonts.css",
   "tokens/base.css",
@@ -73,7 +79,8 @@ const designSystemFiles = [
   "assets/icon-16.svg",
   "assets/icon-32.svg",
   "assets/icon.svg",
-  "assets/logo-mark.svg"
+  "assets/logo-mark.svg",
+  ...Object.values(manifestIcons).map((file) => file.replace("design-system/", ""))
 ];
 
 const contentBundleSources = [
@@ -130,6 +137,78 @@ async function listFiles(directory) {
   return files;
 }
 
+function parseXmlAttributes(source, file) {
+  const attributes = {};
+  let remainder = source;
+  while (remainder.length) {
+    if (!remainder.trim()) break;
+    const match = /^\s+([A-Za-z_:][\w:.-]*)\s*=\s*("[^"]*"|'[^']*')/.exec(remainder);
+    if (!match) throw new Error(`Invalid SVG attributes in ${file}: ${remainder.trim()}`);
+    if (Object.hasOwn(attributes, match[1])) throw new Error(`Duplicate SVG attribute in ${file}: ${match[1]}`);
+    attributes[match[1]] = match[2].slice(1, -1);
+    remainder = remainder.slice(match[0].length);
+  }
+  return attributes;
+}
+
+function assertValidSvg(source, file) {
+  const xml = source.replace(/<!--[\s\S]*?-->/g, "");
+  if (/<!DOCTYPE|<!ENTITY|<\?(?!xml\b)|<(?:script|foreignObject)\b/i.test(xml)) {
+    throw new Error(`Unsafe or unsupported SVG content in ${file}`);
+  }
+
+  const stack = [];
+  let cursor = 0;
+  let rootAttributes;
+  let roots = 0;
+  const tagPattern = /<(\/?)\s*([A-Za-z_][\w:.-]*)([^<>]*?)(\/?)>/g;
+  for (const match of xml.matchAll(tagPattern)) {
+    if (xml.slice(cursor, match.index).trim()) throw new Error(`Invalid SVG markup in ${file}`);
+    cursor = match.index + match[0].length;
+    const [, closing, name, attributeSource, selfClosing] = match;
+    if (closing) {
+      if (attributeSource.trim() || selfClosing || stack.pop() !== name) {
+        throw new Error(`Mismatched SVG element in ${file}: ${name}`);
+      }
+      continue;
+    }
+
+    const attributes = parseXmlAttributes(attributeSource, file);
+    if (!stack.length) {
+      roots += 1;
+      if (roots > 1 || name !== "svg") throw new Error(`Invalid SVG root in ${file}`);
+      rootAttributes = attributes;
+    }
+    if (!selfClosing) stack.push(name);
+  }
+  if (xml.slice(cursor).trim() || stack.length || roots !== 1) throw new Error(`Unclosed or invalid SVG markup in ${file}`);
+  if (rootAttributes.xmlns !== "http://www.w3.org/2000/svg") throw new Error(`Missing SVG namespace in ${file}`);
+
+  const viewBox = rootAttributes.viewBox?.trim().split(/[\s,]+/).map(Number);
+  if (viewBox?.length !== 4 || viewBox.some((value) => !Number.isFinite(value)) || viewBox[2] <= 0 || viewBox[3] <= 0) {
+    throw new Error(`Invalid SVG viewBox in ${file}`);
+  }
+  if (!Number.isFinite(Number(rootAttributes.width)) || Number(rootAttributes.width) <= 0 ||
+      !Number.isFinite(Number(rootAttributes.height)) || Number(rootAttributes.height) <= 0) {
+    throw new Error(`Invalid SVG dimensions in ${file}`);
+  }
+  if (/\b(?:href|xlink:href)\s*=|\burl\s*\(/i.test(source)) throw new Error(`SVG must not reference external assets: ${file}`);
+}
+
+function assertPng(buffer, expectedSize, file) {
+  const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  if (buffer.length < 45 || !buffer.subarray(0, 8).equals(pngSignature) ||
+      buffer.readUInt32BE(8) !== 13 || buffer.toString("ascii", 12, 16) !== "IHDR" ||
+      buffer.toString("ascii", buffer.length - 8, buffer.length - 4) !== "IEND") {
+    throw new Error(`Invalid PNG icon: ${file}`);
+  }
+  const width = buffer.readUInt32BE(16);
+  const height = buffer.readUInt32BE(20);
+  if (width !== expectedSize || height !== expectedSize) {
+    throw new Error(`PNG icon ${file} must be ${expectedSize}x${expectedSize}, got ${width}x${height}`);
+  }
+}
+
 const remoteScriptTag = /<script\b[^>]*\bsrc\s*=\s*["']?\s*(?:(?:https?:)?\/\/)[^"'\s>]+/i;
 const remoteLink = /<link\b[^>]*\bhref\s*=\s*["']?\s*(?:(?:https?:)?\/\/)/i;
 const remoteCssImport = /@import\s+(?:url\s*\(\s*)?["']?\s*(?:(?:https?:)?\/\/)/i;
@@ -163,6 +242,21 @@ const manifest = JSON.parse(await readFile(join(dist, "manifest.json"), "utf8"))
 if (manifest.manifest_version !== 3 || manifest.background?.service_worker !== "background/service-worker.js" ||
     !manifest.permissions?.includes("offscreen") || Object.hasOwn(manifest, "message_serialization")) {
   throw new Error("manifest.json is not the canonical stable-channel MV3 manifest");
+}
+for (const [surface, icons] of [["action.default_icon", manifest.action?.default_icon], ["icons", manifest.icons]]) {
+  if (JSON.stringify(icons) !== JSON.stringify(manifestIcons)) {
+    throw new Error(`${surface} must reference the canonical local PNG icon set`);
+  }
+  for (const [size, file] of Object.entries(icons)) {
+    if (file.startsWith("/") || file.includes("\\") || file.split("/").includes("..") ||
+        /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(file)) {
+      throw new Error(`${surface}.${size} is not a local extension path: ${file}`);
+    }
+    assertPng(await readFile(join(dist, file)), Number(size), file);
+  }
+}
+for (const file of ["icon-16.svg", "icon-32.svg", "icon.svg", "logo-mark.svg"]) {
+  assertValidSvg(await readFile(join(dist, "design-system/assets", file), "utf8"), `design-system/assets/${file}`);
 }
 const required = [
   ...uiFiles,
