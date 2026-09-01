@@ -212,6 +212,8 @@ own discovery and capture. The content runtime:
 - reports `timer-fallback` when `requestVideoFrameCallback` is unavailable, and `unavailable` when frame copying is unavailable;
 - never pauses, seeks, mutes, changes playback rate, changes `src`, changes video styles, or replaces the player.
 
+Capture backpressure is a bounded healthy condition while local inference catches up, and a media-time reset is a resynchronization state; neither is reported as production inference failure. Actual bridge, capture, or analyzer errors retain the explicit fallback state.
+
 The design-system overlay is a separate DOM sibling with `position: fixed`. It
 re-anchors through `ResizeObserver`, window resize/scroll/orientation,
 fullscreen/transition changes, layout mutations, navigation, and video

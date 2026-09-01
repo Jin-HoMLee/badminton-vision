@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 import { promisify } from "node:util";
 import { test } from "node:test";
 
@@ -158,7 +159,9 @@ test("production build contains only local runtime design-system assets", async 
   }
   assert.equal(manifest.web_accessible_resources.some((entry) => entry.resources.includes("design-system/tokens/*")), true);
   assert.deepEqual(manifest.content_scripts?.flatMap((entry) => entry.js || []), ["content.bundle.js"]);
-  assert.match(await readFile(join(dist, "content.bundle.js"), "utf8"), /__BV_CONTENT_BUNDLE_LOADED__/);
+  const contentBundle = await readFile(join(dist, "content.bundle.js"), "utf8");
+  assert.doesNotThrow(() => new vm.Script(contentBundle, { filename: "dist/content.bundle.js" }));
+  assert.match(contentBundle, /__BV_CONTENT_BUNDLE_LOADED__/);
 
   const cssFiles = (await listFiles(dist)).filter((file) => file.endsWith(".css"));
   const textFiles = await Promise.all((await listFiles(dist)).map(async (file) => ({
