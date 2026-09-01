@@ -189,7 +189,9 @@
       timing: field("timing") || field("Timing"),
       intention: field("intention") || field("Intention"),
       impact: field("impact") || field("Impact"),
-      direction: field("direction") || field("Direction")
+      direction: field("direction") || field("Direction"),
+      player: stroke.player != null ? stroke.player : stroke.playerId != null ? stroke.playerId : "",
+      provenance: stroke.provenance != null ? (typeof stroke.provenance === "string" ? stroke.provenance : JSON.stringify(stroke.provenance)) : stroke.source || "manual"
     };
   }
 

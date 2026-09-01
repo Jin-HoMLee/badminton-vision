@@ -4,14 +4,16 @@ import { test } from "node:test";
 import vm from "node:vm";
 
 async function modules() {
-  const [stateSource, reviewSource] = await Promise.all([
+  const [stateSource, reviewSource, analysisSource] = await Promise.all([
     readFile(new URL("../src/state.js", import.meta.url), "utf8"),
-    readFile(new URL("../src/review.js", import.meta.url), "utf8")
+    readFile(new URL("../src/review.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/analysis.js", import.meta.url), "utf8")
   ]);
   const context = { globalThis: {} };
   vm.runInNewContext(reviewSource, context, { filename: "review.js" });
   vm.runInNewContext(stateSource, context, { filename: "state.js" });
-  return { state: context.globalThis.BVState, review: context.globalThis.BVReview };
+  vm.runInNewContext(analysisSource, context, { filename: "analysis.js" });
+  return { state: context.globalThis.BVState, review: context.globalThis.BVReview, analysis: context.globalThis.BVAnalysis };
 }
 
 test("video identity prefers YouTube ids and canonicalizes safe URL fallbacks", async () => {
@@ -101,4 +103,80 @@ test("manual content path is playback-neutral and does not start runtime for lab
   assert.doesNotMatch(content, /video\.currentTime\s*=/);
   assert.doesNotMatch(content, /video\.(?:play|pause)\s*\(/);
   assert.doesNotMatch(content, /startRuntime\(\);\s*if \(hasChrome\(\) && chrome\.runtime && chrome\.runtime\.onMessage/);
+});
+
+test("CSV export to import round trip restores identical manual label records", async () => {
+  const { state, review, analysis } = await modules();
+  const key = state.videoKeyForUrl("https://www.youtube.com/watch?v=roundtrip");
+  const labels = [
+    review.normalizeManualLabel({
+      eventId: state.createManualEventId(key, 12.25, []),
+      startSec: 12.25, endSec: 12.75, shot: "Serve", playerId: "A", player: "A",
+      axes: { Timing: "early" }, source: "manual", provenance: "manual"
+    }, { now: "2026-01-01T00:00:00.000Z" }),
+    review.normalizeManualLabel({
+      eventId: state.createManualEventId(key, 15.5, []),
+      startSec: 15.5, endSec: null, shot: "Clear", playerId: "B", player: "B",
+      axes: { Longitudinal: "front", Direction: "cross" }, source: "manual", provenance: "manual"
+    }, { now: "2026-01-01T00:00:00.000Z" })
+  ];
+  const rows = labels.map((label, index) => review.toShotRow(label, "https://www.youtube.com/watch?v=roundtrip", index));
+  const csv = analysis.toShotsCsv(rows, { includeManualMetadata: true });
+  const parsed = analysis.parseShotsCsv(csv);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.rows.length, 2);
+  const imported = analysis.normalizeImportedShots(parsed.rows, { now: "2026-01-02T00:00:00.000Z" });
+  assert.equal(imported.imported, 2);
+  assert.equal(imported.skipped, 0);
+  imported.records.forEach((record, index) => {
+    assert.equal(record.eventId, labels[index].eventId);
+    assert.equal(record.startSec, labels[index].startSec);
+    assert.equal(record.endSec, labels[index].endSec);
+    assert.equal(record.shot, labels[index].shot);
+    assert.equal(record.playerId, labels[index].playerId);
+    assert.deepEqual(record.axes, labels[index].axes);
+    assert.equal(record.provenance, labels[index].provenance);
+    assert.equal(record.source, "manual");
+  });
+});
+
+test("CSV import validates headers, normalizes timestamps, and de-duplicates by event id or time window", async () => {
+  const { state, review, analysis } = await modules();
+  const key = state.videoKeyForUrl("https://www.youtube.com/watch?v=dedupe");
+  const label = review.normalizeManualLabel({
+    eventId: state.createManualEventId(key, 30, []), startSec: 30, endSec: 30.4, shot: "Smash",
+    axes: { Impact: "above" }, source: "manual", provenance: "manual"
+  }, { now: "2026-01-01T00:00:00.000Z" });
+  const csv = analysis.toShotsCsv([review.toShotRow(label, "https://www.youtube.com/watch?v=dedupe", 0)], { includeManualMetadata: true });
+  const parsed = analysis.parseShotsCsv(csv);
+  const first = analysis.normalizeImportedShots(parsed.rows, { now: "2026-01-02T00:00:00.000Z" });
+  assert.equal(first.imported, 1);
+  const second = analysis.normalizeImportedShots(parsed.rows, { existing: first.records, now: "2026-01-02T00:00:00.000Z" });
+  assert.equal(second.imported, 0, "the same event id is a duplicate");
+  assert.equal(second.skipped, 1);
+  const nearWindow = analysis.normalizeImportedShots(
+    [{ eventId: "manual-other", shot: "Smash", startSec: 30.2, endSec: 30.4, provenance: "manual" }],
+    { existing: first.records, now: "2026-01-02T00:00:00.000Z" });
+  assert.equal(nearWindow.imported, 0, "the same time window and shot is a duplicate even with a different event id");
+  assert.equal(nearWindow.skipped, 1);
+  const otherShot = analysis.normalizeImportedShots(
+    [{ eventId: "manual-other", shot: "Clear", startSec: 30.2, endSec: 30.4, provenance: "manual" }],
+    { existing: first.records, now: "2026-01-02T00:00:00.000Z" });
+  assert.equal(otherShot.imported, 1, "the same window with a different shot is a new record");
+  const autoRows = analysis.normalizeImportedShots(
+    [{ eventId: "auto-1", shot: "Drop", startSec: 40, provenance: "auto" }],
+    { now: "2026-01-02T00:00:00.000Z" });
+  assert.equal(autoRows.imported, 0, "automatic rows are never restored as manual labels");
+  assert.equal(autoRows.skipped, 1);
+  assert.equal(analysis.parseShotsCsv("player,score\nA,1").ok, false, "foreign headers are rejected");
+  assert.equal(analysis.parseShotsCsv("").ok, false, "empty files are rejected");
+  const formatted = analysis.normalizeImportedShots(
+    [{ eventId: "t1", shot: "Lift", startSec: "02:05.500", endSec: "02:06", provenance: "manual" }],
+    { now: "2026-01-02T00:00:00.000Z" });
+  assert.equal(formatted.records[0].startSec, 125.5);
+  assert.equal(formatted.records[0].endSec, 126);
+  assert.equal(formatted.records[0].time, "02:05.500");
+  const quoted = analysis.parseShotsCsv('shot_id,label,start_sec\n"a,""b",Net Shot,1');
+  assert.equal(quoted.ok, true);
+  assert.equal(quoted.rows[0].eventId, 'a,"b');
 });

@@ -788,6 +788,161 @@ test("popup and content controls visibly change density, panels, and manual labe
   assert.ok(live.documentRef.created.some((node) => node.tagName === "A" && node.download === "badminton-vision-shots.csv"));
 });
 
+test("manual labels drive the live feed and stats panels in real time with an honest source", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "OPEN_LABELING", requestId: "live-manual-stats-open" });
+  let root = live.overlayRoot();
+  function setTime(seconds) { live.video.currentTime = seconds; live.video.dispatchEvent({ type: "timeupdate", target: live.video }); }
+  function markSegment(start, end, shot) {
+    setTime(start);
+    buttonWithText(root, "Start").dispatchEvent({ type: "click" });
+    setTime(end);
+    buttonWithText(root, "End").dispatchEvent({ type: "click" });
+    root.querySelector(`[data-bso-shot="${shot}"]`).dispatchEvent({ type: "click" });
+    root = live.overlayRoot();
+    root.querySelector("[data-bso-label-save]").dispatchEvent({ type: "click" });
+    root = live.overlayRoot();
+  }
+  markSegment(20, 20.5, "Serve");
+  markSegment(22, 22.75, "Clear");
+  const saved = live.storageWrites.at(-1).bvState;
+  assert.equal(saved.manualLabelsByVideo["youtube:real-match"].length, 2);
+
+  // The live stroke feed shows each labeled shot as it is saved, while the
+  // labeling panel stays open for the next label.
+  const feed = root.querySelector('[data-bso-panel="feed"]');
+  const feedRows = feed.querySelectorAll('[data-bso-label-source="manual"]');
+  assert.equal(feedRows.length, 2, "the feed reflects both saved manual labels");
+  assert.equal(feedRows[0].getAttribute("data-bso-event-id"), saved.manualLabels[0].eventId);
+  assert.match(textOf(feed), /Serve/);
+  assert.match(textOf(feed), /Clear/);
+  assert.ok(root.querySelector(".bv-label-panel"), "manual labeling stays open after each save");
+
+  // The rally stats panel derives honest statistics from the labeled shots
+  // through the same analysis core used by the summary/CSV path.
+  live.onMessage({ type: "SET_DENSITY", value: "balanced", requestId: "live-manual-stats-density" });
+  root = live.overlayRoot();
+  const stats = root.querySelector('[data-bso-panel="stats"]');
+  assert.ok(stats, "the stats panel opens in balanced density");
+  assert.equal(stats.querySelector("[data-bso-stats-source]").getAttribute("data-bso-stats-source"), "manual", "no CV evidence means the source is manual");
+  assert.match(textOf(stats), /manual labels/);
+  assert.match(textOf(stats), /Length/);
+  const manualStats = stats.querySelector("[data-bso-manual-stats]");
+  assert.equal(manualStats.getAttribute("data-bso-manual-stats"), "2");
+  assert.match(textOf(manualStats), /Serves/);
+  assert.match(textOf(manualStats), /1/);
+  assert.ok(manualStats.querySelector(".bv-mix-bar"), "the shot mix comes from the saved labels");
+  assert.match(textOf(manualStats), /Serve/);
+  assert.match(textOf(manualStats), /Clear/);
+
+  // A CV backend result is preferred when it arrives; manual labels remain in
+  // the feed and stats as seed/fallback, never as invented evidence.
+  buttonWithText(root, "Close").dispatchEvent({ type: "click" });
+  live.publishRuntimeView(resultView({
+    kind: "lightweight-openpose-pose-shuttle",
+    state: "tracked",
+    players: [], tracking: { state: "tracked", accepted: true, players: [] },
+    shuttle: { state: "unknown", confidence: null, accepted: false, trajectory: [], candidate: null },
+    rally: { state: "known", id: "rally-9", start_media_time: 18, end_media_time: 25 },
+    rallyEnd: { state: "unknown" }, winner: { state: "unknown" },
+    strokeEvents: [{ eventId: "auto-9", sequence: 1, shot: "Smash", time: "00:19.000", startSec: 19, endSec: 19.4, status: "accepted", source: "auto", confidence: 0.8 }]
+  }));
+  root = live.overlayRoot();
+  const statsAfter = root.querySelector('[data-bso-panel="stats"]');
+  assert.equal(statsAfter.querySelector("[data-bso-stats-source]").getAttribute("data-bso-stats-source"), "cv", "real evidence is preferred once a CV backend supplies it");
+  assert.match(textOf(statsAfter), /rally-9/);
+  assert.match(textOf(statsAfter), /live evidence/);
+  assert.ok(statsAfter.querySelector("[data-bso-manual-stats]"), "manual labels stay available as seed");
+  const feedAfter = root.querySelector('[data-bso-panel="feed"]');
+  assert.equal(feedAfter.querySelectorAll('[data-bso-label-source="manual"]').length, 2, "manual labels remain in the feed");
+  assert.equal(feedAfter.querySelectorAll('[data-bso-event-id="auto-9"]').length, 1, "the CV stroke joins the feed");
+});
+
+test("CSV import restores exported labels with an identical round trip and de-duplicates", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "OPEN_LABELING", requestId: "csv-import-open" });
+  let root = live.overlayRoot();
+  function setTime(seconds) { live.video.currentTime = seconds; live.video.dispatchEvent({ type: "timeupdate", target: live.video }); }
+  function markSegment(start, end, shot, player) {
+    setTime(start);
+    buttonWithText(root, "Start").dispatchEvent({ type: "click" });
+    setTime(end);
+    buttonWithText(root, "End").dispatchEvent({ type: "click" });
+    root.querySelector(`[data-bso-shot="${shot}"]`).dispatchEvent({ type: "click" });
+    if (player) root.querySelector(`[data-bso-player-id="${player}"]`).dispatchEvent({ type: "click" });
+    root.querySelectorAll("[data-bso-axis-option]").find((button) => button.getAttribute("data-bso-axis-option") === "late").dispatchEvent({ type: "click" });
+    root = live.overlayRoot();
+    root.querySelector("[data-bso-label-save]").dispatchEvent({ type: "click" });
+    root = live.overlayRoot();
+  }
+  markSegment(20, 20.5, "Serve", "A");
+  markSegment(22, 22.75, "Clear");
+  const persisted = JSON.parse(JSON.stringify(live.storageWrites.at(-1).bvState.manualLabelsByVideo["youtube:real-match"]));
+  assert.equal(persisted.length, 2);
+  assert.equal(persisted[0].playerId, "A");
+  assert.deepEqual(persisted[1].axes, { Timing: "late" });
+
+  // Export writes the CSV; the singleton seam keeps the exact text for the
+  // round trip without reading a blob URL.
+  buttonWithText(root, "Export CSV").dispatchEvent({ type: "click" });
+  const exportedCsv = live.context.__BV_CONTENT_SINGLETON_V1__.lastExportCsv;
+  assert.ok(typeof exportedCsv === "string" && exportedCsv.length > 0, "export produced CSV text");
+  assert.match(exportedCsv.split("\n")[0], /shot_id,start_sec,end_sec,label/);
+  assert.match(exportedCsv, /,player,provenance$/m);
+
+  // Import into a fresh session restores identical records for the current
+  // video and surfaces them in the panel immediately.
+  const restored = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  restored.flushStorage();
+  restored.onMessage({ type: "OPEN_LABELING", requestId: "csv-import-restore-open" });
+  root = restored.overlayRoot();
+  const importButton = buttonWithText(root, "Import CSV");
+  assert.ok(importButton, "Import CSV sits next to Export CSV in the manual panel");
+  importButton.dispatchEvent({ type: "click" });
+  let input = restored.documentRef.querySelector("[data-bso-import-csv-input]");
+  assert.ok(input, "import opens a file picker input");
+  input.files = [{ name: "badminton-vision-shots.csv", text: async () => exportedCsv }];
+  input.dispatchEvent({ type: "change" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  root = restored.overlayRoot();
+  assert.match(textOf(root), /Imported 2 labels/);
+  const restoredRows = root.querySelector(".bv-manual-saved").querySelectorAll('[data-bso-label-source="manual"]');
+  assert.equal(restoredRows.length, 2, "imported rows appear in the panel immediately");
+  const stored = restored.storageWrites.at(-1).bvState.manualLabelsByVideo["youtube:real-match"];
+  assert.equal(stored.length, 2);
+  stored.forEach((record, index) => {
+    assert.equal(record.eventId, persisted[index].eventId);
+    assert.equal(record.startSec, persisted[index].startSec);
+    assert.equal(record.endSec, persisted[index].endSec);
+    assert.equal(record.shot, persisted[index].shot);
+    assert.equal(record.source, "manual");
+    assert.equal(record.playerId, persisted[index].playerId);
+    assert.deepEqual(JSON.parse(JSON.stringify(record.axes)), persisted[index].axes);
+  });
+
+  // Re-importing the same CSV is a no-op: event ids de-duplicate.
+  buttonWithText(root, "Import CSV").dispatchEvent({ type: "click" });
+  input = restored.documentRef.querySelector("[data-bso-import-csv-input]");
+  input.files = [{ name: "badminton-vision-shots.csv", text: async () => exportedCsv }];
+  input.dispatchEvent({ type: "change" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  root = restored.overlayRoot();
+  assert.match(textOf(root), /Imported 0 labels · skipped 2 duplicates/);
+  assert.equal(restored.storageWrites.at(-1).bvState.manualLabelsByVideo["youtube:real-match"].length, 2);
+
+  // A foreign CSV is rejected without touching the store.
+  buttonWithText(root, "Import CSV").dispatchEvent({ type: "click" });
+  input = restored.documentRef.querySelector("[data-bso-import-csv-input]");
+  input.files = [{ name: "points.csv", text: async () => "player,score\nA,1" }];
+  input.dispatchEvent({ type: "change" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  root = restored.overlayRoot();
+  assert.match(textOf(root), /Import failed/);
+  assert.equal(restored.storageWrites.at(-1).bvState.manualLabelsByVideo["youtube:real-match"].length, 2, "a rejected import leaves the store untouched");
+});
+
 function evidenceResult({ mediaTime = 12, keypointOffset = 0, includeRacket = true, includeBox = true, unknown = false } = {}) {
   const names = ["nose", "neck", "left_shoulder", "left_elbow", "left_wrist", "right_shoulder", "right_elbow", "right_wrist", "left_hip", "left_knee", "left_ankle", "right_hip", "right_knee", "right_ankle", "left_eye", "right_eye", "left_ear", "right_ear"];
   const keypoints = unknown ? [] : names.map((name, index) => ({

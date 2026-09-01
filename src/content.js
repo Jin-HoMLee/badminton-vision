@@ -32,6 +32,8 @@
   var mediaTime = 0;
   var editingEventId = null;
   var draft = newDraft();
+  var importResult = null;
+  var csvInput = null;
 
   function currentMediaTimestamp() {
     return Number.isFinite(mediaTime) && mediaTime >= 0 ? mediaTime : null;
@@ -339,6 +341,7 @@
     strokes = [];
     suggestion = null;
     draft = newDraft();
+    importResult = null;
     persist();
     render();
   }
@@ -942,18 +945,58 @@
     return layer;
   }
 
+  // The saved manual label dataset is the honest source for rally-level
+  // statistics until a CV backend supplies real evidence. It reuses the same
+  // analysis core as the summary/CSV path, so the panels and the export never
+  // disagree about serve counts, rally duration, or shot mix.
+  function manualSummary() {
+    if (!state.manualLabels || !state.manualLabels.length || !window.BVAnalysis) return null;
+    var videoUrl = window.location && /^https?:/.test(window.location.href) ? window.location.href : data.video.url;
+    var options = { videoUrl: videoUrl };
+    var key = activeVideoKey || state.videoKey;
+    if (key) options.videoKey = key;
+    return window.BVAnalysis.calculateManualDatasetSummary(state.manualLabels, options);
+  }
   function statsPanel() {
     var result = runtimeResult();
     var tracking = runtimeTracking();
     var shuttle = runtimeShuttle();
+    var manual = manualSummary();
+    var manualCount = manual ? manual.totalLabels : 0;
+    // A production CV result with strokes or a known rally state is preferred
+    // over the manual dataset. Fixture rows are explicitly not production CV,
+    // so they never mask the honest manual statistics.
+    var cvEvidence = !isFixtureRuntime() && Boolean(result) && (Array.isArray(result.strokeEvents) && result.strokeEvents.length > 0 || result.rally && result.rally.state !== "unknown");
     var rally = result && result.rally && result.rally.state !== "unknown" ? result.rally.id || state.rally : "unknown";
     var shotCount = strokes.length || "unknown";
-    return ui.panel("Stats", { layoutId: "stats", icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", actions: [ui.iconButton("chevron-up", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, [
-      ui.el("div", { className: "bv-stat-grid" }, [ui.stat("Rally", rally), ui.stat("Shots", shotCount), ui.stat("Length", "unknown", "s")]),
+    var duration = null;
+    if (cvEvidence && result.rally) {
+      var rallyStart = result.rally.start_media_time != null ? result.rally.start_media_time : result.rally.startSec;
+      var rallyEnd = result.rally.end_media_time != null ? result.rally.end_media_time : result.rally.endSec;
+      if (Number.isFinite(Number(rallyStart)) && Number.isFinite(Number(rallyEnd)) && Number(rallyEnd) >= Number(rallyStart)) duration = Number(rallyEnd) - Number(rallyStart);
+    }
+    if (duration == null && manual && manual.durationSec != null) duration = manual.durationSec;
+    var statsSource = cvEvidence ? "cv" : manualCount ? "manual" : "none";
+    var sourceLabel = statsSource === "cv" ? "live evidence" : statsSource === "manual" ? "manual labels" : "no evidence";
+    var sourceNote = statsSource === "cv" ? "real evidence preferred · manual labels kept as seed" : statsSource === "manual" ? "statistics derived from saved manual labels only" : "no CV evidence and no saved labels";
+    var children = [
+      ui.el("div", { className: "bv-stat-grid" }, [ui.stat("Rally", rally), ui.stat("Shots", shotCount), ui.stat("Length", duration == null ? "unknown" : duration.toFixed(1), duration == null ? null : "s")]),
       ui.el("div", { className: "bv-evidence-grid" }, [ui.el("span", {}, ["Players", ui.badge(evidenceState(tracking), evidenceState(tracking) === "tracked" ? "in" : "unknown")]), ui.el("span", {}, ["Shuttle", ui.badge(evidenceState(shuttle), evidenceState(shuttle) === "tracked" ? "in" : "unknown")]), ui.el("span", {}, ["Winner", ui.badge(result && result.winner ? evidenceState(result.winner) : "unknown", "unknown")])]),
       ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", margin: "var(--sp-5) 0" } }, [ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-12)", color: "var(--text-muted)" } }, ["score unknown"]), ui.badge("score OCR unavailable", "warn")]),
+      ui.el("div", { className: "bv-stats-source", "data-bso-stats-source": statsSource }, [ui.badge(sourceLabel, statsSource === "cv" ? "in" : statsSource === "manual" ? "info" : "unknown"), ui.el("span", { className: "bv-muted", style: { fontSize: "var(--fs-11)" } }, [sourceNote])]),
       ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-5)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border-hairline)" } }, [ui.el("span", { className: "bv-muted", style: { fontSize: "var(--fs-11)" } }, ["Rally end"]), ui.badge(result && result.rallyEnd ? evidenceState(result.rallyEnd) : "unknown", "unknown"), ui.confidence(null, { showWord: true })])
-    ]);
+    ];
+    if (manualCount) {
+      var segments = Object.keys(manual.shotLabelCounts).map(function (label) {
+        return { label: label, value: manual.shotLabelCounts[label], color: label === "Clear" ? "var(--player-a)" : label === "Smash" ? "var(--lime-500)" : "#2f8f77" };
+      });
+      if (manual.unclassifiedCount) segments.push({ label: "Unclassified", value: manual.unclassifiedCount, color: "var(--signal-unknown)" });
+      children.push(ui.el("div", { className: "bv-manual-stats", "data-bso-manual-stats": String(manualCount) }, [
+        ui.el("div", { className: "bv-stat-grid" }, [ui.stat("Serves", manual.shotLabelCounts.Serve || 0), ui.stat("Labels", manualCount)]),
+        ui.mixBar(segments)
+      ]));
+    }
+    return ui.panel("Stats", { layoutId: "stats", icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", actions: [ui.iconButton("chevron-up", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, children);
   }
   function mapPanel() {
     var players = playerCourtPoints();
@@ -1145,7 +1188,61 @@
     var rows = strokes.map(function (stroke, index) {
       return window.BVReview ? window.BVReview.toShotRow(stroke, videoUrl, index) : { video_url: videoUrl, shot_id: stroke.eventId, label: stroke.shot || "unclassified" };
     });
-    var link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([window.BVAnalysis.toShotsCsv(rows)], { type: "text/csv" })); link.download = "badminton-vision-shots.csv"; link.click(); setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
+    var csvText = window.BVAnalysis.toShotsCsv(rows, { includeManualMetadata: true });
+    // Test/recovery seam: the latest export text stays on the singleton so the
+    // CSV round trip can be asserted without reading a blob URL.
+    if (singleton) singleton.lastExportCsv = csvText;
+    var link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csvText], { type: "text/csv" })); link.download = "badminton-vision-shots.csv"; link.click(); setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
+  }
+  function setImportResult(result) {
+    importResult = result;
+    if (state.labeling) render();
+  }
+  function importCsvText(text) {
+    if (!window.BVAnalysis || !window.BVReview || !window.BVState) return;
+    var parsed = window.BVAnalysis.parseShotsCsv(text);
+    if (!parsed || !parsed.ok) { setImportResult({ error: parsed && parsed.error ? parsed.error : "Could not parse the selected CSV file." }); return; }
+    var existing = (state.manualLabels || []).slice();
+    var normalized = window.BVAnalysis.normalizeImportedShots(parsed.rows, { existing: existing, now: new Date().toISOString() });
+    if (normalized.records.length) {
+      var merged = existing.slice();
+      normalized.records.forEach(function (record) { merged = window.BVReview.upsert(merged, record); });
+      state = window.BVState.reduceExtensionState(state, { type: "SET_REVIEW_LABELS", videoKey: activeVideoKey, labels: merged });
+      strokes = reviewStrokes();
+      persist();
+      send({ type: "IMPORT_LABELS", count: normalized.records.length });
+    }
+    setImportResult({ imported: normalized.records.length, skipped: normalized.skipped + normalized.invalid, total: parsed.rows.length });
+  }
+  function readCsvFile(file) {
+    function handle(text) { importCsvText(String(text || "")); }
+    if (file && typeof file.text === "function") {
+      var reading = file.text();
+      if (reading && typeof reading.then === "function") reading.then(handle, function () { setImportResult({ error: "Could not read the selected CSV file." }); });
+      else handle(reading);
+    } else if (file && typeof FileReader !== "undefined") {
+      var reader = new FileReader();
+      reader.onload = function () { handle(reader.result); };
+      reader.onerror = function () { setImportResult({ error: "Could not read the selected CSV file." }); };
+      reader.readAsText(file);
+    } else setImportResult({ error: "This browser cannot read the selected CSV file." });
+  }
+  function importCsv() {
+    if (!csvInput) {
+      csvInput = document.createElement("input");
+      csvInput.type = "file";
+      csvInput.accept = ".csv,text/csv";
+      csvInput.setAttribute("data-bso-import-csv-input", "true");
+      csvInput.style.display = "none";
+      (document.body || document.documentElement || document).appendChild(csvInput);
+      csvInput.addEventListener("change", function () {
+        var file = csvInput.files && csvInput.files[0];
+        csvInput.value = "";
+        if (!file) return;
+        readCsvFile(file);
+      });
+    }
+    csvInput.click();
   }
   function refreshLabelingClock() {
     if (!state.labeling || !root || typeof root.querySelector !== "function") return false;
@@ -1203,7 +1300,7 @@
     var canDelete = Boolean(editingEventId && labelForEvent(editingEventId));
     var saveButton = ui.button(saveActionLabel, { variant: "primary", size: "sm", disabled: !saveLabel, onClick: saveDraft });
     saveButton.setAttribute("data-bso-label-save", "true");
-    var panel = ui.panel("Manual labeling", { layoutId: "manual", icon: "pencil", mediaTime: state.time, className: "bv-label-panel bv-overlay-label", bodyStyle: { flex: "1" }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), state.lastEdit ? ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit }) : null, canDelete ? ui.button("Delete label", { variant: "danger", size: "sm", onClick: deleteExistingLabel }) : null, ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Close", { variant: "ghost", size: "sm", onClick: closeLabeling }), saveButton])]) }, []);
+    var panel = ui.panel("Manual labeling", { layoutId: "manual", icon: "pencil", mediaTime: state.time, className: "bv-label-panel bv-overlay-label", bodyStyle: { flex: "1" }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), ui.button("Import CSV", { variant: "ghost", size: "sm", icon: "upload", onClick: importCsv }), state.lastEdit ? ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit }) : null, canDelete ? ui.button("Delete label", { variant: "danger", size: "sm", onClick: deleteExistingLabel }) : null, ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Close", { variant: "ghost", size: "sm", onClick: closeLabeling }), saveButton])]) }, []);
     panel.tabIndex = 0;
     panel.setAttribute("data-bso-label-mode", editingEventId ? "edit" : "create");
     panel.setAttribute("data-bso-draft-state", saveLabel ? "dirty" : "ready");
@@ -1221,6 +1318,12 @@
     data.axes.forEach(function (axis) { axisList.appendChild(ui.dimensionAxis(axis.label, axis.options, draft.axes[axis.label], function (value) { draft.axes[axis.label] = value; syncManualDraft(); })); });
     body.appendChild(axisList);
     body.appendChild(ui.el("p", { className: "bv-helper" }, ["Manual labels are first-class records. Saving updates the same event id and appends provenance — it never creates a duplicate or invents CV evidence."]));
+    if (importResult) {
+      var resultText = importResult.error
+        ? "Import failed: " + importResult.error
+        : "Imported " + importResult.imported + " label" + (importResult.imported === 1 ? "" : "s") + (importResult.skipped ? " · skipped " + importResult.skipped + " duplicate" + (importResult.skipped === 1 ? "" : "s") : "") + ".";
+      body.appendChild(ui.el("p", { className: "bv-helper bv-import-result" + (importResult.error ? " error" : ""), role: "status", "data-bso-import-result": "true" }, [importResult.error ? ui.badge("failed", "warn") : ui.badge("ok", "in"), " " + resultText]));
+    }
     if (state.manualLabels && state.manualLabels.length) {
       var savedLabels = ui.el("div", { className: "bv-manual-saved", "aria-label": "Saved labels for this video" });
       savedLabels.appendChild(ui.el("span", { className: "bv-field-label" }, ["Saved labels for this video"]));
@@ -1313,6 +1416,7 @@
     state = window.BVState.reduceExtensionState(state, { type: "CLOSE_LABELING" });
     editingEventId = null;
     draft = newDraft();
+    importResult = null;
     persist();
     render();
   }

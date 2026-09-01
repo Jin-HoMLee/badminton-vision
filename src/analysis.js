@@ -674,6 +674,155 @@
     return toCsv(rows, fields);
   }
 
+  /*
+   * CSV import contract
+   * -------------------
+   * The Import CSV control restores a previously exported shots CSV into the
+   * current video's per-video label store. Parsing and normalization are
+   * deliberately dependency-free: they only read the exported columns, never
+   * invent evidence, and never claim an automatic/fixture row as manual.
+   */
+  var IMPORT_COLUMN_ALIASES = {
+    shot_id: "eventId", eventid: "eventId", event_id: "eventId", shotid: "eventId", id: "eventId",
+    start_sec: "startSec", startsec: "startSec", start_time: "startSec", start: "startSec", time: "startSec",
+    end_sec: "endSec", endsec: "endSec", end_time: "endSec", end: "endSec",
+    label: "shot", shot: "shot", shot_family: "shot", shotfamily: "shot",
+    player: "player", player_id: "player", playerid: "player",
+    provenance: "provenance", source: "source",
+    longitudinal_position: "Longitudinal", longitudinal: "Longitudinal",
+    lateral_position: "Lateral", lateral: "Lateral",
+    timing: "Timing", intention: "Intention", impact: "Impact", direction: "Direction"
+  };
+  var IMPORT_AXIS_KEYS = ["Longitudinal", "Lateral", "Timing", "Intention", "Impact", "Direction"];
+
+  function parseCsvRows(text) {
+    if (typeof text !== "string") return { error: "CSV is empty" };
+    text = text.replace(/^\uFEFF/, "");
+    if (!text.trim()) return { error: "CSV is empty" };
+    var rows = [];
+    var row = [];
+    var field = "";
+    var inQuotes = false;
+    for (var i = 0; i < text.length; i += 1) {
+      var character = text[i];
+      if (inQuotes) {
+        if (character === '"') {
+          if (text[i + 1] === '"') { field += '"'; i += 1; }
+          else inQuotes = false;
+        } else field += character;
+      } else if (character === '"') inQuotes = true;
+      else if (character === ",") { row.push(field); field = ""; }
+      else if (character === "\n" || character === "\r") {
+        if (character === "\r" && text[i + 1] === "\n") i += 1;
+        row.push(field); field = "";
+        if (row.some(function (value) { return String(value).trim() !== ""; })) rows.push(row);
+        row = [];
+      } else field += character;
+    }
+    row.push(field);
+    if (row.some(function (value) { return String(value).trim() !== ""; })) rows.push(row);
+    if (!rows.length) return { error: "CSV has no data rows" };
+    return { fields: rows[0], rows: rows.slice(1) };
+  }
+
+  function parseShotsCsv(text) {
+    var parsed = parseCsvRows(text);
+    if (parsed.error) return { ok: false, error: parsed.error };
+    var mapped = Object.create(null);
+    parsed.fields.forEach(function (field, index) {
+      var key = String(field || "").trim().toLowerCase().replace(/\s+/g, "_");
+      var target = IMPORT_COLUMN_ALIASES[key];
+      if (target && mapped[target] == null) mapped[target] = index;
+    });
+    if (mapped.eventId == null || mapped.shot == null) {
+      return { ok: false, error: "Unrecognized CSV header. Expected a badminton-vision shots export with shot_id, start_sec, and label columns." };
+    }
+    var rows = parsed.rows.map(function (values) {
+      var record = {};
+      Object.keys(mapped).forEach(function (key) { record[key] = values[mapped[key]] != null ? String(values[mapped[key]]).trim() : ""; });
+      return record;
+    });
+    return { ok: true, fields: parsed.fields, rows: rows };
+  }
+
+  function formatImportTime(seconds) {
+    if (!Number.isFinite(seconds)) return null;
+    var minutes = Math.floor(seconds / 60);
+    var remaining = seconds - minutes * 60;
+    return String(minutes).padStart(2, "0") + ":" + remaining.toFixed(3).padStart(6, "0");
+  }
+
+  function importedRowDuplicate(record, existing, seenIds, seenWindows, windowSeconds) {
+    var id = record && record.eventId;
+    if (id != null) {
+      if (seenIds[id]) return true;
+      if ((existing || []).some(function (item) { return item && item.eventId != null && String(item.eventId) === String(id); })) return true;
+    }
+    if (record && record.startSec != null) {
+      var start = Number(record.startSec);
+      var shot = String(record.shot || "").toLowerCase();
+      function near(item) {
+        return item && item.startSec != null && Math.abs(Number(item.startSec) - start) < windowSeconds && String(item.shot || "").toLowerCase() === shot;
+      }
+      if (seenWindows.some(near)) return true;
+      if ((existing || []).some(near)) return true;
+    }
+    return false;
+  }
+
+  function normalizeImportedShots(rows, options) {
+    options = options || {};
+    var now = options.now || new Date().toISOString();
+    var existing = Array.isArray(options.existing) ? options.existing : [];
+    var windowSeconds = Number.isFinite(Number(options.windowSeconds)) ? Number(options.windowSeconds) : 0.5;
+    var records = [];
+    var seenIds = Object.create(null);
+    var seenWindows = [];
+    var skipped = 0;
+    var invalid = 0;
+    (Array.isArray(rows) ? rows : []).forEach(function (row) {
+      if (!row || typeof row !== "object") { invalid += 1; return; }
+      var eventId = textValue(row.eventId);
+      var shot = textValue(row.shot);
+      var startSec = manualMediaSeconds(row.startSec);
+      var endRaw = row.endSec != null ? String(row.endSec).trim() : "";
+      var endSec = endRaw === "" ? null : manualMediaSeconds(endRaw);
+      var provenance = textValue(row.provenance) || textValue(row.source) || "manual";
+      var sourceKey = String(provenance).toLowerCase().replace(/[ _]+/g, "-");
+      // Only rows that are genuinely manual (or unmarked exports) are restored
+      // as labels. Automatic, suggested, model, and fixture rows are skipped:
+      // importing must never turn CV evidence into a manual label.
+      if (NON_MANUAL_SOURCES[sourceKey]) { skipped += 1; return; }
+      if (!eventId || !shot) { invalid += 1; return; }
+      var record = {
+        eventId: String(eventId),
+        shot: shot,
+        startSec: startSec,
+        endSec: endSec,
+        time: startSec == null ? null : formatImportTime(startSec),
+        axes: {},
+        source: "manual",
+        provenance: provenance,
+        status: "accepted",
+        createdAt: now,
+        updatedAt: now
+      };
+      var player = textValue(row.player);
+      // Match the form-created record shape: player fields are omitted (not
+      // null) when the export has no player identity.
+      if (player != null) { record.playerId = player; record.player = player; }
+      IMPORT_AXIS_KEYS.forEach(function (axis) {
+        var value = textValue(row[axis]);
+        if (value && !UNKNOWN_LABELS[value.toLowerCase()]) record.axes[axis] = value;
+      });
+      if (importedRowDuplicate(record, existing, seenIds, seenWindows, windowSeconds)) { skipped += 1; return; }
+      seenIds[record.eventId] = true;
+      if (record.startSec != null) seenWindows.push({ startSec: record.startSec, shot: record.shot });
+      records.push(record);
+    });
+    return { records: records, imported: records.length, skipped: skipped, invalid: invalid };
+  }
+
   root.BVAnalysis = {
     shotFields: SHOT_FIELDS,
     manualShotFields: SHOT_FIELDS.concat(["player", "provenance"]),
@@ -692,6 +841,9 @@
     manualRecordToShotRow: manualRecordToShotRow,
     toShotsCsv: toShotsCsv,
     toRalliesCsv: toRalliesCsv,
+    parseCsvRows: parseCsvRows,
+    parseShotsCsv: parseShotsCsv,
+    normalizeImportedShots: normalizeImportedShots,
     escapeCsv: escapeCsv
   };
 })(typeof globalThis !== "undefined" ? globalThis : window);
