@@ -266,7 +266,12 @@
           this.synchronizer.ingest(message);
           if (this.lastMediaTime !== null) view = this.handleMediaTime(this.lastMediaTime);
         }
-        this.onRuntimeMessage(message, view, this.lastMediaTime);
+        // Do not bypass media-time selection before the first captured frame.
+        // A result may arrive ahead of the clock; the synchronizer must hold it
+        // until playback reaches its timestamp rather than exposing a future
+        // pose to the UI. Direct seam consumers without a controller still
+        // retain their compatibility path in src/runtime.js.
+        if (!this.synchronizer || view) this.onRuntimeMessage(message, view, this.lastMediaTime);
         return;
       }
       if (BSOProtocol.isCapabilityReport(message)) {

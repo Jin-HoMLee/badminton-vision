@@ -54,3 +54,31 @@ test("runtime UI seam exposes capabilities, model-neutral player arrays, and ana
   assert.equal(reset.result, null);
   assert.equal(reset.reason, "video-replaced");
 });
+
+test("runtime UI seam refreshes each newly selected result and holds future results until the media clock reaches them", async () => {
+  const runtime = await loadRuntime();
+  const views = [];
+  const seam = runtime.createRuntimeUiSeam({ onChange: (view) => views.push(view) });
+  const result = (mediaTime, marker) => ({
+    type: "analysis.result", status: "ok", analyzer: "local-pose", inferenceAvailable: true,
+    capabilities: { analyzer: "local-pose", inference: true },
+    result: { kind: "pose", state: "tracked", marker, players: [{ trackId: "player-1", state: "tracked" }], tracking: { state: "tracked", accepted: true, players: [] }, shuttle: { state: "unknown" } },
+    mediaTime
+  });
+  const first = result(10, "first");
+  seam.acceptMessage(first, { result: null, ageSeconds: null, stale: true }, 9);
+  assert.equal(seam.snapshot().result, null, "a result ahead of playback is held");
+
+  seam.acceptSynchronization({ result: first, ageSeconds: 0, stale: false }, 10);
+  assert.equal(seam.snapshot().result.marker, "first");
+  const second = result(10, "replacement");
+  seam.acceptSynchronization({ result: second, ageSeconds: 0, stale: false }, 10);
+  assert.equal(seam.snapshot().result.marker, "replacement", "equal-timestamp result updates are not ignored");
+
+  const third = result(11, "next");
+  seam.acceptMessage(third, { result: null, ageSeconds: null, stale: true }, 10);
+  assert.equal(seam.snapshot().result.marker, "replacement", "newer results remain held while playback is behind");
+  seam.acceptSynchronization({ result: third, ageSeconds: 0, stale: false }, 11);
+  assert.equal(seam.snapshot().result.marker, "next");
+  assert.ok(views.length >= 4, "each selected result publishes a fresh view");
+});
