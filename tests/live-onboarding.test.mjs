@@ -421,7 +421,7 @@ test("popup mode and panel controls are single-activation and visibly stateful",
   switchButton.dispatchEvent({ type: "click" });
   switchButton = popup.app.querySelector('[aria-label="Toggle Shots this rally"]');
   assert.equal(switchButton.getAttribute("aria-checked"), "false", "one switch click is not cancelled by label activation");
-  for (const label of ["Rally stats", "Court map"]) {
+  for (const label of ["Rally stats", "Court map", "Evidence visibility"]) {
     switchButton = popup.app.querySelector(`[aria-label="Toggle ${label}"]`);
     const before = switchButton.getAttribute("aria-checked");
     switchButton.dispatchEvent({ type: "click" });
@@ -1067,4 +1067,181 @@ test("live evidence visibility switches are independent, persistent across resul
   assert.equal(session.overlayRoot().children.length, 0, "disable removes all live evidence and controls");
   session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.3 })));
   assert.equal(session.overlayRoot().children.length, 0, "a late result cannot resurrect disabled evidence");
+});
+
+test("live overlay panels keep the native player control strip clear and stay movable", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "SET_DENSITY", value: "full", requestId: "strip-full-1" });
+  const root = live.overlayRoot();
+  const viewportHeight = 360;
+  const stripReserve = 72;
+  const pointer = (node, type, x, y, id = 31, target = node) => node.dispatchEvent({
+    type, target, pointerId: id, button: 0, clientX: x, clientY: y,
+    preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }
+  });
+  const panelRects = root.querySelectorAll("[data-bso-panel-layout]").map((panel) => ({
+    panel: panel.getAttribute("data-bso-panel"),
+    left: parseFloat(panel.style.left), top: parseFloat(panel.style.top),
+    width: parseFloat(panel.style.width), height: parseFloat(panel.style.height)
+  }));
+  assert.ok(panelRects.length >= 5, "the full live overlay renders its panels");
+  for (const rect of panelRects) {
+    assert.ok(Number.isFinite(rect.left) && Number.isFinite(rect.top) && Number.isFinite(rect.width) && Number.isFinite(rect.height), `${rect.panel} has a clamped pixel placement`);
+    assert.ok(rect.top + rect.height <= viewportHeight - stripReserve + 1e-9, `${rect.panel} never covers the player control strip`);
+  }
+  // The native strip (pause, time bar, settings) must not sit under any panel.
+  for (const point of [{ x: 20, y: viewportHeight - 20 }, { x: 320, y: viewportHeight - 20 }, { x: 620, y: viewportHeight - 20 }]) {
+    for (const rect of panelRects) {
+      const covers = point.x >= rect.left && point.x <= rect.left + rect.width && point.y >= rect.top && point.y <= rect.top + rect.height;
+      assert.equal(covers, false, `${rect.panel} does not intercept strip point ${point.x},${point.y}`);
+    }
+  }
+  // Evidence layers stay click-transparent by declaration.
+  const evidence = root.querySelector(".bv-runtime-evidence");
+  assert.equal(evidence.getAttribute("pointer-events"), "none");
+  assert.equal(evidence.style.pointerEvents, "none");
+
+  // Panels remain draggable: dragging the court map toward the bottom clamps
+  // it above the strip instead of letting it cover the player controls.
+  const map = root.querySelector('[data-bso-panel="map"]');
+  const mapHeader = map.querySelector("[data-bso-panel-drag-handle]");
+  pointer(mapHeader, "pointerdown", 10, 10, 32);
+  pointer(mapHeader, "pointermove", 10, 1000, 32);
+  pointer(mapHeader, "pointerup", 10, 1000, 32);
+  assert.ok(Number.parseFloat(map.style.top) + Number.parseFloat(map.style.height) <= viewportHeight - stripReserve + 1e-9, "a downward drag clamps the panel above the strip");
+  const storedMap = live.storageWrites.at(-1).bvState.panelLayoutsByVideo["youtube:real-match"].map;
+  assert.ok(storedMap, "the map drag still persists its video-local layout");
+  // Panels remain resizable: the keyboard affordance still changes the size.
+  const mapResize = map.querySelector("[data-bso-panel-resize-handle]");
+  const beforeMapWidth = live.storageWrites.at(-1).bvState.panelLayouts.map.width;
+  mapResize.dispatchEvent({ type: "keydown", target: mapResize, key: "ArrowRight", preventDefault() {}, stopPropagation() {} });
+  assert.ok(live.storageWrites.at(-1).bvState.panelLayouts.map.width >= beforeMapWidth, "resize keyboard affordance still works on the map panel");
+});
+
+test("every live panel collapses to its header bar, re-expands, and persists per video", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "SET_DENSITY", value: "full", requestId: "collapse-full-1" });
+  let root = live.overlayRoot();
+  for (const id of ["feed", "stats", "map", "controls", "evidence"]) {
+    const panel = root.querySelector(`[data-bso-panel="${id}"]`);
+    assert.ok(panel, `${id} panel renders`);
+    const collapse = panel.querySelector("[data-bso-panel-collapse]");
+    assert.ok(collapse, `${id} exposes a header collapse affordance`);
+    assert.equal(collapse.getAttribute("aria-expanded"), "true");
+    assert.equal(panel.getAttribute("data-bso-panel-collapsed"), "false");
+    assert.ok(panel.querySelector(".bv-panel-body"), `${id} starts expanded`);
+  }
+
+  // Collapse the stroke feed: only the header bar remains and it can reopen.
+  root.querySelector('[data-bso-panel="feed"]').querySelector("[data-bso-panel-collapse]").dispatchEvent({ type: "click" });
+  root = live.overlayRoot();
+  let collapsedFeed = root.querySelector('[data-bso-panel="feed"]');
+  assert.equal(collapsedFeed.getAttribute("data-bso-panel-collapsed"), "true");
+  assert.equal(collapsedFeed.querySelector(".bv-panel-body"), null, "a collapsed panel shows only its header bar");
+  assert.equal(collapsedFeed.querySelector("[data-bso-panel-resize-handle]"), null, "a collapsed panel has no resize surface");
+  assert.ok(collapsedFeed.querySelector("[data-bso-panel-drag-handle]"), "the header stays the move surface while collapsed");
+  assert.deepEqual(JSON.parse(JSON.stringify(live.storageWrites.at(-1).bvState.collapsedPanelsByVideo["youtube:real-match"])), { feed: true }, "collapse state is stored per video");
+
+  // A rerender keeps the collapsed presentation.
+  live.onMessage({ type: "SET_DENSITY", value: "balanced", requestId: "collapse-rerender-1" });
+  root = live.overlayRoot();
+  collapsedFeed = root.querySelector('[data-bso-panel="feed"]');
+  assert.equal(collapsedFeed.getAttribute("data-bso-panel-collapsed"), "true", "collapse survives a panel rerender");
+
+  // Collapse evidence too, then expand the feed again.
+  root.querySelector('[data-bso-panel="evidence"]').querySelector("[data-bso-panel-collapse]").dispatchEvent({ type: "click" });
+  root = live.overlayRoot();
+  assert.equal(root.querySelector('[data-bso-panel="evidence"]').getAttribute("data-bso-panel-collapsed"), "true");
+  root.querySelector('[data-bso-panel="feed"]').querySelector("[data-bso-panel-collapse]").dispatchEvent({ type: "click" });
+  root = live.overlayRoot();
+  const expandedFeed = root.querySelector('[data-bso-panel="feed"]');
+  assert.equal(expandedFeed.getAttribute("data-bso-panel-collapsed"), "false");
+  assert.ok(expandedFeed.querySelector(".bv-panel-body"), "re-expanding restores the panel body");
+  assert.ok(expandedFeed.querySelector("[data-bso-panel-resize-handle]"), "re-expanding restores the resize surface");
+
+  // The manual labeling panel is collapsible too.
+  live.onMessage({ type: "OPEN_LABELING", requestId: "collapse-manual-1" });
+  root = live.overlayRoot();
+  const manual = root.querySelector('[data-bso-panel="manual"]');
+  assert.ok(manual.querySelector("[data-bso-panel-collapse]"), "manual labeling collapses from its header");
+  manual.querySelector("[data-bso-panel-collapse]").dispatchEvent({ type: "click" });
+  root = live.overlayRoot();
+  const collapsedManual = root.querySelector('[data-bso-panel="manual"]');
+  assert.equal(collapsedManual.getAttribute("data-bso-panel-collapsed"), "true");
+  assert.equal(collapsedManual.querySelector(".bv-panel-body"), null);
+  collapsedManual.querySelector("[data-bso-panel-collapse]").dispatchEvent({ type: "click" });
+  root = live.overlayRoot();
+  assert.ok(root.querySelector('[data-bso-panel="manual"]').querySelector(".bv-panel-body"), "manual labeling re-expands");
+
+  // A reload restores the per-video collapse state.
+  const persisted = JSON.parse(JSON.stringify(live.storageWrites.at(-1).bvState));
+  const reloaded = await createSession({ storedState: persisted });
+  reloaded.flushStorage();
+  root = reloaded.overlayRoot();
+  assert.equal(root.querySelector('[data-bso-panel="evidence"]').getAttribute("data-bso-panel-collapsed"), "true", "collapsed evidence comes back after reload");
+  assert.equal(root.querySelector('[data-bso-panel="feed"]').getAttribute("data-bso-panel-collapsed"), "false", "expanded panels stay expanded after reload");
+});
+
+test("evidence visibility hides and reopens like the other panels", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  let root = live.overlayRoot();
+  assert.ok(root.querySelector('[data-bso-panel="evidence"]'), "evidence visibility renders by default");
+  root.querySelector('[aria-label="Hide evidence visibility"]').dispatchEvent({ type: "click" });
+  assert.equal(live.overlayRoot().querySelector('[data-bso-panel="evidence"]'), null, "the evidence panel hides like other panels");
+  assert.equal(live.storageWrites.at(-1).bvState.panels.evidence, false);
+  // Reopen through the panel message the popup sends for its toggle.
+  live.onMessage({ type: "SET_PANELS", panels: { evidence: true }, requestId: "evidence-reopen-1" });
+  assert.ok(live.overlayRoot().querySelector('[data-bso-panel="evidence"]'), "the evidence panel reopens from the popup toggle");
+  // Density presets do not resurrect an explicitly hidden evidence panel.
+  live.onMessage({ type: "SET_DENSITY", value: "full", requestId: "evidence-density-1" });
+  assert.ok(live.overlayRoot().querySelector('[data-bso-panel="evidence"]'), "evidence stays visible when the panel is on");
+  live.onMessage({ type: "SET_PANELS", panels: { evidence: false }, requestId: "evidence-hide-1" });
+  live.onMessage({ type: "SET_DENSITY", value: "balanced", requestId: "evidence-density-2" });
+  assert.equal(live.overlayRoot().querySelector('[data-bso-panel="evidence"]'), null, "an explicit hide survives a density preset");
+});
+
+test("court setup lines render in the bright highlight and toggle per video", async () => {
+  // The seed layer draws its corner polyline and preview lines in the bright
+  // setup highlight while the user is clicking the four corners.
+  const seeding = await createSession();
+  seeding.flushStorage();
+  seeding.onMessage({ type: "START_SEED", requestId: "lines-seed-1" });
+  let layer = seeding.overlayRoot().querySelector("[data-bso-court-seeding]");
+  layer.dispatchEvent({ type: "click", target: layer, clientX: 64, clientY: 324, defaultPrevented: false });
+  layer.dispatchEvent({ type: "click", target: layer, clientX: 576, clientY: 324, defaultPrevented: false });
+  layer = seeding.overlayRoot().querySelector("[data-bso-court-seeding]");
+  const polyline = layer.querySelector(".bv-seed-drawing").querySelector("polyline");
+  assert.ok(polyline, "the corner polyline renders during setup");
+  assert.equal(polyline.getAttribute("stroke"), "var(--court-setup-line)", "the setup polyline uses the bright highlight");
+
+  const session = await createLiveEvidenceSession();
+  let root = session.overlayRoot();
+  let court = root.querySelector(".bv-calibration-court");
+  assert.ok(court, "the fitted court projection draws after setup");
+  const drawnLines = court.querySelectorAll("[data-court-line-role]");
+  assert.ok(drawnLines.length > 0, "the projection includes the official court lines");
+  for (const line of drawnLines) {
+    const stroke = line.getAttribute("stroke");
+    assert.match(stroke, /^var\(--court-setup-(?:line|net)\)$/, "drawn court lines use the bright setup highlight");
+  }
+  const linesToggle = root.querySelector("[data-bso-court-lines-toggle]").querySelector("button");
+  assert.equal(linesToggle.getAttribute("aria-checked"), "true");
+  linesToggle.dispatchEvent({ type: "click" });
+  assert.equal(session.overlayRoot().querySelector(".bv-calibration-court"), null, "hiding the setup lines removes the projection");
+  assert.equal(session.storageWrites.at(-1).bvState.courtLinesByVideo["youtube:real-match"], false, "the hide is stored per video");
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.1 })));
+  assert.equal(session.overlayRoot().querySelector(".bv-calibration-court"), null, "hidden lines stay hidden after a result rerender");
+
+  // Reload restores the per-video hide.
+  const lastState = session.storageWrites.slice().reverse().find((write) => write.bvState).bvState;
+  const persisted = JSON.parse(JSON.stringify(lastState));
+  const reloaded = await createSession({ storedState: persisted });
+  reloaded.flushStorage();
+  assert.equal(reloaded.overlayRoot().querySelector(".bv-calibration-court"), null, "the court-line hide survives reload");
+  reloaded.overlayRoot().querySelector("[data-bso-court-lines-toggle]").querySelector("button").dispatchEvent({ type: "click" });
+  assert.ok(reloaded.overlayRoot().querySelector(".bv-calibration-court"), "re-enabling restores the projection");
+  assert.equal(reloaded.storageWrites.at(-1).bvState.courtLinesByVideo["youtube:real-match"], undefined, "showing again clears the stored hide");
 });

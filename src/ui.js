@@ -118,16 +118,34 @@
   function panel(title, opts, children) {
     opts = opts || {};
     var movable = Boolean(opts.layoutId);
+    var collapsed = Boolean(opts.collapsed);
     var section = el("section", {
-      className: "bv-panel" + (opts.solid ? " solid" : "") + (opts.className ? " " + opts.className : "") + (movable ? " bv-panel-layout" : ""),
+      className: "bv-panel" + (opts.solid ? " solid" : "") + (opts.className ? " " + opts.className : "") + (movable ? " bv-panel-layout" : "") + (collapsed ? " bv-panel-collapsed" : ""),
       style: opts.style,
       "aria-label": title,
       "data-bso-panel": opts.layoutId,
       "data-bso-panel-layout": movable ? "true" : null,
-      "data-bso-panel-resizable": movable && opts.resizable !== false ? "true" : "false"
+      "data-bso-panel-resizable": movable && opts.resizable !== false ? "true" : "false",
+      "data-bso-panel-collapsed": String(collapsed)
     });
     if (title || opts.actions) {
       var movementHelp = movable ? "Move the " + title.toLowerCase() + " panel. Drag this header or use arrow keys; Home resets the panel." : null;
+      // Every movable overlay panel gets a header collapse/expand affordance.
+      // A collapsed panel keeps only its header bar so it stops covering the
+      // video while staying one click away from full content.
+      var actions = (opts.actions || []).slice();
+      if (movable && opts.collapsible !== false) {
+        var collapseToggle = iconButton(collapsed ? "chevron-down" : "chevron-up", (collapsed ? "Expand " : "Collapse ") + title.toLowerCase() + " panel", {
+          size: "sm",
+          onClick: function (event) {
+            if (event && event.stopPropagation) event.stopPropagation();
+            if (opts.onToggleCollapse) opts.onToggleCollapse(!collapsed);
+          }
+        });
+        collapseToggle.setAttribute("aria-expanded", String(!collapsed));
+        collapseToggle.setAttribute("data-bso-panel-collapse", "true");
+        actions.unshift(collapseToggle);
+      }
       var heading = el("header", {
         className: "bv-panel-header",
         tabindex: movable ? "0" : null,
@@ -137,12 +155,12 @@
         "aria-grabbed": movable ? "false" : null,
         title: movementHelp,
         "data-bso-panel-drag-handle": movable ? "true" : null
-      }, [opts.icon ? icon(opts.icon, 13) : null, title ? el("h2", {}, [title]) : null, opts.mediaTime ? el("span", { className: "bv-panel-time" + (opts.stale ? " stale" : "") }, [opts.mediaTime + (opts.stale ? " · stale" : "")]) : null, el("span", { className: "bv-panel-actions" }, opts.actions || [])]);
+      }, [opts.icon ? icon(opts.icon, 13) : null, title ? el("h2", {}, [title]) : null, opts.mediaTime ? el("span", { className: "bv-panel-time" + (opts.stale ? " stale" : "") }, [opts.mediaTime + (opts.stale ? " · stale" : "")]) : null, el("span", { className: "bv-panel-actions" }, actions)]);
       section.appendChild(heading);
     }
-    if (!opts.collapsed) section.appendChild(el("div", { className: "bv-panel-body", style: opts.bodyStyle }, children || []));
-    if (!opts.collapsed && opts.footer) section.appendChild(el("footer", { className: "bv-panel-footer" }, opts.footer));
-    if (movable && opts.resizable !== false) section.appendChild(el("button", {
+    if (!collapsed) section.appendChild(el("div", { className: "bv-panel-body", style: opts.bodyStyle }, children || []));
+    if (!collapsed && opts.footer) section.appendChild(el("footer", { className: "bv-panel-footer" }, opts.footer));
+    if (movable && opts.resizable !== false && !collapsed) section.appendChild(el("button", {
       className: "bv-panel-resize-handle",
       type: "button",
       "aria-label": "Resize " + title.toLowerCase() + " panel",

@@ -9,6 +9,11 @@
   var PANEL_MARGIN = 12;
   var PANEL_NUDGE = 16;
   var PANEL_RESIZE_NUDGE = 16;
+  // YouTube draws its bottom control strip (progress bar, play/pause, volume,
+  // settings) over the video's bottom edge. Overlay panels reserve this strip
+  // so the native player stays fully interactive; callers pass the reserve in
+  // per-panel constraints (0 keeps the classic full-area behavior).
+  var DEFAULT_CONTROLS_RESERVE = 0;
 
   function finite(value, fallback) {
     return Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -40,8 +45,9 @@
     var height = dimension(viewport && viewport.height);
     var options = constraints || {};
     var margin = Math.max(0, finite(options.margin, PANEL_MARGIN));
+    var bottomReserve = Math.max(0, finite(options.bottomReserve, DEFAULT_CONTROLS_RESERVE));
     var availableWidth = Math.max(0, width - margin * 2);
-    var availableHeight = Math.max(0, height - margin * 2);
+    var availableHeight = Math.max(0, height - margin * 2 - bottomReserve);
     var configuredMinWidth = Math.max(1, finite(options.minWidth, 160));
     var configuredMinHeight = Math.max(1, finite(options.minHeight, 96));
     var configuredMaxWidth = Math.max(configuredMinWidth, finite(options.maxWidth, width || configuredMinWidth));
@@ -50,6 +56,7 @@
       width: width,
       height: height,
       margin: margin,
+      bottomReserve: bottomReserve,
       minWidth: Math.min(configuredMinWidth, availableWidth || configuredMinWidth),
       minHeight: Math.min(configuredMinHeight, availableHeight || configuredMinHeight),
       maxWidth: Math.max(0, Math.min(configuredMaxWidth, availableWidth)),
@@ -73,7 +80,9 @@
     var left = normalized.x != null ? normalized.x * area.width : finite(fallback.left, area.margin);
     var top = normalized.y != null ? normalized.y * area.height : finite(fallback.top, area.margin);
     left = clamp(left, area.margin, Math.max(area.margin, area.width - width - area.margin));
-    top = clamp(top, area.margin, Math.max(area.margin, area.height - height - area.margin));
+    // The bottom reserve keeps a panel bottom edge clear of the native player
+    // control strip even when a saved layout (or a drag) aims below it.
+    top = clamp(top, area.margin, Math.max(area.margin, area.height - height - area.margin - area.bottomReserve));
     return {
       left: left,
       top: top,
@@ -135,7 +144,7 @@
     var pixels = pixelPanelLayout(layout, viewport, rendered, constraints);
     return pixels.left >= area.margin - 1e-9 && pixels.top >= area.margin - 1e-9 &&
       pixels.left + pixels.width <= area.width - area.margin + 1e-9 &&
-      pixels.top + pixels.height <= area.height - area.margin + 1e-9 &&
+      pixels.top + pixels.height <= area.height - area.margin - area.bottomReserve + 1e-9 &&
       pixels.width >= Math.min(area.minWidth, area.maxWidth) - 1e-9 &&
       pixels.height >= Math.min(area.minHeight, area.maxHeight) - 1e-9;
   }

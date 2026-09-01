@@ -10,6 +10,11 @@
   --font-display: "Space Grotesk", "Space Grotesk Fallback", system-ui, sans-serif;
   --font-sans: "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  /* Native player bottom control strip that overlay panels must never cover. */
+  --overlay-controls-reserve: 72px;
+  /* Brighter highlight for the court-setup line projection on live footage. */
+  --court-setup-line: var(--lime-400);
+  --court-setup-net: var(--lime-300);
 }
 
 :host {
@@ -197,6 +202,10 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-panel-resize-handle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .bv-panel-layout .bv-panel-body { min-width: 0; min-height: 0; overflow: auto; }
 .bv-panel-header h2 { margin: 0; font: var(--type-label); letter-spacing: var(--ls-caps); text-transform: uppercase; color: var(--text-muted); }
+/* A collapsed panel is only its header bar: no body/footer/resize surface. */
+.bv-panel-layout.bv-panel-collapsed { height: auto !important; }
+.bv-panel-layout.bv-panel-collapsed > .bv-panel-header { border-bottom: 0; }
+.bv-panel-collapsed .bv-panel-time { display: none; }
 .bv-panel-time { font: var(--type-mono); font-size: var(--fs-10); color: var(--text-faint); }
 .bv-panel-time.stale { color: var(--signal-warn); }
 .bv-panel-actions { display: flex; align-items: center; gap: var(--sp-1); margin-left: auto; }
@@ -340,10 +349,10 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-overlay-actions { position: absolute; right: var(--overlay-gutter); bottom: 56px; display: flex; gap: var(--sp-3); pointer-events: auto; }
 .bv-overlay-root > [data-bso-panel="evidence"] { left: var(--overlay-gutter); top: 58px; width: min(268px, calc(100% - 32px)); }
 .bv-overlay-root > [data-bso-panel="stats"] { left: var(--overlay-gutter); top: 58px; width: var(--overlay-panel-width); }
-.bv-overlay-root > [data-bso-panel="map"] { left: var(--overlay-gutter); bottom: 16px; width: 176px; }
+.bv-overlay-root > [data-bso-panel="map"] { left: var(--overlay-gutter); bottom: calc(var(--overlay-controls-reserve) + 16px); width: 176px; }
 .bv-overlay-root > [data-bso-panel="feed"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: var(--overlay-panel-width); }
 .bv-overlay-root > [data-bso-panel="manual"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: min(380px, calc(100% - 32px)); max-height: calc(100% - 32px); }
-.bv-overlay-root > [data-bso-panel="controls"] { right: var(--overlay-gutter); bottom: 56px; width: auto; min-width: 180px; }
+.bv-overlay-root > [data-bso-panel="controls"] { right: var(--overlay-gutter); bottom: var(--overlay-controls-reserve); width: auto; min-width: 180px; }
 .bv-controls-panel .bv-panel-body { display: flex; flex-wrap: wrap; align-items: center; }
 .bv-runtime-evidence { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .bv-runtime-evidence * { pointer-events: none; }

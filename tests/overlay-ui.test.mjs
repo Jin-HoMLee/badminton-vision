@@ -52,6 +52,37 @@ test("overlay geometry, treatment, and hit targets cannot fall back when mounted
   assert.match(css, /\.bv-overlay-root \.bv-panel\s*\{[^}]*background:\s*var\(--ink-900\)[^}]*border-color:\s*var\(--border-subtle\)[^}]*box-shadow:/s);
 });
 
+test("overlay panels reserve the native player strip and every panel collapses from its header", async () => {
+  const css = await read("src/styles.css");
+  const ui = await read("src/ui.js");
+  const content = await read("src/content.js");
+  // The bottom strip is reserved in tokens, default placement, and clamping.
+  assert.match(css, /--overlay-controls-reserve:\s*72px/);
+  assert.match(css, /\[data-bso-panel="map"\]\s*\{[^}]*bottom:\s*calc\(var\(--overlay-controls-reserve\) \+ 16px\)/s);
+  assert.match(css, /\[data-bso-panel="controls"\]\s*\{[^}]*bottom:\s*var\(--overlay-controls-reserve\)/s);
+  assert.match(content, /PLAYER_CONTROLS_RESERVE = 72/);
+  assert.match(content, /bottomReserve: PLAYER_CONTROLS_RESERVE/);
+  // The court-setup projection uses the bright highlight tokens.
+  assert.match(css, /--court-setup-line:\s*var\(--lime-400\)/);
+  assert.match(css, /--court-setup-net:\s*var\(--lime-300\)/);
+  assert.match(content, /stroke: line\.role === "net" \? "var\(--court-setup-net\)" : "var\(--court-setup-line\)"/);
+  // Collapse is a header affordance on every movable panel with a collapsed
+  // header-only presentation.
+  assert.match(ui, /data-bso-panel-collapse/);
+  assert.match(ui, /bv-panel-collapsed/);
+  assert.match(ui, /if \(movable && opts\.collapsible !== false\)/);
+  assert.match(ui, /aria-expanded/);
+  assert.match(css, /\.bv-panel-layout\.bv-panel-collapsed/);
+  assert.match(content, /TOGGLE_PANEL_COLLAPSE/);
+  assert.match(content, /if \(state\.panels\.evidence\) overlay\.appendChild\(evidenceVisibilityPanel\(\)\)/);
+  assert.match(content, /courtLinesVisible\(\)/);
+  assert.match(content, /SET_COURT_LINES/);
+  // The evidence panel is a panel like the rest: hideable from its header and
+  // re-openable from the popup panel list.
+  assert.match(content, /"Hide evidence visibility"/);
+  assert.match(await read("src/popup.js"), /panelToggle\("Evidence visibility"/);
+});
+
 test("popup actions and overlay panel toggles remain wired", async () => {
   const popup = await read("src/popup.js");
   const content = await read("src/content.js");

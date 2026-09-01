@@ -68,3 +68,38 @@ test("panel UI uses header semantics and removes the old visible setup drag copy
   assert.doesNotMatch(content, /bv-seed-card-handle-text/);
   assert.doesNotMatch(content, /\["Drag to move"\]/);
 });
+
+test("panel layouts reserve the native player control strip at the bottom", async () => {
+  const api = await moduleApi("panel-layout.js", "BVPanelLayout");
+  const reserve = 72;
+  const constraints = { minWidth: 280, minHeight: 128, maxWidth: 560, maxHeight: 520, bottomReserve: reserve };
+  const stripViewport = { width: 1280, height: 720 };
+  const bottomClear = (layout) => {
+    const pixels = api.pixelPanelLayout(layout, stripViewport, rendered, constraints);
+    assert.ok(pixels.top + pixels.height <= stripViewport.height - reserve + 1e-9, `panel bottom stays above the ${reserve}px control strip`);
+    return pixels;
+  };
+
+  // A CSS default that would land inside the strip is pushed above it.
+  const defaulted = api.pixelPanelLayout(null, stripViewport, { left: 120, top: 720 - 190 - 16, width: 360, height: 190 }, constraints);
+  assert.ok(defaulted.top + defaulted.height <= stripViewport.height - reserve + 1e-9, "default bottom placement clears the strip");
+
+  // Dragging or resizing toward the bottom never enters the strip.
+  const start = { x: 0.2, y: 0.7, width: 0.3, height: 0.3 };
+  for (const layout of [
+    api.movePanelLayout(start, { x: 0, y: 10000 }, stripViewport, rendered, constraints),
+    api.movePanelLayout(start, { x: 0, y: -10000 }, stripViewport, rendered, constraints),
+    api.resizePanelLayout(start, { x: 0, y: 10000 }, stripViewport, rendered, constraints)
+  ]) {
+    assert.ok(api.isWithinBounds(layout, stripViewport, rendered, constraints), "reserved move/resize stays bounded");
+    bottomClear(layout);
+  }
+
+  // A saved layout aimed below the strip is clamped to the reserve.
+  const savedLow = api.pixelPanelLayout({ x: 0.1, y: 0.9, width: 0.3, height: 0.3 }, stripViewport, rendered, constraints);
+  assert.ok(savedLow.top + savedLow.height <= stripViewport.height - reserve + 1e-9, "saved low layouts clamp above the strip");
+
+  // Without a reserve the classic full-area behavior is unchanged.
+  const classic = api.pixelPanelLayout({ x: 0.1, y: 0.9, width: 0.3, height: 0.3 }, stripViewport, rendered, { minWidth: 220, minHeight: 96, maxWidth: 400, maxHeight: 300 });
+  assert.ok(classic.top + classic.height > stripViewport.height - reserve, "no reserve keeps the old full-area placement");
+});
