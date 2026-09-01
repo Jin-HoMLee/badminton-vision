@@ -1602,11 +1602,15 @@
       event.preventDefault();
       syncManualDraft();
     } else if (key === "s") {
-      draft.start = formatMediaTime(mediaTime);
+      // Read current time directly from video element to avoid stale cached value
+      var currentTime = video && Number.isFinite(video.currentTime) && video.currentTime >= 0 ? video.currentTime : mediaTime;
+      draft.start = formatMediaTime(currentTime);
       event.preventDefault();
       syncManualDraft();
     } else if (key === "e") {
-      draft.end = formatMediaTime(mediaTime);
+      // Read current time directly from video element to avoid stale cached value
+      var currentTime = video && Number.isFinite(video.currentTime) && video.currentTime >= 0 ? video.currentTime : mediaTime;
+      draft.end = formatMediaTime(currentTime);
       event.preventDefault();
       syncManualDraft();
     } else if (event.key === "Enter" && (draft.shot || suggestion)) {
