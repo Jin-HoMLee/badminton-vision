@@ -19,6 +19,7 @@ const expectedFiles = [
   "content.js",
   "fixtures.js",
   "manifest.json",
+  "panel-layout.js",
   "popup.html",
   "popup.js",
   "review.js",
