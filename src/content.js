@@ -74,6 +74,9 @@
   var domObserver = null;
   var navigationListeners = [];
   var mediaTimeListener = null;
+  var videoGeometryListener = null;
+  var videoResizeObserver = null;
+  var layoutResizeObserver = null;
   var runtimeController = null;
   var runtimeView = {
     phase: "idle", message: "Local runtime starting", reason: "", analyzer: "none",
@@ -126,14 +129,17 @@
     host.setAttribute("data-bso-analysis-state", result && result.state ? result.state : "unknown");
     host.setAttribute("data-bso-player-state", result && result.tracking && result.tracking.state || "unknown");
     host.setAttribute("data-bso-shuttle-state", result && result.shuttle && result.shuttle.state || "unknown");
-    host.setAttribute("data-bso-player-count", String(result && Array.isArray(result.players) ? result.players.filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length : 0));
+    host.setAttribute("data-bso-player-count", String(runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length));
+    host.setAttribute("data-bso-racket-state", runtimeRacketEvidence().state);
     host.setAttribute("data-bso-shuttle-confidence", String(result && result.shuttle && result.shuttle.confidence != null ? result.shuttle.confidence : "unknown"));
     host.setAttribute("data-bso-frame-transport", runtimeView.capabilities && runtimeView.capabilities.frameTransport || "unknown");
     host.setAttribute("data-bso-backend", runtimeView.capabilities && runtimeView.capabilities.backend || "unknown");
     host.setAttribute("data-bso-fallback", fallbackReasons.filter(Boolean).join(",") || "none");
   }
   function publishRuntimeView(view) {
+    var previousResult = runtimeView && runtimeView.result;
     runtimeView = view;
+    var resultChanged = Boolean(view && view.result !== previousResult);
     if (view && view.result && view.result.cameraCut && !state.cameraCut && (state.seeded || calibration)) {
       state = window.BVState.reduceExtensionState(state, { type: "CAMERA_CUT" });
       calibration = null;
@@ -144,9 +150,8 @@
     restoreReviewState();
     updateDiagnosticsMarkers();
     var result = view.result;
-    var playerCount = result && Array.isArray(result.players)
-      ? result.players.filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length
-      : null;
+    var playerCount = result ? runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length : null;
+    var racketEvidence = runtimeRacketEvidence();
     var status = {
       phase: view.phase,
       message: view.message,
@@ -166,9 +171,11 @@
         kind: result.kind || null,
         state: result.state || "unknown",
         cameraCut: Boolean(result.cameraCut),
-        players: Array.isArray(result.players) ? result.players : [],
+        players: runtimePlayers(),
         tracking: result.tracking || null,
         shuttle: result.shuttle || null,
+        racket: result.racket || null,
+        rackets: Array.isArray(result.rackets) ? result.rackets : [],
         strokeEvents: Array.isArray(result.strokeEvents) ? result.strokeEvents : [],
         rally: result.rally || { state: "unknown" },
         rallyEnd: result.rallyEnd || { state: "unknown" },
@@ -178,10 +185,12 @@
       playerState: result && result.tracking ? result.tracking.state : "unknown",
       shuttleState: result && result.shuttle ? result.shuttle.state : "unknown",
       shuttleConfidence: result && result.shuttle && result.shuttle.confidence != null ? result.shuttle.confidence : null,
+      racketSupported: racketEvidence.supported,
+      racketState: racketEvidence.state,
       backend: view.capabilities && view.capabilities.backend || null,
       sessionId: runtimeController && runtimeController.sessionId ? runtimeController.sessionId : null
     };
-    var key = JSON.stringify([status.phase, status.analyzer, status.inference, status.reason, status.frameTransport, status.backend, status.stale, status.resultKind, status.playerCount, status.playerState, status.shuttleState, status.shuttleConfidence]);
+    var key = JSON.stringify([status.phase, status.analyzer, status.inference, status.reason, status.frameTransport, status.backend, status.stale, status.resultKind, status.playerCount, status.playerState, status.shuttleState, status.shuttleConfidence, status.racketSupported, status.racketState]);
     var now = Date.now();
     var statusChanged = key !== publishedRuntimeKey;
     if (hasChrome() && chrome.storage && chrome.storage.local && statusChanged) {
@@ -190,7 +199,9 @@
     }
     // Synchronization is driven by every observed video frame, but the
     // design-system DOM only needs a modest refresh cadence for age/time labels.
-    if (statusChanged || now - lastRuntimeRenderAt >= 250) {
+    // Every newly synchronized result gets one immediate evidence refresh.
+    // Age-only frame ticks remain bounded so labels do not rebuild at rVFC rate.
+    if (resultChanged || statusChanged || now - lastRuntimeRenderAt >= 250) {
       lastRuntimeRenderAt = now;
       // Runtime/media updates can land between pointerdown and pointerup. Do
       // not replace the manual form under an in-flight user gesture; its
@@ -206,7 +217,39 @@
   }
   function runtimeResult() { return runtimeView && runtimeView.result && typeof runtimeView.result === "object" ? runtimeView.result : null; }
   function runtimeTracking() { var result = runtimeResult(); return result && result.tracking || null; }
+  function runtimePlayers() {
+    var result = runtimeResult();
+    var tracking = runtimeTracking();
+    if (tracking && tracking.accepted === false) return [];
+    // Older/runtime-compatible envelopes may put the accepted tracks only in
+    // tracking.players. Prefer the top-level projection when it is populated,
+    // but do not hide real tracks behind an empty compatibility array.
+    if (result && Array.isArray(result.players) && result.players.length) return result.players;
+    return tracking && Array.isArray(tracking.players)
+      ? tracking.players
+      : result && Array.isArray(result.players) ? result.players : [];
+  }
   function runtimeShuttle() { var result = runtimeResult(); return result && result.shuttle || null; }
+  function runtimeRacketEvidence() {
+    var result = runtimeResult();
+    if (!result) return { supported: false, state: "unavailable", items: [] };
+    // Consume only an explicit runtime field. The current production
+    // composition does not emit racket detections, so this remains unavailable
+    // there rather than synthesizing a racket from a hand/keypoint.
+    var fields = ["racket", "rackets", "racketSignal", "racketSignals"];
+    var suppliedField = fields.find(function (field) { return Object.prototype.hasOwnProperty.call(result, field); });
+    if (!suppliedField) return { supported: false, state: "unavailable", items: [] };
+    var supplied = result[suppliedField];
+    var items = Array.isArray(supplied) ? supplied.filter(Boolean) : supplied ? [supplied] : [];
+    var visible = items.filter(function (item) { return item && typeof item === "object" && item.state !== "unknown"; });
+    var stateValue = visible.some(function (item) { return item.state === "tracked" || item.accepted === true; })
+      ? "tracked"
+      : visible.length ? "available" : "unknown";
+    return { supported: true, state: stateValue, items: items };
+  }
+  function evidenceVisible(name, fallback) {
+    return state.trackerSettings && state.trackerSettings[name] != null ? Boolean(state.trackerSettings[name]) : fallback !== false;
+  }
   function runtimeCaption() {
     if (isFixtureRuntime()) return "fixture result observed · not production CV";
     if (runtimeView.phase === "fallback") return "local production analysis unavailable · playback unaffected";
@@ -224,9 +267,8 @@
     } catch (_) { return null; }
   }
   function playerCourtPoints() {
-    var tracking = runtimeTracking();
-    if (!tracking || !Array.isArray(tracking.players)) return [];
-    return tracking.players.map(function (player, index) {
+    var players = runtimePlayers();
+    return players.map(function (player, index) {
       if (!player || !player.bbox || player.state === "unknown") return null;
       var imagePoint = { x: player.bbox.x + player.bbox.width / 2, y: player.bbox.y + player.bbox.height / 2 };
       var court = imagePointToCourt(imagePoint);
@@ -334,22 +376,43 @@
 
   function positionToVideo() {
     if (!host || !video || typeof video.getBoundingClientRect !== "function") return;
-    var rect = video.getBoundingClientRect();
-    var visible = rect.width > 0 && rect.height > 0;
+    var rect = window.BVRuntime && typeof window.BVRuntime.videoContentRect === "function"
+      ? window.BVRuntime.videoContentRect(video, window)
+      : video.getBoundingClientRect();
+    var visible = video.isConnected !== false && rect.width > 0 && rect.height > 0;
     host.style.display = visible ? "block" : "none";
     if (!visible) return;
     host.style.left = rect.left + "px";
     host.style.top = rect.top + "px";
     host.style.width = rect.width + "px";
     host.style.height = rect.height + "px";
+    host.style.clipPath = rect.clipped && rect.clipInsets
+      ? "inset(" + rect.clipInsets.top + "px " + rect.clipInsets.right + "px " + rect.clipInsets.bottom + "px " + rect.clipInsets.left + "px)"
+      : "none";
+    host.setAttribute("data-bso-video-geometry", "rendered-content-box");
     refreshSeedCardPosition();
+  }
+  function resetVideoResizeObserver() {
+    if (videoResizeObserver) videoResizeObserver.disconnect();
+    videoResizeObserver = null;
+    var ResizeObserverImpl = window.ResizeObserver || (typeof ResizeObserver !== "undefined" ? ResizeObserver : null);
+    if (video && ResizeObserverImpl) {
+      videoResizeObserver = new ResizeObserverImpl(positionToVideo);
+      videoResizeObserver.observe(video);
+    }
   }
   function attachVideo() {
     var next = document.querySelector("video");
     if (next === video) { positionToVideo(); return; }
     if (video && next !== video) {
       if (mediaTimeListener) video.removeEventListener("timeupdate", mediaTimeListener);
+      if (videoGeometryListener) {
+        video.removeEventListener("loadedmetadata", videoGeometryListener);
+        video.removeEventListener("resize", videoGeometryListener);
+      }
       mediaTimeListener = null;
+      videoGeometryListener = null;
+      resetVideoResizeObserver();
       resetVideoLocalState("video-replacement");
     }
     video = next;
@@ -365,8 +428,12 @@
           if (state.labeling) refreshLabelingClock();
         }
       };
+      videoGeometryListener = positionToVideo;
       video.addEventListener("timeupdate", mediaTimeListener);
+      video.addEventListener("loadedmetadata", videoGeometryListener);
+      video.addEventListener("resize", videoGeometryListener);
     }
+    resetVideoResizeObserver();
     positionToVideo();
   }
 
@@ -587,37 +654,149 @@
     drawing.setAttribute("class", "bv-calibration-court");
     return drawing;
   }
+  var SKELETON_EDGES = [
+    ["nose", "neck"], ["nose", "left_eye"], ["nose", "right_eye"], ["left_eye", "left_ear"], ["right_eye", "right_ear"],
+    ["neck", "left_shoulder"], ["neck", "right_shoulder"], ["left_shoulder", "right_shoulder"],
+    ["left_shoulder", "left_elbow"], ["left_elbow", "left_wrist"], ["right_shoulder", "right_elbow"], ["right_elbow", "right_wrist"],
+    ["neck", "left_hip"], ["neck", "right_hip"], ["left_shoulder", "left_hip"], ["right_shoulder", "right_hip"], ["left_hip", "right_hip"],
+    ["left_hip", "left_knee"], ["left_knee", "left_ankle"], ["right_hip", "right_knee"], ["right_knee", "right_ankle"]
+  ];
+  function normalizedPoint(point) {
+    return point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)) && Number(point.x) >= 0 && Number(point.x) <= 1 && Number(point.y) >= 0 && Number(point.y) <= 1;
+  }
   function runtimeEvidenceDrawing() {
     var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("class", "bv-runtime-evidence");
     svg.setAttribute("viewBox", "0 0 1 1");
     svg.setAttribute("preserveAspectRatio", "none");
-    svg.setAttribute("aria-label", "Live local player and shuttle evidence");
+    svg.setAttribute("aria-label", "Live local player, racket, and shuttle evidence");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("pointer-events", "none");
     svg.setAttribute("data-bso-production-evidence", String(!isFixtureRuntime()));
+    svg.style.pointerEvents = "none";
     function add(tag, attrs) {
       var node = document.createElementNS("http://www.w3.org/2000/svg", tag);
       Object.keys(attrs).forEach(function (key) { node.setAttribute(key, attrs[key]); });
+      node.setAttribute("pointer-events", "none");
       svg.appendChild(node);
+      return node;
     }
-    var tracking = runtimeTracking();
-    (tracking && Array.isArray(tracking.players) ? tracking.players : []).forEach(function (player, index) {
-      if (!player || !player.bbox || player.state === "unknown") return;
-      add("rect", {
-        x: player.bbox.x, y: player.bbox.y, width: player.bbox.width, height: player.bbox.height,
-        class: "bv-player-box " + (index % 2 ? "b" : "a"),
-        "stroke-dasharray": player.state === "partial" ? ".012 .008" : "none",
-        "data-track-id": player.trackId || "unknown-track",
-        "data-player-state": player.state
+    runtimePlayers().forEach(function (player, index) {
+      if (!player || player.state === "unknown") return;
+      var trackId = player.trackId || "unknown-track";
+      var side = index % 2 ? "b" : "a";
+      var pointsByName = Object.create(null);
+      (Array.isArray(player.keypoints) ? player.keypoints : []).forEach(function (point) {
+        if (normalizedPoint(point) && point.name) pointsByName[String(point.name).toLowerCase().replace(/-/g, "_")] = point;
       });
+      if (evidenceVisible("body", true)) {
+        SKELETON_EDGES.forEach(function (edge) {
+          var start = pointsByName[edge[0]];
+          var end = pointsByName[edge[1]];
+          if (!start || !end) return;
+          add("line", {
+            x1: start.x, y1: start.y, x2: end.x, y2: end.y,
+            class: "bv-pose-bone " + side,
+            "data-track-id": trackId,
+            "data-keypoints": edge.join("|")
+          });
+        });
+        Object.keys(pointsByName).forEach(function (name) {
+          var point = pointsByName[name];
+          add("circle", {
+            cx: point.x, cy: point.y, r: ".0065",
+            class: "bv-pose-keypoint " + side,
+            "data-track-id": trackId,
+            "data-keypoint": name,
+            "data-keypoint-confidence": point.confidence == null ? "unknown" : point.confidence
+          });
+        });
+      }
+      // Never synthesize a box from keypoints. A rect appears only when the
+      // selected runtime player explicitly supplies a normalized bbox.
+      if (evidenceVisible("players", true) && player.bbox && normalizedPoint(player.bbox) && Number(player.bbox.width) > 0 && Number(player.bbox.height) > 0) {
+        add("rect", {
+          x: player.bbox.x, y: player.bbox.y, width: player.bbox.width, height: player.bbox.height,
+          class: "bv-player-box " + side,
+          "stroke-dasharray": player.state === "partial" ? "6 5" : "none",
+          "data-track-id": trackId,
+          "data-player-state": player.state,
+          "data-box-source": "runtime"
+        });
+      }
     });
-    var shuttle = runtimeShuttle();
-    if (shuttle && Array.isArray(shuttle.trajectory) && shuttle.trajectory.length > 1) {
-      add("polyline", { points: shuttle.trajectory.map(function (point) { return point.x + "," + point.y; }).join(" "), class: "bv-shuttle-trajectory", "data-shuttle-state": shuttle.state || "unknown" });
+    var racket = runtimeRacketEvidence();
+    if (evidenceVisible("racket", false) && racket.supported) {
+      racket.items.forEach(function (item, index) {
+        if (!item || item.state === "unknown") return;
+        var segment = item.segment || item.line;
+        if (segment && normalizedPoint(segment.start) && normalizedPoint(segment.end)) {
+          add("line", { x1: segment.start.x, y1: segment.start.y, x2: segment.end.x, y2: segment.end.y, class: "bv-racket-signal", "data-racket-index": index, "data-racket-state": item.state || "available" });
+        }
+        if (Array.isArray(item.points) && item.points.length > 1 && item.points.every(normalizedPoint)) {
+          add("polyline", { points: item.points.map(function (point) { return point.x + "," + point.y; }).join(" "), class: "bv-racket-signal", "data-racket-index": index, "data-racket-state": item.state || "available" });
+        }
+        if (item.bbox && normalizedPoint(item.bbox) && Number(item.bbox.width) > 0 && Number(item.bbox.height) > 0) {
+          add("rect", { x: item.bbox.x, y: item.bbox.y, width: item.bbox.width, height: item.bbox.height, class: "bv-racket-box", "data-racket-index": index, "data-racket-state": item.state || "available", "data-box-source": "runtime" });
+        }
+        if (normalizedPoint(item)) add("circle", { cx: item.x, cy: item.y, r: ".007", class: "bv-racket-point", "data-racket-index": index, "data-racket-state": item.state || "available" });
+      });
     }
-    if (shuttle && shuttle.state === "tracked" && shuttle.candidate && shuttle.candidate.accepted === true) {
-      add("circle", { cx: shuttle.candidate.x, cy: shuttle.candidate.y, r: ".012", class: "bv-shuttle-point", "data-shuttle-state": "tracked" });
+    var shuttle = runtimeShuttle();
+    if (evidenceVisible("shuttle", true) && shuttle && Array.isArray(shuttle.trajectory)) {
+      var trajectory = shuttle.trajectory.filter(normalizedPoint);
+      if (trajectory.length > 1) add("polyline", { points: trajectory.map(function (point) { return point.x + "," + point.y; }).join(" "), class: "bv-shuttle-trajectory", "data-shuttle-state": shuttle.state || "unknown" });
+    }
+    if (evidenceVisible("shuttle", true) && shuttle && shuttle.state === "tracked" && shuttle.accepted === true && shuttle.candidate && shuttle.candidate.accepted === true && normalizedPoint(shuttle.candidate)) {
+      add("circle", { cx: shuttle.candidate.x, cy: shuttle.candidate.y, r: ".009", class: "bv-shuttle-point", "data-shuttle-state": "tracked", "data-candidate-source": "runtime" });
     }
     return svg;
+  }
+  function evidenceAvailability(name) {
+    var players = runtimePlayers();
+    if (name === "court") return calibration ? { state: "available", detail: "calibrated projection", disabled: false } : { state: "unknown", detail: "court not seeded", disabled: false };
+    if (name === "racket") {
+      var racket = runtimeRacketEvidence();
+      return racket.supported ? { state: racket.state, detail: racket.state === "tracked" ? "runtime evidence supplied" : "runtime signal unknown", disabled: false } : { state: "unavailable", detail: "no runtime racket output", disabled: true };
+    }
+    if (name === "body") {
+      var points = players.reduce(function (count, player) { return count + (Array.isArray(player && player.keypoints) ? player.keypoints.filter(normalizedPoint).length : 0); }, 0);
+      if (points) return { state: "available", detail: points + " keypoint" + (points === 1 ? "" : "s"), disabled: false };
+      if (runtimeView.phase === "fallback" || isFixtureRuntime()) return { state: "unavailable", detail: "pose output unavailable", disabled: true };
+      return { state: "unknown", detail: "no accepted keypoints yet", disabled: false };
+    }
+    if (name === "players") {
+      var boxes = players.filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length;
+      return boxes ? { state: "available", detail: boxes + " runtime box" + (boxes === 1 ? "" : "es"), disabled: false } : { state: "unknown", detail: "no runtime boxes supplied", disabled: false };
+    }
+    var shuttle = runtimeShuttle();
+    if (isFixtureRuntime()) return { state: "unavailable", detail: "fixture has no shuttle signal", disabled: true };
+    return shuttle && shuttle.state === "tracked" && shuttle.accepted === true
+      ? { state: "available", detail: "accepted path / candidate", disabled: false }
+      : { state: "unknown", detail: "candidate not accepted", disabled: false };
+  }
+  function setEvidenceVisibility(name, value) {
+    state = window.BVState.reduceExtensionState(state, { type: "SET_TRACKER", tracker: name, value: value });
+    persist();
+    render();
+  }
+  function evidenceVisibilityPanel() {
+    var groups = [
+      { name: "body", label: "Pose keypoints + skeleton", fallback: true },
+      { name: "players", label: "Player boxes", fallback: true },
+      { name: "racket", label: "Racket evidence", fallback: false },
+      { name: "shuttle", label: "Shuttle path + candidate", fallback: true },
+      { name: "court", label: "Court projection", fallback: true }
+    ];
+    var rows = groups.map(function (group) {
+      var availability = evidenceAvailability(group.name);
+      var visible = evidenceVisible(group.name, group.fallback);
+      var toggle = ui.toggle(group.label, availability.state + " · " + availability.detail, visible, function (next) { setEvidenceVisibility(group.name, next); }, { disabled: availability.disabled, id: "evidence-" + group.name });
+      toggle.setAttribute("data-bso-evidence-control", group.name);
+      toggle.setAttribute("data-bso-evidence-state", availability.state);
+      return toggle;
+    });
+    return ui.panel("Evidence visibility", { icon: "activity", className: "bv-evidence-controls", bodyStyle: { padding: "6px" } }, rows);
   }
   function undoSeedPoint() {
     seedPoints.pop();
@@ -763,7 +942,7 @@
       "data-bso-court-state": courtDiagnosticState(),
       "data-bso-density": state.density
     });
-    if (calibration) overlay.appendChild(calibrationDrawing());
+    if (calibration && evidenceVisible("court", true)) overlay.appendChild(calibrationDrawing());
     // Evidence is drawn in normalized video coordinates and never intercepts
     // pointer input, so player/shuttle rendering cannot block playback or seed clicks.
     overlay.appendChild(runtimeEvidenceDrawing());
@@ -773,9 +952,9 @@
     var statusDetail = stale && Number.isFinite(runtimeView.ageSeconds)
       ? "+" + runtimeView.ageSeconds.toFixed(1) + "s"
       : state.time;
-    var leftChildren = [ui.statusChip(statusState, statusLabel, statusDetail, openLabeling)];
+    var leftChildren = [ui.statusChip(statusState, statusLabel, statusDetail, openLabeling), evidenceVisibilityPanel()];
     if (state.density !== "minimal") leftChildren.push(ui.el("div", { className: "bv-runtime-note", role: "status" }, [ui.icon("info", 11), runtimeCaption()]));
-    if (state.density === "full") leftChildren.push(ui.el("div", { className: "bv-runtime-signal", role: "status" }, ["players ", ui.badge(String((runtimeTracking() && runtimeTracking().players || []).filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length), "info"), " · shuttle ", ui.badge(evidenceState(runtimeShuttle()), evidenceState(runtimeShuttle()) === "tracked" ? "in" : "unknown")]));
+    if (state.density === "full") leftChildren.push(ui.el("div", { className: "bv-runtime-signal", role: "status" }, ["players ", ui.badge(String(runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length), "info"), " · shuttle ", ui.badge(evidenceState(runtimeShuttle()), evidenceState(runtimeShuttle()) === "tracked" ? "in" : "unknown")]));
     var left = ui.el("div", { className: "bv-overlay-stack left" }, leftChildren);
     // Panel switches are independent controls: density sets the default
     // presentation, while an explicit toggle always wins and reopens a panel.
@@ -1241,14 +1420,25 @@
     // a runtime fault cannot leave an indistinguishable empty host behind.
     updateDiagnosticsMarkers();
     window.addEventListener("resize", positionToVideo, { passive: true }); window.addEventListener("scroll", positionToVideo, { passive: true, capture: true });
+    window.addEventListener("orientationchange", positionToVideo, { passive: true });
+    window.addEventListener("transitionend", positionToVideo, { passive: true, capture: true });
+    document.addEventListener("fullscreenchange", positionToVideo);
+    document.addEventListener("webkitfullscreenchange", positionToVideo);
     window.addEventListener("keydown", handleKeyboardShortcuts);
     ["yt-navigate-start", "yt-navigate-finish", "popstate", "hashchange"].forEach(function (name) {
       var listener = handleNavigation;
       window.addEventListener(name, listener);
       navigationListeners.push([name, listener]);
     });
-    if (typeof ResizeObserver !== "undefined") new ResizeObserver(positionToVideo).observe(document.documentElement);
-    domObserver = new MutationObserver(attachVideo); domObserver.observe(document.documentElement, { childList: true, subtree: true }); attachVideo();
+    var LayoutResizeObserver = window.ResizeObserver || (typeof ResizeObserver !== "undefined" ? ResizeObserver : null);
+    if (LayoutResizeObserver) {
+      layoutResizeObserver = new LayoutResizeObserver(positionToVideo);
+      layoutResizeObserver.observe(document.documentElement);
+    }
+    // YouTube toggles theater/fullscreen mostly through ancestor class/style
+    // mutations. Pair those signals with ResizeObserver so the final measured
+    // rendered video content box wins after layout settles.
+    domObserver = new MutationObserver(attachVideo); domObserver.observe(document.documentElement, { childList: true, attributes: true, attributeFilter: ["class", "style"], subtree: true }); attachVideo();
     // Manual/offline labeling intentionally does not start the runtime. It
     // reads the media clock only; live inference begins on ENABLE/OPEN_OVERLAY.
     if (hasChrome() && chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(handleMessage);
