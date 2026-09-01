@@ -159,7 +159,31 @@ function relayFrame(state, message) {
   });
 }
 
-async function forwardToOffscreen(state, message) {
+async function restartOffscreenDocument(state) {
+  // Chrome may close the offscreen document at any time (idle, memory
+  // pressure, crash). When the relay fails mid-session, recreate the document
+  // once and re-establish the session before reporting a capability failure.
+  try {
+    if (chrome.offscreen && typeof chrome.offscreen.closeDocument === 'function') await chrome.offscreen.closeDocument();
+  } catch (_) {
+    // No document to close (already closed/crashed) is the expected path.
+  }
+  offscreenReady = null;
+  const ready = await ensureOffscreenDocument();
+  if (!ready) return { ok: false, reason: offscreenFailureReason || 'offscreen-document-restart-failed' };
+  try {
+    await chrome.runtime.sendMessage(BSOProtocol.createSessionStart({
+      sessionId: state.sessionId,
+      capabilities: state.capabilities || {},
+      pageUrl: state.pageUrl || ''
+    }));
+    return { ok: true, reason: '' };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function forwardToOffscreen(state, message, { allowRestart = true } = {}) {
   if (!state || !state.ready) return false;
   try {
     // chrome.runtime messaging is the MV3 service-worker/offscreen relay.
@@ -169,10 +193,20 @@ async function forwardToOffscreen(state, message) {
     await chrome.runtime.sendMessage(message);
     return true;
   } catch (error) {
-    // Allow a later session to recreate the document after a transient
-    // offscreen crash or a structured-clone transport failure.
+    const reason = error instanceof Error ? error.message : String(error);
+    // A closed/restarted offscreen document makes the relay fail while the
+    // session is still live. Recreate it once and retry; only report the
+    // fallback state when recreation itself fails.
+    if (allowRestart) {
+      const restarted = await restartOffscreenDocument(state);
+      if (restarted.ok) return forwardToOffscreen(state, message, { allowRestart: false });
+      offscreenReady = null;
+      unavailable(state, restarted.reason || reason);
+      state.ready = false;
+      return false;
+    }
     offscreenReady = null;
-    unavailable(state, error instanceof Error ? error.message : String(error));
+    unavailable(state, reason);
     state.ready = false;
     return false;
   }

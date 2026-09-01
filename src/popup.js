@@ -204,8 +204,19 @@
     var statusState = state.enabled ? (runtimeFallback || runtimeStale ? "stale" : "live") : "ready";
     var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : "Rally " + state.rally) : detected ? "Badminton match found" : "No YouTube match";
     var statusDetail = state.enabled ? (runtimeStale && runtimeStatus && Number.isFinite(runtimeStatus.ageSeconds) ? "+" + runtimeStatus.ageSeconds.toFixed(1) + "s" : productionReady ? (runtimeStatus.backend || "local") : fixtureReady ? "fixture probe · not production CV" : state.time) : null;
+    var backendDetail = runtimeFallback
+      ? (function () {
+        var parts = [];
+        if (runtimeStatus && runtimeStatus.backend) parts.push('backend ' + runtimeStatus.backend);
+        if (runtimeStatus && runtimeStatus.reason && runtimeStatus.reason !== 'runtime-fallback') parts.push(runtimeStatus.reason);
+        if (runtimeStatus && Array.isArray(runtimeStatus.fallbacks)) {
+          runtimeStatus.fallbacks.forEach(function (fallback) { if (parts.indexOf(fallback) < 0) parts.push(fallback); });
+        }
+        return parts.length ? ' The reported cause: ' + parts.join(', ') + '.' : '';
+      })()
+      : '';
     var backendNotice = runtimeFallback
-      ? ui.callout("warn", "Production inference unavailable", "This build could not start its local computer-vision runtime. Playback is unaffected and manual labeling remains available.")
+      ? ui.callout("warn", "Production inference unavailable", "This build could not start its local computer-vision runtime. Playback is unaffected and manual labeling remains available." + backendDetail)
       : productionReady
         ? ui.callout("guide", "Local pose + shuttle runtime active", "Pose tracking stays on-device. The shuttle signal is a bounded candidate proposal; shot, rally-end, and winner fields remain unknown until evidence supports them.")
         : fixtureReady
