@@ -258,7 +258,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
   };
 }
 
-async function createPopupSession({ deferStorage = false, failInjection = false } = {}) {
+async function createPopupSession({ deferStorage = false, failInjection = false, tabUrl = "https://www.youtube.com/watch?v=real-match", tabTitle = "Real Match Title - YouTube", videoInfo = null, initialVideoKey = "youtube:real-match" } = {}) {
   const documentRef = new FakeDocument();
   const app = new FakeNode("main");
   app.setAttribute("id", "app");
@@ -276,7 +276,7 @@ async function createPopupSession({ deferStorage = false, failInjection = false 
   const chromeApi = {
     runtime,
     tabs: {
-      query: (_query, callback) => callback([{ id: 7, url: "https://www.youtube.com/watch?v=real-match" }]),
+      query: (_query, callback) => callback([{ id: 7, url: tabUrl, title: tabTitle }]),
       sendMessage: (tabId, message, callback) => {
         sent.push({ tabId, message });
         if (sent.length === 1) runtime.lastError = { message: "Could not establish connection. Receiving end does not exist." };
@@ -296,7 +296,7 @@ async function createPopupSession({ deferStorage = false, failInjection = false 
     storage: { local: {
       get: (_keys, callback) => {
         if (deferStorage) storageReads.push(callback);
-        else callback({ bvState: { videoKey: "youtube:real-match", enabled: false, seeded: false } });
+        else callback({ bvState: { videoKey: initialVideoKey, enabled: false, seeded: false }, bvVideoInfo: videoInfo });
       },
       set: (_value, callback) => callback?.()
     } }
@@ -321,7 +321,7 @@ async function createPopupSession({ deferStorage = false, failInjection = false 
   }
   return {
     app, context, sent, storageReads,
-    flushStorage() { storageReads.shift()({ bvState: { videoKey: "youtube:real-match", enabled: false, seeded: false } }); },
+    flushStorage() { storageReads.shift()({ bvState: { videoKey: initialVideoKey, enabled: false, seeded: false }, bvVideoInfo: videoInfo }); },
     get injection() { return injection; }, get closed() { return closed; }
   };
 }
@@ -1033,6 +1033,7 @@ test("live evidence visibility switches are independent, persistent across resul
   const session = await createLiveEvidenceSession();
   session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12 })));
   const toggle = (name) => session.overlayRoot().querySelector(`[data-bso-evidence-control="${name}"]`).querySelector("button");
+  const projectionToggle = () => session.overlayRoot().querySelector("[data-bso-court-projection-toggle]").querySelector("button");
   const has = (selector) => Boolean(session.overlayRoot().querySelector(".bv-runtime-evidence").querySelector(selector));
 
   toggle("body").dispatchEvent({ type: "click" });
@@ -1049,8 +1050,12 @@ test("live evidence visibility switches are independent, persistent across resul
   assert.equal(has(".bv-shuttle-point"), false);
   toggle("racket").dispatchEvent({ type: "click" });
   assert.equal(has(".bv-racket-signal"), false);
-  toggle("court").dispatchEvent({ type: "click" });
+  // The calibrated court polygon has exactly one toggle (Court projection);
+  // turning it off removes the projection from the video.
+  assert.equal(projectionToggle().getAttribute("aria-checked"), "true");
+  projectionToggle().dispatchEvent({ type: "click" });
   assert.equal(session.overlayRoot().querySelector(".bv-calibration-court"), null);
+  assert.equal(session.overlayRoot().querySelector('[data-bso-evidence-control="court"]'), null, "there is no second court toggle");
 
   session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.2, includeRacket: false, unknown: true })));
   assert.equal(toggle("racket").getAttribute("aria-checked"), "false", "explicit racket visibility remains off");
@@ -1203,7 +1208,7 @@ test("evidence visibility hides and reopens like the other panels", async () => 
   assert.equal(live.overlayRoot().querySelector('[data-bso-panel="evidence"]'), null, "an explicit hide survives a density preset");
 });
 
-test("court setup lines render in the bright highlight and toggle per video", async () => {
+test("the calibrated court projection renders in the bright highlight and has exactly one per-video toggle", async () => {
   // The seed layer draws its corner polyline and preview lines in the bright
   // setup highlight while the user is clicking the four corners.
   const seeding = await createSession();
@@ -1227,21 +1232,179 @@ test("court setup lines render in the bright highlight and toggle per video", as
     const stroke = line.getAttribute("stroke");
     assert.match(stroke, /^var\(--court-setup-(?:line|net)\)$/, "drawn court lines use the bright setup highlight");
   }
-  const linesToggle = root.querySelector("[data-bso-court-lines-toggle]").querySelector("button");
-  assert.equal(linesToggle.getAttribute("aria-checked"), "true");
-  linesToggle.dispatchEvent({ type: "click" });
-  assert.equal(session.overlayRoot().querySelector(".bv-calibration-court"), null, "hiding the setup lines removes the projection");
+  // One clearly labeled toggle controls the whole projection.
+  const projectionToggle = root.querySelector("[data-bso-court-projection-toggle]").querySelector("button");
+  assert.equal(projectionToggle.getAttribute("aria-checked"), "true");
+  assert.ok(textOf(root.querySelector("[data-bso-court-projection-toggle]")).includes("Court projection"));
+  assert.equal(textOf(root).includes("Court setup lines"), false, "the retired second toggle is gone");
+  projectionToggle.dispatchEvent({ type: "click" });
+  assert.equal(session.overlayRoot().querySelector(".bv-calibration-court"), null, "hiding the projection removes the court polygon");
   assert.equal(session.storageWrites.at(-1).bvState.courtLinesByVideo["youtube:real-match"], false, "the hide is stored per video");
   session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.1 })));
-  assert.equal(session.overlayRoot().querySelector(".bv-calibration-court"), null, "hidden lines stay hidden after a result rerender");
+  assert.equal(session.overlayRoot().querySelector(".bv-calibration-court"), null, "hidden projection stays hidden after a result rerender");
 
   // Reload restores the per-video hide.
   const lastState = session.storageWrites.slice().reverse().find((write) => write.bvState).bvState;
   const persisted = JSON.parse(JSON.stringify(lastState));
   const reloaded = await createSession({ storedState: persisted });
   reloaded.flushStorage();
-  assert.equal(reloaded.overlayRoot().querySelector(".bv-calibration-court"), null, "the court-line hide survives reload");
-  reloaded.overlayRoot().querySelector("[data-bso-court-lines-toggle]").querySelector("button").dispatchEvent({ type: "click" });
+  assert.equal(reloaded.overlayRoot().querySelector(".bv-calibration-court"), null, "the projection hide survives reload");
+  reloaded.overlayRoot().querySelector("[data-bso-court-projection-toggle]").querySelector("button").dispatchEvent({ type: "click" });
   assert.ok(reloaded.overlayRoot().querySelector(".bv-calibration-court"), "re-enabling restores the projection");
   assert.equal(reloaded.storageWrites.at(-1).bvState.courtLinesByVideo["youtube:real-match"], undefined, "showing again clears the stored hide");
+});
+
+test("native player control points stay reachable while panels stay interactive", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "SET_DENSITY", value: "full", requestId: "strip-points-full-1" });
+  live.onMessage({ type: "OPEN_LABELING", requestId: "strip-points-manual-1" });
+  const root = live.overlayRoot();
+  const rects = root.querySelectorAll("[data-bso-panel-layout]").map((panel) => ({
+    panel: panel.getAttribute("data-bso-panel"),
+    left: parseFloat(panel.style.left), top: parseFloat(panel.style.top),
+    width: parseFloat(panel.style.width), height: parseFloat(panel.style.height)
+  }));
+  assert.ok(rects.length >= 6, "full density plus the manual panel renders all panel surfaces");
+  // The native strip (pause, seek bar, volume, settings) must never sit under
+  // any panel surface, including the tall manual panel on a small player.
+  const viewportHeight = 360;
+  const stripPoints = [
+    { name: "play/pause", x: 30, y: viewportHeight - 24 },
+    { name: "volume", x: 60, y: viewportHeight - 24 },
+    { name: "seek start", x: 120, y: viewportHeight - 6 },
+    { name: "seek middle", x: 320, y: viewportHeight - 6 },
+    { name: "seek end", x: 600, y: viewportHeight - 6 },
+    { name: "settings", x: 610, y: viewportHeight - 24 }
+  ];
+  for (const point of stripPoints) {
+    for (const rect of rects) {
+      const covers = point.x >= rect.left && point.x <= rect.left + rect.width && point.y >= rect.top && point.y <= rect.top + rect.height;
+      assert.equal(covers, false, `${rect.panel} does not intercept ${point.name} at ${point.x},${point.y}`);
+    }
+  }
+  const pointer = (node, type, x, y, id = 41, target = node) => node.dispatchEvent({
+    type, target, pointerId: id, button: 0, clientX: x, clientY: y,
+    preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }
+  });
+  // Panels remain fully interactive: drag the feed header, resize the map, and
+  // collapse the stats panel all still work with the overlay active.
+  const feed = root.querySelector('[data-bso-panel="feed"]');
+  const feedHeader = feed.querySelector("[data-bso-panel-drag-handle]");
+  pointer(feedHeader, "pointerdown", 10, 10, 42);
+  pointer(feedHeader, "pointermove", 90, 40, 42);
+  pointer(feedHeader, "pointerup", 90, 40, 42);
+  assert.ok(live.storageWrites.at(-1).bvState.panelLayoutsByVideo["youtube:real-match"].feed, "the feed header drag persists");
+  const map = root.querySelector('[data-bso-panel="map"]');
+  const mapResize = map.querySelector("[data-bso-panel-resize-handle]");
+  mapResize.dispatchEvent({ type: "keydown", target: mapResize, key: "ArrowRight", preventDefault() {}, stopPropagation() {} });
+  assert.ok(live.storageWrites.at(-1).bvState.panelLayouts.map.width > 0, "map resize keyboard affordance still works");
+  const stats = root.querySelector('[data-bso-panel="stats"]');
+  stats.querySelector("[data-bso-panel-collapse]").dispatchEvent({ type: "click" });
+  assert.equal(live.overlayRoot().querySelector('[data-bso-panel="stats"]').getAttribute("data-bso-panel-collapsed"), "true", "collapse still works");
+});
+
+test("court setup keeps the player strip reachable and guides near corners above it", async () => {
+  // The fake-DOM video (and host) is 640x360, so the near-corner guides would
+  // land inside the 72px player strip; they must clamp above it.
+  const live = await createSession();
+  live.flushStorage();
+  live.onMessage({ type: "START_SEED", requestId: "seed-guide-1" });
+  const root = live.overlayRoot();
+  const layer = root.querySelector("[data-bso-court-seeding]");
+  assert.ok(layer, "the setup surface renders");
+  const guide = layer.querySelector("[data-bso-seed-guide]");
+  assert.ok(guide, "the current-corner guide marker renders");
+  const stripTop = 360 - 72;
+  const guideTop = Number.parseFloat(guide.style.top);
+  assert.ok(guideTop > 0 && guideTop < 100, "the guide stays inside the video");
+  assert.ok(guideTop / 100 * 360 + 13 <= stripTop, `the near-corner guide (${guideTop}%) stays above the player strip`);
+  assert.ok(guideTop < 82, "the guide is clamped above the nominal 82% near-corner position on small players");
+  // The seed card is a normal reserved panel: its default placement is bounded
+  // and a drag toward the bottom clamps above the strip.
+  const card = layer.querySelector("[data-bso-seed-card]");
+  assert.ok(Number.parseFloat(card.style.top) + Number.parseFloat(card.style.height) <= stripTop + 1e-9, "the setup card stays above the strip");
+  const header = card.querySelector("[data-bso-panel-drag-handle]");
+  const pointer = (node, type, x, y, id = 51) => node.dispatchEvent({
+    type, target: node, pointerId: id, button: 0, clientX: x, clientY: y,
+    preventDefault() {}, stopPropagation() {}
+  });
+  pointer(header, "pointerdown", 20, 20, 52);
+  pointer(header, "pointermove", 20, 500, 52);
+  pointer(header, "pointerup", 20, 500, 52);
+  assert.ok(Number.parseFloat(card.style.top) + Number.parseFloat(card.style.height) <= stripTop + 1e-9, "dragging the setup card cannot cover the player strip");
+});
+
+test("collapse and close are visually distinct header affordances on every panel", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "SET_DENSITY", value: "full", requestId: "afford-full-1" });
+  const root = live.overlayRoot();
+  for (const id of ["feed", "stats", "map", "controls", "evidence"]) {
+    const panel = root.querySelector(`[data-bso-panel="${id}"]`);
+    const collapse = panel.querySelector("[data-bso-panel-collapse]");
+    const close = panel.querySelectorAll("button").find((button) => String(button.getAttribute("aria-label") || "").indexOf("Hide ") === 0);
+    assert.ok(collapse, `${id} exposes a collapse affordance`);
+    // The live controls panel only collapses; every hideable panel also has a
+    // distinct close action that is never the collapse toggle.
+    if (id === "controls") {
+      assert.equal(close, undefined, "the controls panel has no separate close action");
+      continue;
+    }
+    assert.ok(close, `${id} exposes a close affordance`);
+    assert.match(collapse.getAttribute("aria-label"), /^(Collapse|Expand) /, `${id} collapse label is explicit`);
+    assert.notEqual(collapse.getAttribute("aria-label"), close.getAttribute("aria-label"), `${id} collapse and close labels differ`);
+    assert.equal(collapse.getAttribute("aria-expanded"), "true");
+    assert.notEqual(collapse.getAttribute("data-bso-panel-collapse"), null);
+    assert.equal(close.getAttribute("data-bso-panel-collapse"), null, "the close button is not the collapse toggle");
+  }
+  live.onMessage({ type: "OPEN_LABELING", requestId: "afford-manual-1" });
+  const manual = live.overlayRoot().querySelector('[data-bso-panel="manual"]');
+  assert.ok(manual.querySelector("[data-bso-panel-collapse]"), "manual labeling collapses from its header");
+  assert.ok(manual.querySelector('[aria-label="Close manual labeling"]'), "manual labeling closes with an explicit close action");
+});
+
+test("the stroke feed renders every manual and runtime stroke in a scrollable list", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "OPEN_LABELING", requestId: "feed-all-open" });
+  let root = live.overlayRoot();
+  function setTime(seconds) { live.video.currentTime = seconds; live.video.dispatchEvent({ type: "timeupdate", target: live.video }); }
+  const shots = ["Serve", "Clear", "Drop", "Smash", "Lift", "Net Shot", "Drive", "Push", "Block", "Half Smash", "Net Kill", "Serve"];
+  shots.forEach((shot, index) => {
+    setTime(20 + index);
+    buttonWithText(root, "Start").dispatchEvent({ type: "click" });
+    setTime(20.5 + index);
+    buttonWithText(root, "End").dispatchEvent({ type: "click" });
+    root = live.overlayRoot();
+    root.querySelector(`[data-bso-shot="${shot}"]`).dispatchEvent({ type: "click" });
+    root = live.overlayRoot();
+    root.querySelector("[data-bso-label-save]").dispatchEvent({ type: "click" });
+    root = live.overlayRoot();
+  });
+  const feed = root.querySelector('[data-bso-panel="feed"]');
+  const feedRows = feed.querySelectorAll('[data-bso-label-source="manual"]');
+  assert.equal(feedRows.length, 12, "all twelve saved labels appear in the live feed (no silent 7-shot cap)");
+  assert.equal(feed.querySelector(".bv-feed").children.length, 12, "the feed list container holds every row");
+  const savedList = root.querySelector(".bv-manual-saved").querySelector(".bv-feed");
+  assert.equal(savedList.querySelectorAll('[data-bso-label-source="manual"]').length, 12, "the manual panel lists every saved label in its scrollable feed");
+  assert.equal(live.storageWrites.at(-1).bvState.manualLabelsByVideo["youtube:real-match"].length, 12);
+});
+
+test("popup shows the real tab video identity and keeps the fixture as a labeled fallback", async () => {
+  const realTitle = "2026 All England — Men's Singles Final";
+  const popup = await createPopupSession({
+    tabTitle: realTitle + " - YouTube",
+    videoInfo: { url: "https://www.youtube.com/watch?v=real-match", title: realTitle, channel: "Court Side Archive", duration: "1:12:40" }
+  });
+  assert.ok(textOf(popup.app).includes(realTitle), "the detected block shows the real tab title");
+  assert.ok(textOf(popup.app).includes("Court Side Archive · 1:12:40"), "the detected block shows the real channel and duration");
+  assert.equal(textOf(popup.app).includes("fixture preview"), false, "a real tab never shows the fixture fallback");
+  assert.equal(textOf(popup.app).includes("Men's Singles Final — full match"), false, "the fixture title is not shown for a real tab");
+
+  // Without a watch page the fixture block is clearly labeled as a preview.
+  const other = await createPopupSession({ tabUrl: "https://example.com/", tabTitle: "Example", videoInfo: null });
+  assert.ok(textOf(other.app).includes("fixture preview"), "the fallback fixture is labeled");
+  assert.ok(textOf(other.app).includes("Court Side Archive"), "the fixture channel identifies the preview source");
+  assert.equal(textOf(other.app).includes("Detecting video"), false);
 });

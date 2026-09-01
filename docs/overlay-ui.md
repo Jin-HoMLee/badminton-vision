@@ -46,44 +46,90 @@ The focused geometry and DOM regressions are in
 ## Native player controls stay interactive
 
 YouTube draws its bottom control strip (progress bar, play/pause, volume,
-settings) over the video's bottom edge. Overlay panels therefore reserve that
-strip: every panel constraint carries `bottomReserve`
-(`PLAYER_CONTROLS_RESERVE = 72` in `src/content.js`, exposed as
-`--overlay-controls-reserve` in `src/styles.css`), `src/panel-layout.js` clamps
-any move/resize/saved layout so a panel's bottom edge never enters the strip,
-and the CSS defaults for the bottom-anchored map/controls panels sit above it.
-The overlay root and the evidence/calibration layers stay `pointer-events:
-none`; only interactive panel surfaces re-enable input. The court-setup seed
-layer intentionally keeps full-click capture during the four-corner flow:
-its near-corner targets sit around y≈82% and can fall inside the strip on
-small players, so setup keeps priority until the court is locked. The focused
-gates are `tests/panel-layout.test.mjs` (reserve geometry) and
-the strip-clear/drag/resize regression in `tests/live-onboarding.test.mjs`.
+settings) over the video's bottom edge. The overlay enforces the strip two
+ways:
 
-## Panel collapse and evidence visibility
+- **Layers pass through by default.** The anchor, the overlay root, and every
+direct child of the root are `pointer-events: none` unless they are an actual
+interactive surface. Only the panel surfaces, the status stack, and the
+court-setup seed layer opt back in; the evidence SVG, the calibration
+projection, and any future full-size layer can never eat a click. Panel chrome
+follows the same rule: `pointer-events: none` on the panel with `auto` on the
+header, footer, resize handle, and every real control (buttons, rows, the
+scrollable feed list). Empty panel body space passes through, so a panel can
+never intercept the player — including popups that open above it such as
+YouTube's settings menu.
+- **Geometry reserves the strip.** Every panel constraint carries
+`bottomReserve` (`PLAYER_CONTROLS_RESERVE = 72` in `src/content.js`, exposed
+as `--overlay-controls-reserve` in `src/styles.css`), `src/panel-layout.js`
+clamps move/resize/saved layouts **and the panel height itself** so a panel
+measured taller than the free area is capped above the strip (see the
+height-cap regression in `tests/panel-layout.test.mjs`), and the CSS defaults
+for the bottom-anchored map/controls panels sit above it. The shadow
+stylesheet loads asynchronously; `src/content.js` re-applies the layout when
+it finishes loading so a first render measured before CSS applies can never
+keep stale full-size panel rects over the video.
+
+The court-setup seed layer used to capture the whole video during the
+four-corner flow. It now ends at the reserve: `clip-path: inset(0 0
+var(--overlay-controls-reserve) 0)` keeps the strip clickable mid-setup
+(scrim included), and on small players the near-corner guide markers are
+clamped above the strip (`seedFlow` in `src/content.js`) so the guide itself
+stays clickable. The focused gates are `tests/panel-layout.test.mjs`
+(reserve geometry and the height cap) and `tests/live-onboarding.test.mjs`
+(strip control points, seed guide clamp, layer pass-through, and the
+drag/resize/collapse regression).
+
+## Panel collapse, close, and evidence visibility
 
 Every live panel (stats, court map, stroke feed, manual labeling, live
 controls, evidence visibility) has a header collapse/expand button
-(`data-bso-panel-collapse`, `aria-expanded`); a collapsed panel renders only
-its header bar (`bv-panel-collapsed`, no body/footer/resize surface) and keeps
-the header as its drag surface. Collapse state is per-panel and per-video
-(`collapsedPanelsByVideo`, `TOGGLE_PANEL_COLLAPSE`), mirroring the layout-state
-pattern. The Evidence visibility panel is now a panel like the rest: it is
-gated by `state.panels.evidence` (default on, preserved across density
-presets), hideable from its header, and re-openable from the popup's panel
-toggle list. The manual labeling panel rebuilds its body content only when
-expanded; nothing is lost by collapsing because the form is rebuilt on expand.
+(`data-bso-panel-collapse`, `aria-expanded`, chevron icon); a collapsed panel
+renders only its header bar (`bv-panel-collapsed`, no body/footer/resize
+surface) and keeps the header as its drag surface. Collapse state is
+per-panel and per-video (`collapsedPanelsByVideo`, `TOGGLE_PANEL_COLLAPSE`),
+mirroring the layout-state pattern.
 
-## Court setup lines
+Closing a panel (removing it from the overlay) is a separate affordance and
+visually distinct: hideable panels (stats, court map, stroke feed, evidence
+visibility) carry an `x` icon action labeled `Hide …` (manual labeling uses
+`Close manual labeling`), while collapse always uses the chevron and an
+`Expand/Collapse … panel` label. Collapse and close never share an icon or
+label, so the two actions cannot be confused. The Evidence visibility panel is
+a panel like the rest: gated by `state.panels.evidence` (default on, preserved
+across density presets), hideable from its header, and re-openable from the
+popup's panel toggle list. The manual labeling panel rebuilds its body content
+only when expanded; nothing is lost by collapsing because the form is rebuilt
+on expand.
 
-The court projection drawn during and after setup uses bright highlight
-tokens (`--court-setup-line: var(--lime-400)`, `--court-setup-net:
-var(--lime-300)`) instead of the muted diagram tokens. The after-setup
-projection is a per-video show/hide preference (`courtLinesByVideo`,
-`SET_COURT_LINES`): the Evidence visibility panel carries a **Court setup
-lines** toggle (`data-bso-court-lines-toggle`) so the projection is not forced
-over the video. During active seeding the lines always render (they are the
-setup feedback); only the persistent after-lock projection is toggleable.
+## Court projection
+
+The calibrated court polygon drawn over the video during and after setup uses
+bright highlight tokens (`--court-setup-line: var(--lime-400)`,
+`--court-setup-net: var(--lime-300)`) instead of the muted diagram tokens.
+There is exactly **one** toggle for it — **Court projection** in the Evidence
+visibility panel (`data-bso-court-projection-toggle`), backed by the per-video
+`courtLinesByVideo` store (`SET_COURT_LINES`). During active seeding the
+projection always renders (it is the setup feedback); only the persistent
+after-lock projection is toggleable. The retired second control ("Court setup
+lines") was the same rendering with a second switch and has been consolidated
+into this single labeled toggle.
+
+## Stroke feed
+
+The feed list (`.bv-feed`) renders **every** stroke — runtime evidence and
+manual labels alike — inside a bounded, scrollable body (`max-height: 212px;
+overflow-y: auto`); the saved-label list in the manual panel uses the same
+scrollable feed contract at 160px. No row is ever clipped silently.
+
+## Popup video identity
+
+The popup's detected-video block shows the **real** current tab: the content
+script publishes page-visible metadata (`bvVideoInfo`: tab title minus the
+`- YouTube` suffix, media duration, channel meta tag) and the popup renders
+title, channel, and duration for a detected watch page, falling back to the
+tab title while metadata is still being read. The demo fixture appears only
+outside a watch page, clearly labeled `fixture preview`.
 
 The regression gates for all three contracts are in
 `tests/panel-layout.test.mjs`, `tests/live-onboarding.test.mjs`,
@@ -129,11 +175,17 @@ separated, each panel header moves only
 its panel, resize handles stay within the video, setup corner clicks remain setup
 clicks, icon controls retain their hit area, and a manual label can be
 saved/corrected/exported. Confirm the native player controls (pause, seek,
-time bar, settings) stay clickable with the overlay active and that panels
-dragged toward the bottom clamp above the control strip; collapse and re-expand
+time bar, settings) stay clickable with the overlay active — **including while
+the four-corner setup is on screen** — that empty panel areas and the
+settings menu pass clicks through, that panels dragged toward the bottom clamp
+above the control strip, and that a panel taller than the player still cannot
+cover the strip. Collapse (chevron) and close (x) must read as distinct
+actions; collapse and re-expand
 every panel from its header (state survives navigation/reload), hide and
-re-open Evidence visibility from the popup, and toggle **Court setup lines** in
-the Evidence visibility panel while
+re-open Evidence visibility from the popup, and toggle **Court projection** in
+the Evidence visibility panel while the popup's detected block shows the real
+tab title/channel/duration (the fixture appears only as a labeled preview
+outside a watch page) and
 `paused`, `muted`, `playbackRate`, and `src` remain unchanged. The exact
 procedure and playback boundary are in [`docs/e2e-smoke.md`](e2e-smoke.md);
 toolbar-popup clicks remain the one native manual step outside page CDP.

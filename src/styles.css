@@ -190,7 +190,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-panel { width: 100%; overflow: hidden; border: 1px solid var(--border-hairline); border-radius: var(--radius-lg); background: var(--surface-panel); box-shadow: var(--shadow-panel); }
 .bv-panel.solid { background: var(--surface-panel-solid); }
 .bv-panel-header { display: flex; align-items: center; gap: var(--sp-4); min-height: 32px; padding: 0 var(--sp-3) 0 var(--sp-5); border-bottom: 1px solid var(--border-hairline); background: rgba(255,255,255,.02); }
-.bv-panel-layout { position: absolute; box-sizing: border-box; max-width: calc(100% - 24px); max-height: calc(100% - 24px); }
+.bv-panel-layout { position: absolute; box-sizing: border-box; max-width: calc(100% - 24px); max-height: calc(100% - var(--overlay-gutter) - var(--overlay-controls-reserve)); }
 .bv-panel-layout > .bv-panel-header { cursor: grab; touch-action: none; user-select: none; }
 .bv-panel-layout > .bv-seed-card-top { cursor: grab; touch-action: none; user-select: none; }
 .bv-panel-layout.is-dragging > .bv-panel-header { cursor: grabbing; }
@@ -256,7 +256,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-mix-item, .bv-legend-item { display: inline-flex; align-items: center; gap: var(--sp-3); font: var(--type-ui-sm); font-size: var(--fs-11); color: var(--text-muted); }
 .bv-mix-item b, .bv-legend-item b { font: var(--type-mono); font-size: var(--fs-10); color: var(--text-faint); font-weight: 500; }
 .bv-mix-dot { width: 7px; height: 7px; border-radius: 2px; }
-.bv-feed { display: flex; flex-direction: column; gap: 1px; max-height: 212px; overflow: hidden; }
+.bv-feed { display: flex; flex-direction: column; gap: 1px; max-height: 212px; overflow-y: auto; }
 .bv-feed-row { display: grid; grid-template-columns: 18px 3px minmax(0,1fr) auto; align-items: center; gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); border-radius: var(--radius-sm); }
 .bv-feed-row[role="button"] { cursor: pointer; }
 .bv-feed-row.manual { box-shadow: inset 2px 0 var(--signal-info); }
@@ -290,7 +290,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-manual-suggestion .bv-feed-shot { text-decoration: none; }
 .bv-manual-saved { margin: var(--sp-5) 0; padding: var(--sp-3); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); background: rgba(255,255,255,.02); }
 .bv-manual-saved .bv-field-label { margin: var(--sp-2) var(--sp-2) var(--sp-3); }
-.bv-manual-saved .bv-feed { max-height: 160px; }
+.bv-manual-saved .bv-feed { max-height: 160px; overflow-y: auto; }
 .bv-manual-suggestion .replaced { color: var(--text-faint); text-decoration: line-through; }
 .bv-field-label { display: block; margin: var(--sp-6) 0 var(--sp-4); font: var(--type-label); letter-spacing: var(--ls-caps); text-transform: uppercase; color: var(--text-faint); }
 .bv-shot-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); }
@@ -339,7 +339,12 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 /* The content script is a sibling layer: it only receives these styles, never styles video. */
 .bv-overlay-anchor { position: fixed; z-index: 2147483640; pointer-events: none; }
 .bv-overlay-root { position: absolute; inset: 0; pointer-events: none; }
-.bv-overlay-root > * { pointer-events: auto; }
+/* Every overlay layer passes pointer events through to the player by default;
+   only the interactive surfaces below opt back in. This keeps pause, seek,
+   the time bar, and settings reachable no matter which layer is present. */
+.bv-overlay-root > * { pointer-events: none; }
+.bv-overlay-stack, .bv-overlay-empty,
+.bv-overlay-root > [data-bso-panel-layout]:not(.bv-panel), .bv-seed-layer { pointer-events: auto; }
 .bv-overlay-stack { position: absolute; display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
 .bv-overlay-stack.left { left: var(--overlay-gutter); top: var(--overlay-gutter); }
 .bv-overlay-stack.right { right: var(--overlay-gutter); top: var(--overlay-gutter); width: var(--overlay-panel-width); }
@@ -351,8 +356,19 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-overlay-root > [data-bso-panel="stats"] { left: var(--overlay-gutter); top: 58px; width: var(--overlay-panel-width); }
 .bv-overlay-root > [data-bso-panel="map"] { left: var(--overlay-gutter); bottom: calc(var(--overlay-controls-reserve) + 16px); width: 176px; }
 .bv-overlay-root > [data-bso-panel="feed"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: var(--overlay-panel-width); }
-.bv-overlay-root > [data-bso-panel="manual"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: min(380px, calc(100% - 32px)); max-height: calc(100% - 32px); }
+.bv-overlay-root > [data-bso-panel="manual"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: min(380px, calc(100% - 32px)); max-height: calc(100% - var(--overlay-gutter) - var(--overlay-controls-reserve)); }
 .bv-overlay-root > [data-bso-panel="controls"] { right: var(--overlay-gutter); bottom: var(--overlay-controls-reserve); width: auto; min-width: 180px; }
+/* Panel chrome passes pointer events through except on actual controls: a
+   panel's empty body can never intercept the player (including popups such
+   as the settings menu) while every button, row, and scroll surface keeps
+   its own hit area. */
+.bv-panel { pointer-events: none; }
+.bv-panel-header, .bv-panel-footer, .bv-panel-resize-handle { pointer-events: auto; }
+.bv-panel-body { pointer-events: none; }
+.bv-panel-body button, .bv-panel-body [role="button"], .bv-panel-body input, .bv-panel-body a,
+.bv-panel-body .bv-feed, .bv-panel-body .bv-suggestion, .bv-panel-body .bv-review-undo,
+.bv-panel-body .bv-status-chip { pointer-events: auto; }
+.bv-label-panel .bv-panel-body { pointer-events: auto; }
 .bv-controls-panel .bv-panel-body { display: flex; flex-wrap: wrap; align-items: center; }
 .bv-runtime-evidence { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .bv-runtime-evidence * { pointer-events: none; }
@@ -374,7 +390,10 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-evidence-controls .bv-toggle-copy strong { font-size: var(--fs-11); }
 .bv-evidence-controls .bv-toggle-copy span { font-size: var(--fs-10); }
 .bv-runtime-signal { display: inline-flex; align-items: center; gap: var(--sp-2); padding: 3px 5px; border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); background: var(--ink-900); color: var(--text-body); font: var(--type-mono); font-size: var(--fs-10); }
-.bv-seed-layer { position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: auto; background: rgba(6,9,11,.42); cursor: crosshair; }
+.bv-seed-layer { position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: auto; background: rgba(6,9,11,.42); cursor: crosshair; /* The native player control strip stays fully interactive during setup: the
+   seed layer's capture surface (and scrim) ends at the reserve, so pause,
+   seek, the time bar, and settings receive clicks even mid-setup. */
+  clip-path: inset(0 0 var(--overlay-controls-reserve) 0); }
 .bv-seed-drawing, .bv-calibration-court { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .bv-calibration-court { opacity: .92; }
 .bv-seed-target { position: absolute; width: 26px; height: 26px; border: 1px dashed var(--lime-500); border-radius: 50%; background: var(--lime-tint); transform: translate(-50%,-50%); pointer-events: none; }

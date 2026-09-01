@@ -9,8 +9,15 @@
   var messageSequence = 0;
   var stateHydrated = false;
   var pendingDispatches = [];
+  // The detected block shows the real current tab: title/channel/duration come
+  // from the tab and the content script's published bvVideoInfo. The demo
+  // fixture stays available only as a clearly labeled fallback.
+  var tabTitle = null;
+  var videoInfo = null;
+  var activeTabUrl = null;
+  function tabUrlForInfo() { return activeTabUrl; }
   var trackers = [
-    { id: "court", label: "Court", health: "degraded", note: "not seeded", on: true },
+    { id: "court", label: "Court", health: "degraded", note: "not seeded", on: true, noSwitch: true },
     { id: "players", label: "Players", health: "degraded", note: "unknown · awaiting local runtime", on: true },
     { id: "body", label: "Body pose", health: "degraded", note: "starting · local pose model", on: true, disabled: false },
     { id: "shuttle", label: "Shuttle", health: "degraded", note: "unknown · awaiting local runtime", on: true },
@@ -129,7 +136,10 @@
   function trackerRow(tracker) {
     var dotClass = tracker.disabled ? "off" : tracker.health === "degraded" ? "warn" : tracker.on ? "" : "off";
     var colorHealth = tracker.health === "degraded" ? "warn" : "";
-    var switchButton = ui.el("button", { className: "bv-mini-switch", type: "button", role: "switch", "aria-checked": tracker.on, disabled: tracker.disabled, title: tracker.disabled ? tracker.note : "Toggle " + tracker.label, "aria-label": "Toggle " + tracker.label, onClick: function () { dispatch({ type: "SET_TRACKER", tracker: tracker.id, value: !tracker.on }, { type: "SET_TRACKER", tracker: tracker.id, value: !tracker.on }); } }, [ui.el("i")]);
+    var switchButton = null;
+    if (!tracker.noSwitch) {
+      switchButton = ui.el("button", { className: "bv-mini-switch", type: "button", role: "switch", "aria-checked": tracker.on, disabled: tracker.disabled, title: tracker.disabled ? tracker.note : "Toggle " + tracker.label, "aria-label": "Toggle " + tracker.label, onClick: function () { dispatch({ type: "SET_TRACKER", tracker: tracker.id, value: !tracker.on }, { type: "SET_TRACKER", tracker: tracker.id, value: !tracker.on }); } }, [ui.el("i")]);
+    }
     return ui.el("div", { className: "bv-tracker-row" + (tracker.disabled ? " unavailable" : "") }, [ui.el("i", { className: "bv-tracker-dot " + dotClass }), ui.el("span", { className: "bv-tracker-label" }, [tracker.label]), ui.el("span", { className: "bv-tracker-meta" }, [ui.el("span", { className: "bv-tracker-note " + colorHealth }, [tracker.on ? tracker.note : "off"]), switchButton])]);
   }
   function panelToggle(label, description, key, disabled) {
@@ -200,6 +210,21 @@
     root.setAttribute("data-bso-fallback", runtimeFallback ? (runtimeStatus.reason || "runtime-fallback") : "none");
     trackers[0].note = courtSeeded ? "seeded" : "not seeded";
     trackers[0].health = courtSeeded ? "ok" : "degraded";
+    trackers[0].on = courtSeeded;
+    // The detected block shows the real current tab when one is open. Title,
+    // channel, and duration come from the tab plus the content script's
+    // published bvVideoInfo; the demo fixture appears only as a labeled
+    // fallback outside a watch page.
+    var currentTabTitle = tabTitle ? String(tabTitle).replace(/\s*-\s*YouTube\s*$/, "").trim() : null;
+    var realTitle = detected && (videoInfo && videoInfo.url === (tabUrlForInfo() || null) ? videoInfo.title : null) || (detected ? currentTabTitle : null);
+    var realDetail = detected && videoInfo && videoInfo.url === tabUrlForInfo()
+      ? [videoInfo.channel, videoInfo.duration].filter(Boolean).join(" · ")
+      : null;
+    var detectedTitle = detected ? (realTitle || "Detecting video…") : fixture.video.title;
+    var detectedDetail = detected ? (realDetail || "reading video metadata…") : fixture.video.channel + " · " + fixture.video.duration;
+    var detectedChildren = [ui.el("strong", {}, [detectedTitle])];
+    if (!detected) detectedChildren.push(ui.badge("fixture preview", "neutral", false));
+    detectedChildren.push(ui.el("span", {}, [detectedDetail]));
     var header = ui.el("header", { className: "bv-popup-header" }, [ui.el("span", { className: "bv-logo" }, [ui.el("img", { src: "design-system/assets/logo-mark.svg", alt: "" }), ui.el("strong", { className: "bv-logo-name" }, ["Badminton Vision"])]), ui.el("span", { className: "bv-popup-head-actions" }, [ui.iconButton("settings", "Settings unavailable in local demo", { size: "sm", disabled: true }), ui.iconButton("x", "Close", { size: "sm", onClick: closePopup })])]);
     var statusState = state.enabled ? (runtimeFallback || runtimeStale ? "stale" : "live") : "ready";
     var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : "Rally " + state.rally) : detected ? "Badminton match found" : "No YouTube match";
@@ -211,7 +236,7 @@
         : fixtureReady
           ? ui.callout("guide", "Local fixture demo", "Any fixture result is an integration probe, not production CV. Nothing is uploaded; labels and corrections stay local.")
           : ui.callout("guide", "Local runtime pending", "The local pose model is starting. Until evidence arrives, player, shuttle, shot, rally-end, and winner fields remain unknown.");
-    var intro = ui.el("div", { className: "bv-popup-intro" }, [ui.statusChip(statusState, statusLabel, statusDetail), ui.el("div", { className: "bv-detected" }, [ui.el("span", { className: "bv-detected-icon" }, [ui.icon(detected ? "check" : "info", 15)]), ui.el("span", { className: "bv-detected-copy" }, [ui.el("strong", {}, [detected ? fixture.video.title : "Open a YouTube match"]), ui.el("span", {}, [detected ? fixture.video.channel + " · " + fixture.video.duration : "Badminton Vision runs on youtube.com/watch pages only."])])]), actionError ? ui.callout("warn", "Could not reach the YouTube tab", actionError + " Reload the tab and try again.") : null, !detected ? ui.callout("info", "Overlay unavailable here", "Open a youtube.com/watch page to use live overlay, court setup, or manual labeling. The summary remains available locally.") : backendNotice, !state.enabled && detected ? ui.callout("guide", "Three steps to get going", "Turn the overlay on, click the four court corners once, then keep watching — the video is never paused or moved.") : null, state.cameraCut ? ui.callout("warn", "Camera cut", "The court projection is stale. Re-seed the court; analysis stays paused while the video keeps playing.") : null]);
+    var intro = ui.el("div", { className: "bv-popup-intro" }, [ui.statusChip(statusState, statusLabel, statusDetail), ui.el("div", { className: "bv-detected" }, [ui.el("span", { className: "bv-detected-icon" }, [ui.icon(detected ? "check" : "info", 15)]), ui.el("span", { className: "bv-detected-copy" }, detectedChildren)]), actionError ? ui.callout("warn", "Could not reach the YouTube tab", actionError + " Reload the tab and try again.") : null, !detected ? ui.callout("info", "Overlay unavailable here", "Open a youtube.com/watch page to use live overlay, court setup, or manual labeling. The summary remains available locally.") : backendNotice, !state.enabled && detected ? ui.callout("guide", "Three steps to get going", "Turn the overlay on, click the four court corners once, then keep watching — the video is never paused or moved.") : null, state.cameraCut ? ui.callout("warn", "Camera cut", "The court projection is stale. Re-seed the court; analysis stays paused while the video keeps playing.") : null]);
 
     var barNodes = trackers.map(function (t) { return ui.el("i", { className: t.on ? (t.health === "degraded" ? "warn" : "") : "off" }); });
     var trackerHeader = ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-4)" } }, ["What's being tracked", ui.el("span", { className: "bv-tracker-bars" }, barNodes)]);
@@ -250,13 +275,15 @@
     }
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       var tabUrl = tabs && tabs[0] && tabs[0].url;
+      activeTabUrl = tabUrl || null;
+      tabTitle = tabs && tabs[0] && tabs[0].title ? tabs[0].title : null;
       detected = isWatchPage(tabUrl);
       var activeVideoKey = window.BVState.videoKeyForUrl(tabUrl);
       // Expose the detected page before storage hydration completes. Any
       // action in this small window is queued and replayed against the stored
       // video-local state rather than being overwritten by the read callback.
       render();
-      if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvRuntimeStatus"], function (result) {
+      if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvRuntimeStatus", "bvVideoInfo"], function (result) {
         if (result && result.bvState) {
           state = detected
             ? window.BVState.stateForVideo(result.bvState, activeVideoKey)
@@ -268,6 +295,7 @@
           state = window.BVState.stateForVideo(state, activeVideoKey);
         }
         if (result && result.bvRuntimeStatus) runtimeStatus = result.bvRuntimeStatus;
+        if (result && result.bvVideoInfo) videoInfo = result.bvVideoInfo;
         stateHydrated = true;
         persist();
         render();

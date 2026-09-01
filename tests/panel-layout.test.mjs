@@ -103,3 +103,27 @@ test("panel layouts reserve the native player control strip at the bottom", asyn
   const classic = api.pixelPanelLayout({ x: 0.1, y: 0.9, width: 0.3, height: 0.3 }, stripViewport, rendered, { minWidth: 220, minHeight: 96, maxWidth: 400, maxHeight: 300 });
   assert.ok(classic.top + classic.height > stripViewport.height - reserve, "no reserve keeps the old full-area placement");
 });
+
+test("a panel taller than the free area is height-capped so it can never cover the strip", async () => {
+  const api = await moduleApi("panel-layout.js", "BVPanelLayout");
+  const reserve = 72;
+  const constraints = { minWidth: 280, minHeight: 128, maxWidth: 560, maxHeight: 520, bottomReserve: reserve };
+  const smallViewport = { width: 640, height: 360 };
+  // The manual/feed panels can measure far taller than the space above the
+  // strip on a small player; the layout must cap the rendered height, not
+  // just nudge the top.
+  for (const renderedHeight of [520, 690, 2000]) {
+    const layout = api.pixelPanelLayout(null, smallViewport, { left: 12, top: 12, width: 380, height: renderedHeight }, constraints);
+    assert.ok(layout.top + layout.height <= smallViewport.height - reserve + 1e-9,
+      `a ${renderedHeight}px-tall panel is capped above the strip`);
+    assert.ok(api.isWithinBounds(layout, smallViewport, { left: 12, top: 12, width: 380, height: renderedHeight }, constraints),
+      `capped ${renderedHeight}px-tall panel stays within bounds`);
+    assert.ok(layout.height <= smallViewport.height - 2 * 12 - reserve + 1e-9,
+      `height itself never exceeds the free area above the strip`);
+  }
+  // Dragging such a panel down keeps the same guarantee.
+  const tall = api.pixelPanelLayout(null, smallViewport, { left: 12, top: 12, width: 380, height: 2000 }, constraints);
+  const moved = api.movePanelLayout({ x: tall.layout.x, y: tall.layout.y, width: tall.layout.width, height: tall.layout.height }, { x: 0, y: 10000 }, smallViewport, { left: 12, top: 12, width: 380, height: 2000 }, constraints);
+  const movedPixels = api.pixelPanelLayout(moved, smallViewport, { left: 12, top: 12, width: 380, height: 2000 }, constraints);
+  assert.ok(movedPixels.top + movedPixels.height <= smallViewport.height - reserve + 1e-9, "dragging a tall panel down keeps it above the strip");
+});
