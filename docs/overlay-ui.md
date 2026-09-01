@@ -19,6 +19,30 @@ control dimensions. The fresh package is produced only by `npm run build`; its
 CSS import closure is checked and its manifest has no retired `message_serialization`
 key or retired overlay entrypoints.
 
+## Overlay interaction reproduction and boundary
+
+The end-user trigger is the normal toolbar **Enable** action, followed by the
+four-corner court setup, or a density/manual-label action that renders the live
+panels. The masking condition is either an action arriving while the content
+script is still hydrating stored video state, or a narrow/theater/fullscreen
+video rectangle where a panel's default placement would cover a target. The
+visible symptom in the old path was an apparently missing/covered setup surface,
+a visible **Drag to move** grip on the court card, or a drag of a panel that
+also activated a button/court target. A stale retired overlay could add another
+mask after extension reload.
+
+The current path keeps one guarded content host, waits for hydration, and makes
+only each panel's non-interactive header a move surface. Buttons, court-layer
+clicks, video playback, and the normalized evidence SVG remain outside that
+surface. Court setup, stats, court map, stroke feed, manual labeling, live
+controls, and the live Evidence visibility panel use video-local normalized
+layout state. Resize handles clamp to the
+video viewport and expose arrow/Home keyboard behavior; a rerender reapplies
+the saved layout without changing playback. The setup header retains an
+accessible label and native tooltip, but no visible drag copy or grip button.
+The focused geometry and DOM regressions are in
+`tests/panel-layout.test.mjs` and `tests/live-onboarding.test.mjs`.
+
 The latest supplied design system has no redistributable font binaries. The
 extension therefore does not fetch Google Fonts or any other remote resource.
 `design-system/tokens/fonts.css` is packaged as a local/system policy sheet and
@@ -53,9 +77,12 @@ worked around by changing asset names or replacing the supplied logo.
 Using only the captain-approved dedicated Chrome instance, load/reload this
 worktree's fresh `dist/`, open the existing YouTube watch tab, and use the
 native toolbar action. Confirm that Minimal, Balanced, and Full density choices,
-all panel toggles, **Set up court**, and **Label it myself** work. Confirm the
-overlay panels are visibly treated and separated, icon controls retain their
-hit area, and a manual label can be saved/corrected/exported while
+all panel toggles, the Evidence visibility panel, **Set up court**, and
+**Label it myself** work. Confirm the overlay panels are visibly treated and
+separated, each panel header moves only
+its panel, resize handles stay within the video, setup corner clicks remain setup
+clicks, icon controls retain their hit area, and a manual label can be
+saved/corrected/exported while
 `paused`, `muted`, `playbackRate`, and `src` remain unchanged. The exact
 procedure and playback boundary are in [`docs/e2e-smoke.md`](e2e-smoke.md);
 toolbar-popup clicks remain the one native manual step outside page CDP.

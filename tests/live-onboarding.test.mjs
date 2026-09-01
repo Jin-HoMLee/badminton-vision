@@ -16,6 +16,7 @@ const contentBundleSources = [
   "src/analysis.js",
   "analysis/index.js",
   "src/calibration.js",
+  "src/panel-layout.js",
   "src/seed-card.js",
   "src/fixtures.js",
   "src/review.js",
@@ -208,7 +209,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
   context.removeEventListener = (name, listener) => { windowListeners[name] = (windowListeners[name] || []).filter((item) => item !== listener); };
   const files = bundle
     ? []
-    : ["src/state.js", "analysis/index.js", "src/calibration.js", "src/seed-card.js", "src/fixtures.js", "src/review.js", "src/analysis.js", "src/ui.js", "src/content.js"];
+    : ["src/state.js", "analysis/index.js", "src/calibration.js", "src/panel-layout.js", "src/seed-card.js", "src/fixtures.js", "src/review.js", "src/analysis.js", "src/ui.js", "src/content.js"];
   if (!bundle) {
     context.BVRuntime = {
       startIntegratedRuntime: (options = {}) => {
@@ -459,6 +460,97 @@ test("the bundled content entrypoint is parse-safe and mounts one host, listener
   session.onMessage(request);
   assert.equal(session.overlayRoot().querySelectorAll("[data-bso-court-seeding]").length, 1);
   assert.equal(session.runtimeStarts, 1);
+});
+
+test("all overlay panels expose independent move and resize semantics", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "SET_DENSITY", value: "full", requestId: "layout-full-1" });
+  let root = live.overlayRoot();
+  const panelIds = root.querySelectorAll("[data-bso-panel-layout]").map((panel) => panel.getAttribute("data-bso-panel"));
+  assert.deepEqual(panelIds.sort(), ["controls", "evidence", "feed", "map", "stats"]);
+  for (const panelId of panelIds) {
+    const panel = root.querySelector(`[data-bso-panel="${panelId}"]`);
+    assert.ok(panel.querySelector("[data-bso-panel-drag-handle]"), `${panelId} has a natural header drag surface`);
+    assert.ok(panel.querySelector("[data-bso-panel-resize-handle]"), `${panelId} has a resize affordance`);
+  }
+  live.onMessage({ type: "OPEN_LABELING", requestId: "layout-manual-1" });
+  root = live.overlayRoot();
+  const manual = root.querySelector('[data-bso-panel="manual"]');
+  assert.ok(manual, "manual labeling is a movable panel");
+  assert.ok(manual.querySelector("[data-bso-panel-drag-handle]"));
+  assert.ok(manual.querySelector("[data-bso-panel-resize-handle]"));
+});
+
+test("panel movement and controls remain separate, with layout retained across rerender", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "SET_DENSITY", value: "balanced", requestId: "layout-balanced-1" });
+  let root = live.overlayRoot();
+  const feed = root.querySelector('[data-bso-panel="feed"]');
+  const header = feed.querySelector("[data-bso-panel-drag-handle]");
+  const pointer = (node, type, x, y, id = 7, target = node) => node.dispatchEvent({
+    type, target, pointerId: id, button: 0, clientX: x, clientY: y,
+    preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }
+  });
+  pointer(header, "pointerdown", 10, 10);
+  pointer(header, "pointermove", 110, 70);
+  pointer(header, "pointerup", 110, 70);
+  const savedAfterMove = live.storageWrites.at(-1).bvState;
+  assert.ok(savedAfterMove.panelLayoutsByVideo["youtube:real-match"].feed.x > 0, "header drag stores a video-local position");
+
+  const beforeControl = JSON.stringify(savedAfterMove.panelLayouts.feed);
+  const densityButton = buttonWithText(root, "Density: balanced");
+  pointer(header, "pointerdown", 10, 10, 8, densityButton);
+  pointer(header, "pointermove", 300, 200, 8, densityButton);
+  pointer(header, "pointerup", 300, 200, 8, densityButton);
+  assert.equal(JSON.stringify(live.storageWrites.at(-1).bvState.panelLayouts.feed), beforeControl, "a control click does not start a panel drag");
+
+  live.onMessage({ type: "SET_DENSITY", value: "full", requestId: "layout-rerender-1" });
+  root = live.overlayRoot();
+  const rerenderedFeed = root.querySelector('[data-bso-panel="feed"]');
+  assert.equal(rerenderedFeed.style.left, "68px", "saved feed placement is applied after rerender and clamped");
+
+  const resize = rerenderedFeed.querySelector("[data-bso-panel-resize-handle]");
+  pointer(resize, "pointerdown", 10, 10, 9);
+  pointer(resize, "pointermove", 2000, 2000, 9);
+  pointer(resize, "pointerup", 2000, 2000, 9);
+  const resized = live.storageWrites.at(-1).bvState.panelLayouts.feed;
+  assert.ok(resized.width <= 0.875 && resized.height <= 1, "resize is capped to the video bounds");
+
+  const evidence = root.querySelector('[data-bso-panel="evidence"]');
+  const evidenceHeader = evidence.querySelector("[data-bso-panel-drag-handle]");
+  pointer(evidenceHeader, "pointerdown", 10, 10, 10);
+  pointer(evidenceHeader, "pointermove", 150, 100, 10);
+  pointer(evidenceHeader, "pointerup", 150, 100, 10);
+  assert.ok(live.storageWrites.at(-1).bvState.panelLayoutsByVideo["youtube:real-match"].evidence, "evidence visibility layout is persisted independently");
+  const evidenceResize = evidence.querySelector("[data-bso-panel-resize-handle]");
+  const beforeEvidenceWidth = live.storageWrites.at(-1).bvState.panelLayouts.evidence.width;
+  evidenceResize.dispatchEvent({ type: "keydown", target: evidenceResize, key: "ArrowRight", preventDefault() {}, stopPropagation() {} });
+  assert.ok(live.storageWrites.at(-1).bvState.panelLayouts.evidence.width >= beforeEvidenceWidth, "resize keyboard affordance changes only the panel size");
+});
+
+test("court setup keeps corners clickable without a visible drag instruction", async () => {
+  const live = await createSession();
+  live.flushStorage();
+  live.onMessage({ type: "START_SEED", requestId: "layout-seed-1" });
+  const root = live.overlayRoot();
+  const layer = root.querySelector("[data-bso-court-seeding]");
+  const card = layer.querySelector("[data-bso-seed-card]");
+  const header = card.querySelector("[data-bso-panel-drag-handle]");
+  assert.equal(card.querySelector(".bv-seed-card-handle-text"), null);
+  assert.equal(card.querySelectorAll("button").some((button) => button.getAttribute("data-bso-seed-card-handle") === "true"), false);
+  assert.doesNotMatch(textOf(card), /Drag to move/);
+  const pointer = (node, type, x, y, id = 11) => node.dispatchEvent({
+    type, target: node, pointerId: id, button: 0, clientX: x, clientY: y,
+    preventDefault() {}, stopPropagation() {}
+  });
+  pointer(header, "pointerdown", 20, 20);
+  pointer(header, "pointermove", 250, 120);
+  pointer(header, "pointerup", 250, 120);
+  assert.equal(live.host().getAttribute("data-bso-seed-count"), "0", "moving the setup header does not seed a point");
+  layer.dispatchEvent({ type: "click", target: layer, clientX: 80, clientY: 280 });
+  assert.equal(live.host().getAttribute("data-bso-seed-count"), "1", "a click on the layer remains a court-corner action");
 });
 
 test("content runtime initialization failures remain visible and keep manual UI available", async () => {

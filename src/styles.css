@@ -185,6 +185,17 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-panel { width: 100%; overflow: hidden; border: 1px solid var(--border-hairline); border-radius: var(--radius-lg); background: var(--surface-panel); box-shadow: var(--shadow-panel); }
 .bv-panel.solid { background: var(--surface-panel-solid); }
 .bv-panel-header { display: flex; align-items: center; gap: var(--sp-4); min-height: 32px; padding: 0 var(--sp-3) 0 var(--sp-5); border-bottom: 1px solid var(--border-hairline); background: rgba(255,255,255,.02); }
+.bv-panel-layout { position: absolute; box-sizing: border-box; max-width: calc(100% - 24px); max-height: calc(100% - 24px); }
+.bv-panel-layout > .bv-panel-header { cursor: grab; touch-action: none; user-select: none; }
+.bv-panel-layout > .bv-seed-card-top { cursor: grab; touch-action: none; user-select: none; }
+.bv-panel-layout.is-dragging > .bv-panel-header { cursor: grabbing; }
+.bv-panel-layout.is-dragging > .bv-seed-card-top { cursor: grabbing; }
+.bv-panel-layout > .bv-panel-header:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.bv-panel-layout > .bv-seed-card-top:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.bv-panel-resize-handle { position: absolute; right: 2px; bottom: 2px; z-index: 4; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-faint); cursor: nwse-resize; touch-action: none; opacity: .7; }
+.bv-panel-resize-handle:hover, .bv-panel-resize-handle:focus-visible { color: var(--lime-500); background: var(--lime-tint); opacity: 1; }
+.bv-panel-resize-handle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.bv-panel-layout .bv-panel-body { min-width: 0; min-height: 0; overflow: auto; }
 .bv-panel-header h2 { margin: 0; font: var(--type-label); letter-spacing: var(--ls-caps); text-transform: uppercase; color: var(--text-muted); }
 .bv-panel-time { font: var(--type-mono); font-size: var(--fs-10); color: var(--text-faint); }
 .bv-panel-time.stale { color: var(--signal-warn); }
@@ -258,6 +269,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-suggestion-shot { font: var(--type-ui); color: var(--text-primary); }
 .bv-suggestion-time { font: var(--type-mono); font-size: var(--fs-10); color: var(--text-faint); }
 .bv-court { display: block; }
+.bv-court-panel .bv-court { width: 100%; height: auto; }
 
 /* Manual labeling */
 .bv-label-panel { max-height: min(690px, calc(100vh - 32px)); display: flex; flex-direction: column; }
@@ -326,6 +338,13 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-overlay-feed { width: var(--overlay-panel-width); }
 .bv-overlay-label { position: absolute; right: var(--overlay-gutter); top: var(--overlay-gutter); bottom: var(--overlay-gutter); width: min(380px, calc(100% - 32px)); pointer-events: auto; }
 .bv-overlay-actions { position: absolute; right: var(--overlay-gutter); bottom: 56px; display: flex; gap: var(--sp-3); pointer-events: auto; }
+.bv-overlay-root > [data-bso-panel="evidence"] { left: var(--overlay-gutter); top: 58px; width: min(268px, calc(100% - 32px)); }
+.bv-overlay-root > [data-bso-panel="stats"] { left: var(--overlay-gutter); top: 58px; width: var(--overlay-panel-width); }
+.bv-overlay-root > [data-bso-panel="map"] { left: var(--overlay-gutter); bottom: 16px; width: 176px; }
+.bv-overlay-root > [data-bso-panel="feed"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: var(--overlay-panel-width); }
+.bv-overlay-root > [data-bso-panel="manual"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: min(380px, calc(100% - 32px)); max-height: calc(100% - 32px); }
+.bv-overlay-root > [data-bso-panel="controls"] { right: var(--overlay-gutter); bottom: 56px; width: auto; min-width: 180px; }
+.bv-controls-panel .bv-panel-body { display: flex; flex-wrap: wrap; align-items: center; }
 .bv-runtime-evidence { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .bv-runtime-evidence * { pointer-events: none; }
 .bv-overlay-root > .bv-runtime-evidence { pointer-events: none; }
@@ -353,11 +372,12 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-seed-point { position: absolute; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; z-index: 2; border-radius: 50%; transform: translate(-50%,-50%); background: var(--lime-500); color: var(--text-on-accent); font: var(--type-mono); font-size: var(--fs-10); box-shadow: 0 2px 8px rgba(0,0,0,.5); pointer-events: none; }
 .bv-seed-card { position: absolute; left: 50%; top: 35%; bottom: auto; z-index: 3; box-sizing: border-box; width: min(560px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow: auto; transform: translateX(-50%); padding: var(--sp-5); border: 2px solid var(--lime-500); border-radius: var(--radius-lg); background: var(--ink-900); color: var(--text-body); box-shadow: 0 8px 28px rgba(0,0,0,.72); cursor: default; }
 .bv-seed-card.is-dragging { user-select: none; }
-.bv-seed-card-top { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-4); }
+.bv-seed-card-top { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-4); min-height: 32px; }
 .bv-seed-card-title { font: var(--fw-semibold) var(--fs-14)/1.3 var(--font-sans); color: var(--text-primary); }
-.bv-seed-card-handle { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: 30px; padding: 0 var(--sp-3); border: 1px solid var(--lime-500); border-radius: var(--radius-sm); background: var(--lime-tint); color: var(--lime-500); font: var(--type-label); letter-spacing: var(--ls-caps); cursor: grab; touch-action: none; }
+/* Kept as a semantic selector for the setup header; there is no visible grip
+   or instructional copy, so the header remains a natural drag surface. */
+.bv-seed-card-handle { cursor: grab; touch-action: none; }
 .bv-seed-card-handle:active, .bv-seed-card.is-dragging .bv-seed-card-handle { cursor: grabbing; }
-.bv-seed-card-handle:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
 .bv-seed-card-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-left: auto; }
 .bv-seed-card p { margin: var(--sp-4) 0 0; font: var(--type-body-sm); font-size: var(--fs-12); color: var(--text-body); }
 .bv-seed-note { display: flex; align-items: flex-start; gap: var(--sp-3); margin-top: var(--sp-4); padding-top: var(--sp-4); border-top: 1px solid var(--border-subtle); font: var(--type-ui-sm); font-size: var(--fs-11); color: var(--text-body); }

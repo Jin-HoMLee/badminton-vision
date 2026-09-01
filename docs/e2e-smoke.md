@@ -102,7 +102,12 @@ page-console call:
    playback action. If the local model cannot initialize, record the exact
    `inference=false`, analyzer, backend, and fallback markers; do not enable a
    fixture result or turn unknown evidence into a detection.
-5. Open manual labeling with the pencil action (or `O`), mark Start/End while
+5. Drag each visible panel from its header and resize at least one panel from
+   its corner. Confirm the header action buttons, court-layer corner clicks,
+   video playback, and evidence drawing are unaffected; resize must remain
+   inside the video. Re-render with a density change and confirm the saved
+   panel placement remains.
+6. Open manual labeling with the pencil action (or `O`), mark Start/End while
    playback continues, choose a shot and optional player/dimensions, then click
    **Save label**. Re-open the saved row, change its label, and save the
    **Save correction** action to verify the same event id is updated. Click

@@ -28,9 +28,12 @@
     seedPoints: [],
     // A draft is deliberately separate so Cancel can preserve a prior court.
     seedDraftPoints: [],
-    // The instruction card is video-local UI state, stored as normalized
-    // top-left coordinates so resize/fullscreen can clamp it safely.
+    // Kept for migration from the first movable court-card implementation.
     seedCardPosition: null,
+    // Overlay geometry is normalized to the video rectangle and scoped by
+    // video so theater/fullscreen changes can clamp it without touching video.
+    panelLayouts: {},
+    panelLayoutsByVideo: {},
     calibration: null,
     calibrationError: null,
     rally: 14,
@@ -62,6 +65,48 @@
     var y = Number(position.y);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
+  }
+
+  var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls", "evidence"];
+
+  function copyPanelLayout(layout) {
+    if (!layout || typeof layout !== "object") return null;
+    var result = {};
+    ["x", "y", "width", "height"].forEach(function (key) {
+      if (layout[key] == null || layout[key] === "") return;
+      var value = Number(layout[key]);
+      if (!Number.isFinite(value)) return;
+      value = Math.max(0, Math.min(1, value));
+      if ((key === "width" || key === "height") && value === 0) return;
+      result[key] = value;
+    });
+    return Object.keys(result).length ? result : null;
+  }
+
+  function copyPanelLayouts(layouts) {
+    var result = {};
+    if (!layouts || typeof layouts !== "object") return result;
+    PANEL_LAYOUT_KEYS.forEach(function (key) {
+      var layout = copyPanelLayout(layouts[key]);
+      if (layout) result[key] = layout;
+    });
+    return result;
+  }
+
+  function copyPanelLayoutMap(raw) {
+    var result = {};
+    if (!raw || typeof raw !== "object") return result;
+    Object.keys(raw).forEach(function (key) {
+      var layouts = copyPanelLayouts(raw[key]);
+      if (Object.keys(layouts).length) result[String(key)] = layouts;
+    });
+    return result;
+  }
+
+  function panelLayoutsForVideo(stateOrMap, videoKey) {
+    var map = stateOrMap && stateOrMap.panelLayoutsByVideo ? stateOrMap.panelLayoutsByVideo : stateOrMap;
+    if (!map || videoKey == null || !map[String(videoKey)]) return {};
+    return copyPanelLayouts(map[String(videoKey)]);
   }
 
   function copyRecords(records) {
@@ -278,8 +323,9 @@
     var key = videoKey == null ? current.videoKey : String(videoKey);
     // The first active page is the only safe destination for an old global
     // array. Once migrated, subsequent videos only see their own map entry.
-    if (key && !current.videoKey && current.manualLabels.length && !mapKeys(current.manualLabelsByVideo).length) {
-      current.manualLabelsByVideo[key] = copyRecords(current.manualLabels);
+    if (key && !current.videoKey) {
+      if (current.manualLabels.length && !mapKeys(current.manualLabelsByVideo).length) current.manualLabelsByVideo[key] = copyRecords(current.manualLabels);
+      if (Object.keys(current.panelLayouts).length) current.panelLayoutsByVideo[key] = copyPanelLayouts(current.panelLayouts);
       current.videoKey = key;
     }
     if (!key || current.videoKey === key) {
@@ -301,6 +347,16 @@
     value.seedPoints = copyPoints(raw.seedPoints);
     value.seedDraftPoints = copyPoints(raw.seedDraftPoints);
     value.seedCardPosition = copyCardPosition(raw.seedCardPosition);
+    value.panelLayoutsByVideo = copyPanelLayoutMap(raw.panelLayoutsByVideo);
+    value.panelLayouts = copyPanelLayouts(raw.panelLayouts);
+    // Migrate a saved court-card position without retaining the old visible
+    // grip affordance. New writes use the generic per-panel layout contract.
+    if (value.seedCardPosition && !value.panelLayouts.courtSetup) value.panelLayouts.courtSetup = copyPanelLayout(value.seedCardPosition);
+    if (raw.videoKey != null) {
+      var panelVideoKey = String(raw.videoKey);
+      if (Object.keys(value.panelLayouts).length) value.panelLayoutsByVideo[panelVideoKey] = Object.assign({}, value.panelLayoutsByVideo[panelVideoKey] || {}, copyPanelLayouts(value.panelLayouts));
+      if (value.panelLayoutsByVideo[panelVideoKey]) value.panelLayouts = copyPanelLayouts(value.panelLayoutsByVideo[panelVideoKey]);
+    }
     var labelOptions = options || {};
     var mapSource = raw.manualLabelsByVideo || raw.labelsByVideo || (raw.manualLabelStore && raw.manualLabelStore.videos) || {};
     value.manualLabelsByVideo = copyLabelMap(mapSource, labelOptions);
@@ -344,6 +400,7 @@
       seedCardPosition: null,
       calibration: null,
       calibrationError: null,
+      panelLayouts: panelLayoutsForVideo(current, key),
       manualLabels: labels,
       lastEdit: undo
     }), options);
@@ -380,6 +437,20 @@
       case "START_SEED": return Object.assign(current, { enabled: true, seeding: true, labeling: false, seedDraftPoints: [], calibrationError: null });
       case "SET_SEED_DRAFT": return Object.assign(current, { seedDraftPoints: copyPoints(action.points), calibrationError: action.error || null });
       case "SET_SEED_CARD_POSITION": return Object.assign(current, { seedCardPosition: copyCardPosition(action.position) });
+      case "SET_PANEL_LAYOUT": {
+        if (PANEL_LAYOUT_KEYS.indexOf(action.panel) < 0) return current;
+        var layoutKey = action.videoKey != null ? String(action.videoKey) : current.videoKey;
+        var nextLayouts = layoutKey && current.videoKey !== layoutKey
+          ? panelLayoutsForVideo(current, layoutKey)
+          : copyPanelLayouts(current.panelLayouts);
+        var nextLayout = copyPanelLayout(action.layout);
+        if (nextLayout) nextLayouts[action.panel] = nextLayout;
+        else delete nextLayouts[action.panel];
+        var nextLayoutMap = copyPanelLayoutMap(current.panelLayoutsByVideo);
+        if (layoutKey) nextLayoutMap[layoutKey] = copyPanelLayouts(nextLayouts);
+        return initialExtensionState(Object.assign({}, current, { videoKey: layoutKey || current.videoKey, seedCardPosition: null, panelLayouts: nextLayouts, panelLayoutsByVideo: nextLayoutMap }));
+      }
+      case "RESET_PANEL_LAYOUT": return reduceExtensionState(current, { type: "SET_PANEL_LAYOUT", videoKey: action.videoKey, panel: action.panel, layout: null });
       case "LOCK_COURT": return Object.assign(current, {
         enabled: true,
         seeded: true,
@@ -504,6 +575,8 @@
     normalizeLabelStore: function (input, videoKey, options) { return stateForVideo(input, videoKey, options); },
     stateForVideo: stateForVideo,
     labelsForVideo: labelsForVideo,
+    PANEL_LAYOUT_KEYS: PANEL_LAYOUT_KEYS.slice(),
+    panelLayoutsForVideo: panelLayoutsForVideo,
     createManualEventId: createManualEventId,
     videoKeyForUrl: videoKeyForUrl,
     resetVideoLocalState: resetVideoLocalState,

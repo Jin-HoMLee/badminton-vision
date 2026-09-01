@@ -116,13 +116,39 @@
 
   function panel(title, opts, children) {
     opts = opts || {};
-    var section = el("section", { className: "bv-panel" + (opts.solid ? " solid" : "") + (opts.className ? " " + opts.className : ""), style: opts.style, "aria-label": title });
+    var movable = Boolean(opts.layoutId);
+    var section = el("section", {
+      className: "bv-panel" + (opts.solid ? " solid" : "") + (opts.className ? " " + opts.className : "") + (movable ? " bv-panel-layout" : ""),
+      style: opts.style,
+      "aria-label": title,
+      "data-bso-panel": opts.layoutId,
+      "data-bso-panel-layout": movable ? "true" : null,
+      "data-bso-panel-resizable": movable && opts.resizable !== false ? "true" : "false"
+    });
     if (title || opts.actions) {
-      var heading = el("header", { className: "bv-panel-header" }, [opts.icon ? icon(opts.icon, 13) : null, title ? el("h2", {}, [title]) : null, opts.mediaTime ? el("span", { className: "bv-panel-time" + (opts.stale ? " stale" : "") }, [opts.mediaTime + (opts.stale ? " · stale" : "")]) : null, el("span", { className: "bv-panel-actions" }, opts.actions || [])]);
+      var movementHelp = movable ? "Move the " + title.toLowerCase() + " panel. Drag this header or use arrow keys; Home resets the panel." : null;
+      var heading = el("header", {
+        className: "bv-panel-header",
+        tabindex: movable ? "0" : null,
+        role: movable ? "group" : null,
+        "aria-label": movable ? title + " panel header; drag to move, or use arrow keys" : null,
+        "aria-keyshortcuts": movable ? "ArrowLeft ArrowRight ArrowUp ArrowDown Home" : null,
+        "aria-grabbed": movable ? "false" : null,
+        title: movementHelp,
+        "data-bso-panel-drag-handle": movable ? "true" : null
+      }, [opts.icon ? icon(opts.icon, 13) : null, title ? el("h2", {}, [title]) : null, opts.mediaTime ? el("span", { className: "bv-panel-time" + (opts.stale ? " stale" : "") }, [opts.mediaTime + (opts.stale ? " · stale" : "")]) : null, el("span", { className: "bv-panel-actions" }, opts.actions || [])]);
       section.appendChild(heading);
     }
     if (!opts.collapsed) section.appendChild(el("div", { className: "bv-panel-body", style: opts.bodyStyle }, children || []));
     if (!opts.collapsed && opts.footer) section.appendChild(el("footer", { className: "bv-panel-footer" }, opts.footer));
+    if (movable && opts.resizable !== false) section.appendChild(el("button", {
+      className: "bv-panel-resize-handle",
+      type: "button",
+      "aria-label": "Resize " + title.toLowerCase() + " panel",
+      "aria-keyshortcuts": "ArrowLeft ArrowRight ArrowUp ArrowDown Home",
+      title: "Drag to resize. Use arrow keys for precise sizing; Home resets the size.",
+      "data-bso-panel-resize-handle": "true"
+    }, [icon("grip", 12)]));
     return section;
   }
 

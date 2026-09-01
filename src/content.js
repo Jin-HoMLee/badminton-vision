@@ -14,6 +14,9 @@
   var data = window.BVFixtures;
   var calibrationApi = window.BVCalibration;
   var seedCardApi = window.BVSeedCard;
+  // The packed MV3 bundle loads this pure helper before the content entrypoint.
+  // Keep direct-source recovery/tests tolerant of an older partial bundle.
+  var panelLayoutApi = window.BVPanelLayout || null;
   var state = window.BVState.initialExtensionState();
   // Popup actions can arrive while the initial storage read is still pending.
   // Hold them until the stored video-local state is applied so hydration cannot
@@ -85,7 +88,7 @@
   };
   var publishedRuntimeKey = null;
   var lastRuntimeRenderAt = 0;
-  var seedCardDrag = null;
+  var panelGesture = null;
 
   function hasSeenMessage(message) {
     var requestId = message && message.requestId;
@@ -144,7 +147,7 @@
       state = window.BVState.reduceExtensionState(state, { type: "CAMERA_CUT" });
       calibration = null;
       seedPoints = [];
-      seedCardDrag = null;
+      panelGesture = null;
       persist();
     }
     restoreReviewState();
@@ -331,7 +334,7 @@
     state.videoUrl = window.location && /^https?:/.test(window.location.href) ? window.location.href : null;
     calibration = null;
     seedPoints = [];
-    seedCardDrag = null;
+    panelGesture = null;
     editingEventId = null;
     strokes = [];
     suggestion = null;
@@ -390,7 +393,7 @@
       ? "inset(" + rect.clipInsets.top + "px " + rect.clipInsets.right + "px " + rect.clipInsets.bottom + "px " + rect.clipInsets.left + "px)"
       : "none";
     host.setAttribute("data-bso-video-geometry", "rendered-content-box");
-    refreshSeedCardPosition();
+    refreshPanelLayouts();
   }
   function resetVideoResizeObserver() {
     if (videoResizeObserver) videoResizeObserver.disconnect();
@@ -512,121 +515,172 @@
       ? seedCardApi.canSeedFromClick(event.target, layer, seedPoints.length, event.defaultPrevented)
       : !event.defaultPrevented && event.target === layer && seedPoints.length < 4;
   }
-  function seedCardMetrics(layer, card) {
-    var layerRect = layer && typeof layer.getBoundingClientRect === "function" ? layer.getBoundingClientRect() : { width: 0, height: 0 };
-    var cardRect = card && typeof card.getBoundingClientRect === "function" ? card.getBoundingClientRect() : { width: 0, height: 0 };
+  var PANEL_LAYOUT_CONSTRAINTS = {
+    courtSetup: { minWidth: 280, minHeight: 170, maxWidth: 560, maxHeight: 680 },
+    stats: { minWidth: 220, minHeight: 128, maxWidth: 460, maxHeight: 420 },
+    map: { minWidth: 176, minHeight: 190, maxWidth: 360, maxHeight: 520 },
+    feed: { minWidth: 280, minHeight: 128, maxWidth: 560, maxHeight: 520 },
+    manual: { minWidth: 320, minHeight: 300, maxWidth: 620, maxHeight: 690 },
+    controls: { minWidth: 180, minHeight: 84, maxWidth: 360, maxHeight: 220 },
+    evidence: { minWidth: 220, minHeight: 180, maxWidth: 420, maxHeight: 520 }
+  };
+  function panelConstraints(panelId) { return PANEL_LAYOUT_CONSTRAINTS[panelId] || {}; }
+  function panelMetrics(container, panel) {
+    var containerRect = container && typeof container.getBoundingClientRect === "function" ? container.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
+    var panelRect = panel && typeof panel.getBoundingClientRect === "function" ? panel.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
     return {
-      viewport: { width: Math.max(0, layerRect.width || 0), height: Math.max(0, layerRect.height || 0) },
-      card: { width: Math.max(0, cardRect.width || 0), height: Math.max(0, cardRect.height || 0) }
+      viewport: { width: Math.max(0, Number(containerRect.width) || 0), height: Math.max(0, Number(containerRect.height) || 0) },
+      rendered: {
+        left: (Number(panelRect.left) || 0) - (Number(containerRect.left) || 0),
+        top: (Number(panelRect.top) || 0) - (Number(containerRect.top) || 0),
+        width: Math.max(0, Number(panelRect.width) || 0),
+        height: Math.max(0, Number(panelRect.height) || 0)
+      }
     };
   }
-  function seedCardPositionFromLayout(layer, card) {
-    var metrics = seedCardMetrics(layer, card);
-    var layerRect = layer.getBoundingClientRect();
-    var cardRect = card.getBoundingClientRect();
-    return {
-      x: metrics.viewport.width ? (cardRect.left - layerRect.left) / metrics.viewport.width : 0,
-      y: metrics.viewport.height ? (cardRect.top - layerRect.top) / metrics.viewport.height : 0
-    };
+  function panelContainer(panel) { return panel && panel.parentNode ? panel.parentNode : root; }
+  function panelLayoutFor(panelId, container, panel) {
+    var metrics = panelMetrics(container, panel);
+    return { layout: state.panelLayouts && state.panelLayouts[panelId] || null, viewport: metrics.viewport, rendered: metrics.rendered };
   }
-  function applySeedCardPosition(layer, card, position) {
-    if (!seedCardApi) return seedCardPositionFromLayout(layer, card);
-    var metrics = seedCardMetrics(layer, card);
-    var result = seedCardApi.pixelSeedCardPosition(position, metrics.viewport, metrics.card);
-    card.style.left = result.left + "px";
-    card.style.top = result.top + "px";
-    card.style.right = "auto";
-    card.style.bottom = "auto";
-    card.style.transform = "none";
-    card.setAttribute("data-bso-seed-card-position", position ? "custom" : "default");
-    card.setAttribute("data-bso-seed-card-bounds", "clamped");
-    return result.position;
+  function applyPanelLayout(container, panel, panelId, layout) {
+    if (!panel || !panelLayoutApi || typeof panelLayoutApi.pixelPanelLayout !== "function") return null;
+    var metrics = panelMetrics(container, panel);
+    // Resolve the CSS default once into the same bounded pixel contract used
+    // by saved layouts. This keeps a newly rendered panel inside the video on
+    // small players without persisting a viewport-specific default.
+    var result = panelLayoutApi.pixelPanelLayout(layout, metrics.viewport, metrics.rendered, panelConstraints(panelId));
+    panel.style.left = result.left + "px"; panel.style.top = result.top + "px";
+    panel.style.right = "auto"; panel.style.bottom = "auto";
+    panel.style.width = result.width + "px"; panel.style.height = result.height + "px";
+    panel.style.transform = "none";
+    panel.setAttribute("data-bso-panel-bounds", "clamped");
+    return result;
   }
-  function refreshSeedCardPosition() {
-    if (!root || !state.seeding) return;
-    var layer = root.querySelector && root.querySelector("[data-bso-court-seeding]");
-    var card = layer && layer.querySelector("[data-bso-seed-card]");
-    if (layer && card) applySeedCardPosition(layer, card, state.seedCardPosition);
+  function refreshPanelLayouts() {
+    if (!root || !root.querySelectorAll || !panelLayoutApi) return;
+    root.querySelectorAll("[data-bso-panel-layout]").forEach(function (panel) {
+      var panelId = panel.getAttribute("data-bso-panel");
+      if (panelId) applyPanelLayout(panelContainer(panel), panel, panelId, state.panelLayouts && state.panelLayouts[panelId]);
+    });
   }
-  function storeSeedCardPosition(position) {
-    state = window.BVState.reduceExtensionState(state, { type: "SET_SEED_CARD_POSITION", position: position });
+  function storePanelLayout(panelId, layout) {
+    state = window.BVState.reduceExtensionState(state, { type: "SET_PANEL_LAYOUT", panel: panelId, videoKey: activeVideoKey || currentVideoKey(), layout: layout });
     persist();
   }
-  function resetSeedCardPosition() {
-    storeSeedCardPosition(null);
-    render();
+  function panelEventId(event) { return event && event.pointerId == null ? 0 : event && event.pointerId; }
+  function eventHasInteractiveAncestor(target, boundary) {
+    var node = target;
+    while (node && node !== boundary) {
+      if (isInteractiveTarget(node) || node.className && String(node.className).split(/\s+/).indexOf("bv-panel-actions") >= 0) return true;
+      node = node.parentNode;
+    }
+    return false;
+  }
+  function setPanelGestureState(gesture, active) {
+    if (!gesture) return;
+    if (gesture.surface && gesture.surface.setAttribute) gesture.surface.setAttribute("aria-grabbed", active ? "true" : "false");
+    if (gesture.panel && gesture.panel.classList) gesture.panel.classList.toggle("is-dragging", active);
+  }
+  function panelPointerMove(event) {
+    var gesture = panelGesture;
+    if (!gesture || panelEventId(event) !== gesture.pointerId || !panelLayoutApi) return;
+    if (event.preventDefault) event.preventDefault();
+    if (event.stopPropagation) event.stopPropagation();
+    var delta = { x: (Number(event.clientX) || 0) - gesture.clientX, y: (Number(event.clientY) || 0) - gesture.clientY };
+    var next = gesture.kind === "resize"
+      ? panelLayoutApi.resizePanelLayout(gesture.layout, delta, gesture.viewport, gesture.rendered, panelConstraints(gesture.panelId))
+      : panelLayoutApi.movePanelLayout(gesture.layout, delta, gesture.viewport, gesture.rendered, panelConstraints(gesture.panelId));
+    applyPanelLayout(gesture.container, gesture.panel, gesture.panelId, next);
+    gesture.current = next;
+  }
+  function finishPanelGesture(event, cancelled) {
+    var gesture = panelGesture;
+    if (!gesture || panelEventId(event) !== gesture.pointerId) return;
+    if (event.preventDefault) event.preventDefault();
+    if (event.stopPropagation) event.stopPropagation();
+    if (gesture.surface && gesture.surface.releasePointerCapture && gesture.surface.hasPointerCapture && gesture.surface.hasPointerCapture(gesture.pointerId)) gesture.surface.releasePointerCapture(gesture.pointerId);
+    setPanelGestureState(gesture, false); panelGesture = null;
+    if (!cancelled && gesture.current) storePanelLayout(gesture.panelId, gesture.current);
+  }
+  function beginPanelGesture(event, container, panel, panelId, surface, kind) {
+    if (event.button != null && event.button !== 0) return;
+    if (kind === "move" && eventHasInteractiveAncestor(event.target, surface)) return;
+    if (panelGesture) finishPanelGesture({ pointerId: panelGesture.pointerId, preventDefault: function () {}, stopPropagation: function () {} }, true);
+    var current = panelLayoutFor(panelId, container, panel);
+    var layout = current.layout || {
+      x: current.viewport.width ? current.rendered.left / current.viewport.width : 0,
+      y: current.viewport.height ? current.rendered.top / current.viewport.height : 0,
+      width: current.viewport.width ? current.rendered.width / current.viewport.width : 0,
+      height: current.viewport.height ? current.rendered.height / current.viewport.height : 0
+    };
+    if (event.preventDefault) event.preventDefault();
+    if (event.stopPropagation) event.stopPropagation();
+    panelGesture = { pointerId: panelEventId(event), clientX: Number(event.clientX) || 0, clientY: Number(event.clientY) || 0, panelId: panelId, panel: panel, container: container, surface: surface, kind: kind, layout: layout, current: layout, viewport: current.viewport, rendered: current.rendered };
+    setPanelGestureState(panelGesture, true);
+    if (surface.setPointerCapture) surface.setPointerCapture(panelGesture.pointerId);
+  }
+  function resetPanelLayout(panelId, keepPosition) {
+    var current = state.panelLayouts && state.panelLayouts[panelId] || null;
+    var next = keepPosition && current ? { x: current.x, y: current.y } : null;
+    storePanelLayout(panelId, next); render();
     setTimeout(function () {
-      var handle = root && root.querySelector && root.querySelector("[data-bso-seed-card-handle]");
-      if (handle && typeof handle.focus === "function") handle.focus();
+      var panel = root && root.querySelector && root.querySelector('[data-bso-panel="' + panelId + '"]');
+      var focusTarget = panel && panel.querySelector && panel.querySelector("[data-bso-panel-drag-handle]");
+      if (focusTarget && typeof focusTarget.focus === "function") focusTarget.focus();
     }, 0);
   }
-  function installSeedCardMovement(layer, card, handle) {
-    function stop(event) { event.stopPropagation(); }
-    function currentPosition() { return state.seedCardPosition || seedCardPositionFromLayout(layer, card); }
-    function move(event) {
-      if (!seedCardDrag || event.pointerId !== seedCardDrag.pointerId) return;
-      event.preventDefault();
-      event.stopPropagation();
-      var metrics = seedCardMetrics(layer, card);
-      var position = seedCardApi
-        ? seedCardApi.moveSeedCardPosition(seedCardDrag.position, { x: event.clientX - seedCardDrag.clientX, y: event.clientY - seedCardDrag.clientY }, metrics.viewport, metrics.card)
-        : currentPosition();
-      applySeedCardPosition(layer, card, position);
-      seedCardDrag.position = position;
+  function keyboardPanelInteraction(event, container, panel, panelId, surface, kind) {
+    // The resize surface is an intentional button, so its own key events must
+    // remain available even though descendant controls are excluded from drag
+    // handling on ordinary headers.
+    if (event.target !== surface && eventHasInteractiveAncestor(event.target, surface)) return;
+    var key = event.key;
+    if (key !== "Home" && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].indexOf(key) < 0) return;
+    if (event.preventDefault) event.preventDefault();
+    if (event.stopPropagation) event.stopPropagation();
+    if (key === "Home") { resetPanelLayout(panelId, kind === "resize"); return; }
+    var current = panelLayoutFor(panelId, container, panel);
+    var layout = current.layout || {
+      x: current.viewport.width ? current.rendered.left / current.viewport.width : 0,
+      y: current.viewport.height ? current.rendered.top / current.viewport.height : 0,
+      width: current.viewport.width ? current.rendered.width / current.viewport.width : 0,
+      height: current.viewport.height ? current.rendered.height / current.viewport.height : 0
+    };
+    if (!panelLayoutApi) return;
+    var next = kind === "resize"
+      ? panelLayoutApi.nudgePanelSize(layout, key, current.viewport, current.rendered, panelConstraints(panelId))
+      : panelLayoutApi.nudgePanelLayout(layout, key, current.viewport, current.rendered, panelConstraints(panelId));
+    applyPanelLayout(container, panel, panelId, next); storePanelLayout(panelId, next);
+  }
+  function installPanelInteractions(container, panel, panelId) {
+    var header = panel && panel.querySelector && panel.querySelector("[data-bso-panel-drag-handle]");
+    var resize = panel && panel.querySelector && panel.querySelector("[data-bso-panel-resize-handle]");
+    if (!header) return;
+    header.addEventListener("pointerdown", function (event) { beginPanelGesture(event, container, panel, panelId, header, "move"); });
+    header.addEventListener("pointermove", panelPointerMove); header.addEventListener("pointerup", function (event) { finishPanelGesture(event, false); }); header.addEventListener("pointercancel", function (event) { finishPanelGesture(event, true); });
+    header.addEventListener("keydown", function (event) { keyboardPanelInteraction(event, container, panel, panelId, header, "move"); });
+    if (resize) {
+      resize.addEventListener("pointerdown", function (event) { beginPanelGesture(event, container, panel, panelId, resize, "resize"); });
+      resize.addEventListener("pointermove", panelPointerMove); resize.addEventListener("pointerup", function (event) { finishPanelGesture(event, false); }); resize.addEventListener("pointercancel", function (event) { finishPanelGesture(event, true); });
+      resize.addEventListener("keydown", function (event) { keyboardPanelInteraction(event, container, panel, panelId, resize, "resize"); });
     }
-    function finish(event) {
-      if (!seedCardDrag || event.pointerId !== seedCardDrag.pointerId) return;
-      event.preventDefault();
-      event.stopPropagation();
-      var position = seedCardDrag.position;
-      if (handle.releasePointerCapture && handle.hasPointerCapture && handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
-      seedCardDrag = null;
-      storeSeedCardPosition(position);
-      card.setAttribute("data-bso-seed-card-position", "custom");
-    }
-    handle.addEventListener("pointerdown", function (event) {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      event.stopPropagation();
-      seedCardDrag = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, position: currentPosition() };
-      if (handle.setPointerCapture) handle.setPointerCapture(event.pointerId);
-      handle.setAttribute("aria-grabbed", "true");
-      card.classList.add("is-dragging");
+  }
+  function installPanelInteractionsInRoot() {
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll("[data-bso-panel-layout]").forEach(function (panel) {
+      var panelId = panel.getAttribute("data-bso-panel");
+      if (panelId) installPanelInteractions(panelContainer(panel), panel, panelId);
     });
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", function (event) {
-      handle.setAttribute("aria-grabbed", "false");
-      card.classList.remove("is-dragging");
-      finish(event);
-    });
-    handle.addEventListener("pointercancel", function (event) {
-      handle.setAttribute("aria-grabbed", "false");
-      card.classList.remove("is-dragging");
-      finish(event);
-    });
-    handle.addEventListener("keydown", function (event) {
-      var key = event.key;
-      if (key === "Home") {
-        event.preventDefault();
-        event.stopPropagation();
-        resetSeedCardPosition();
-        return;
-      }
-      if (!seedCardApi || ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].indexOf(key) === -1) return;
-      event.preventDefault();
-      event.stopPropagation();
-      var metrics = seedCardMetrics(layer, card);
-      var position = seedCardApi.nudgeSeedCardPosition(currentPosition(), key, metrics.viewport, metrics.card);
-      storeSeedCardPosition(position);
-      applySeedCardPosition(layer, card, position);
-      handle.setAttribute("aria-grabbed", "false");
-    });
-    // The card is above the seed layer. The layer's click handler also
-    // requires the layer itself as the target, so card gestures cannot seed.
-    card.addEventListener("pointerdown", stop);
-    card.addEventListener("pointermove", stop);
-    card.addEventListener("pointerup", stop);
-    card.addEventListener("click", stop);
+  }
+  function resetSeedCardPosition() { resetPanelLayout("courtSetup", false); }
+  function protectSeedCardFromCornerClicks(card) {
+    // The card is above the seed layer. Keep card controls/gestures from
+    // bubbling into the layer's deliberate target===layer click contract.
+    card.addEventListener("pointerdown", function (event) { event.stopPropagation(); });
+    card.addEventListener("pointermove", function (event) { event.stopPropagation(); });
+    card.addEventListener("pointerup", function (event) { event.stopPropagation(); });
+    card.addEventListener("click", function (event) { event.stopPropagation(); });
   }
   function seedDrawing(points, fittedCalibration) {
     var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -796,7 +850,7 @@
       toggle.setAttribute("data-bso-evidence-state", availability.state);
       return toggle;
     });
-    return ui.panel("Evidence visibility", { icon: "activity", className: "bv-evidence-controls", bodyStyle: { padding: "6px" } }, rows);
+    return ui.panel("Evidence visibility", { layoutId: "evidence", icon: "activity", className: "bv-evidence-controls", bodyStyle: { padding: "6px" } }, rows);
   }
   function undoSeedPoint() {
     seedPoints.pop();
@@ -808,7 +862,7 @@
   }
   function resetSeed() {
     state = window.BVState.reduceExtensionState(state, { type: "RESET_COURT" });
-    seedCardDrag = null;
+    panelGesture = null;
     seedPoints = [];
     calibration = null;
     persist();
@@ -850,19 +904,22 @@
     layer.appendChild(seedDrawing(seedPoints, fitted));
     if (seedPoints.length < 4) layer.appendChild(ui.el("span", { className: "bv-seed-target", style: { left: targets[seedPoints.length].x + "%", top: targets[seedPoints.length].y + "%" } }));
     seedPoints.forEach(function (point, index) { layer.appendChild(ui.el("span", { className: "bv-seed-point", style: seedPointStyle(point) }, [index + 1])); });
-    var card = ui.el("div", { className: "bv-seed-card", role: "group", "aria-label": "Court setup instructions", "data-bso-seed-card": "true", "data-bso-contrast": "high" });
+    var card = ui.el("section", { className: "bv-seed-card bv-panel-layout", role: "group", "aria-label": "Court setup instructions", "data-bso-seed-card": "true", "data-bso-contrast": "high", "data-bso-panel": "courtSetup", "data-bso-panel-layout": "true", "data-bso-panel-resizable": "true" });
     var title = fitted ? "Court ready to lock" : invalid ? "Court needs correction" : "Click the " + corners[seedPoints.length].toLowerCase() + " outer corner";
-    var handle = ui.el("button", { className: "bv-seed-card-handle", type: "button", "aria-label": "Move court setup instructions", "aria-describedby": "bv-seed-card-help", "aria-grabbed": "false", "aria-keyshortcuts": "ArrowLeft ArrowRight ArrowUp ArrowDown Home", title: "Drag to move. Use arrow keys to nudge. Home resets the position.", "data-bso-seed-card-handle": "true" }, [ui.icon("grip", 14), ui.el("span", { className: "bv-seed-card-handle-text" }, ["Drag to move"])]);
-    var help = ui.el("span", { className: "bv-sr-only", id: "bv-seed-card-help" }, ["Drag this handle to move the instructions inside the video. Use the arrow keys to nudge it. Press Home to reset its position."]);
-    var top = ui.el("div", { className: "bv-seed-card-top" }, [handle, ui.stepDots(Math.min(seedPoints.length, 4), corners), ui.el("span", { className: "bv-seed-card-title" }, [title]), fitted ? ui.badge("homography ok", "in") : invalid ? ui.badge("not accepted", "warn") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Reset position", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); resetSeedCardPosition(); } }), ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); undoSeedPoint(); } }), ui.button("Reset court", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0 && !state.seeded, onClick: function (event) { event.stopPropagation(); resetSeed(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); openLabeling(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !fitted, onClick: function (event) { event.stopPropagation(); lockSeed(); } })])]);
-    top.appendChild(help);
-    card.appendChild(top);
+    var help = ui.el("span", { className: "bv-sr-only", id: "bv-seed-card-help" }, ["Use the court setup header to move the instructions inside the video. Use the arrow keys to nudge it. Press Home to reset the position."]);
+    // The whole header is the drag surface. It has no visible grip or drag
+    // copy, keeping the four corner targets unobstructed while retaining an
+    // explicit keyboard and native-tooltip affordance for assistive users.
+    var handle = ui.el("header", { className: "bv-seed-card-top bv-panel-header", tabindex: "0", role: "group", "aria-label": "Move court setup instructions", "aria-describedby": "bv-seed-card-help", "aria-grabbed": "false", "aria-keyshortcuts": "ArrowLeft ArrowRight ArrowUp ArrowDown Home", title: "Move court setup instructions. Use arrow keys to nudge. Home resets the position.", "data-bso-seed-card-handle": "true", "data-bso-panel-drag-handle": "true" }, [ui.stepDots(Math.min(seedPoints.length, 4), corners), ui.el("span", { className: "bv-seed-card-title" }, [title]), fitted ? ui.badge("homography ok", "in") : invalid ? ui.badge("not accepted", "warn") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Reset position", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); resetSeedCardPosition(); } }), ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); undoSeedPoint(); } }), ui.button("Reset court", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0 && !state.seeded, onClick: function (event) { event.stopPropagation(); resetSeed(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); openLabeling(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !fitted, onClick: function (event) { event.stopPropagation(); lockSeed(); } })])]);
+    handle.appendChild(help);
+    card.appendChild(handle);
     if (state.calibrationError) card.appendChild(ui.callout("warn", "Calibration not accepted", state.calibrationError));
     card.appendChild(ui.el("p", {}, ["Your four clicks are the outer doubles corners only. Service lines, centre lines and the net come from the official 13.40 × 6.10 m court and are projected in — they never adapt to the image."]));
     card.appendChild(ui.el("div", { className: "bv-seed-note" }, [ui.icon("info", 13), ui.el("span", {}, ["Playback keeps running. A camera cut past tolerance pauses analysis, not the video."]), ui.button("Cancel", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); cancelSeeding(); } })]));
+    card.appendChild(ui.el("button", { className: "bv-panel-resize-handle", type: "button", "aria-label": "Resize court setup panel", "aria-keyshortcuts": "ArrowLeft ArrowRight ArrowUp ArrowDown Home", title: "Drag to resize. Use arrow keys for precise sizing; Home resets the size.", "data-bso-panel-resize-handle": "true" }, [ui.icon("grip", 12)]));
     layer.appendChild(card);
-    applySeedCardPosition(layer, card, state.seedCardPosition);
-    installSeedCardMovement(layer, card, handle);
+    applyPanelLayout(layer, card, "courtSetup", state.panelLayouts && state.panelLayouts.courtSetup);
+    protectSeedCardFromCornerClicks(card);
     layer.addEventListener("click", function (event) {
       if (!seedClickAllowed(event, layer)) return;
       var rect = layer.getBoundingClientRect();
@@ -891,7 +948,7 @@
     var shuttle = runtimeShuttle();
     var rally = result && result.rally && result.rally.state !== "unknown" ? result.rally.id || state.rally : "unknown";
     var shotCount = strokes.length || "unknown";
-    return ui.panel("Stats", { icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", actions: [ui.iconButton("chevron-up", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, [
+    return ui.panel("Stats", { layoutId: "stats", icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", actions: [ui.iconButton("chevron-up", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, [
       ui.el("div", { className: "bv-stat-grid" }, [ui.stat("Rally", rally), ui.stat("Shots", shotCount), ui.stat("Length", "unknown", "s")]),
       ui.el("div", { className: "bv-evidence-grid" }, [ui.el("span", {}, ["Players", ui.badge(evidenceState(tracking), evidenceState(tracking) === "tracked" ? "in" : "unknown")]), ui.el("span", {}, ["Shuttle", ui.badge(evidenceState(shuttle), evidenceState(shuttle) === "tracked" ? "in" : "unknown")]), ui.el("span", {}, ["Winner", ui.badge(result && result.winner ? evidenceState(result.winner) : "unknown", "unknown")])]),
       ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", margin: "var(--sp-5) 0" } }, [ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-12)", color: "var(--text-muted)" } }, ["score unknown"]), ui.badge("score OCR unavailable", "warn")]),
@@ -905,7 +962,7 @@
     var shuttle = runtimeShuttle();
     var shuttleState = evidenceState(shuttle);
     var mapNote = !calibration ? "Seed the court to project live coordinates." : shuttleState === "tracked" && landing ? "Candidate shown; line call remains unknown." : "No accepted shuttle landing evidence.";
-    return ui.panel("Court", { icon: "crosshair", mediaTime: state.time, className: "bv-court-panel", bodyStyle: { padding: "10px" }, actions: [ui.iconButton("chevron-down", "Hide court map", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "map", value: false }); persist(); render(); } })] }, [
+    return ui.panel("Court", { layoutId: "map", icon: "crosshair", mediaTime: state.time, className: "bv-court-panel bv-overlay-map", bodyStyle: { padding: "10px" }, actions: [ui.iconButton("chevron-down", "Hide court map", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "map", value: false }); persist(); render(); } })] }, [
       ui.courtDiagram({ renderWidth: 154, players: players, trajectory: trajectory, landing: landing, call: "UNKNOWN", ariaLabel: "Current court map; unknown values are not inferred" }),
       ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-4)" } }, [ui.badge(shuttleState === "tracked" ? "candidate" : "UNKNOWN", shuttleState === "tracked" ? "info" : "unknown"), ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-10)", color: "var(--text-faint)" } }, [mapNote])]),
       ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.confidence(null, { label: "geo", showWord: true })])
@@ -929,7 +986,13 @@
     if (suggestion) children.push(ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.suggestionRow(suggestion, acceptSuggestion, function () { openLabeling(); })]));
     var footerLabel = isFixtureRuntime() ? "rally 13 · index 74" : "rally unknown · index unavailable";
     var footer = ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.badge(footerLabel, isFixtureRuntime() ? "accent" : "unknown", false), ui.el("span", { className: "bv-runtime-footnote" }, [isFixtureRuntime() ? "fixture result · not production CV" : "automatic event evidence unknown"]), ui.button("Older rallies", { variant: "ghost", size: "sm", iconRight: "chevron-right", style: { marginLeft: "auto" }, onClick: openSummary })]);
-    return ui.panel("Stroke feed", { icon: "list", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", bodyStyle: { padding: "6px" }, footer: footer, actions: [ui.iconButton("pencil", "Open manual labeling (O)", { size: "sm", onClick: openLabeling }), ui.iconButton("chevron-up", "Hide stroke feed", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "feed", value: false }); persist(); render(); } })] }, children);
+    return ui.panel("Stroke feed", { layoutId: "feed", icon: "list", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", bodyStyle: { padding: "6px" }, footer: footer, actions: [ui.iconButton("pencil", "Open manual labeling (O)", { size: "sm", onClick: openLabeling }), ui.iconButton("chevron-up", "Hide stroke feed", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "feed", value: false }); persist(); render(); } })] }, children);
+  }
+  function controlsPanel() {
+    return ui.panel("Live controls", { layoutId: "controls", className: "bv-controls-panel", bodyStyle: { display: "flex", gap: "var(--sp-3)" } }, [
+      ui.button("Density: " + state.density, { size: "sm", icon: "sliders", onClick: cycleDensity }),
+      ui.button("Summary", { size: "sm", icon: "table", onClick: openSummary })
+    ]);
   }
   function liveOverlay() {
     var overlay = ui.el("div", {
@@ -952,18 +1015,20 @@
     var statusDetail = stale && Number.isFinite(runtimeView.ageSeconds)
       ? "+" + runtimeView.ageSeconds.toFixed(1) + "s"
       : state.time;
-    var leftChildren = [ui.statusChip(statusState, statusLabel, statusDetail, openLabeling), evidenceVisibilityPanel()];
+    var leftChildren = [ui.statusChip(statusState, statusLabel, statusDetail, openLabeling)];
     if (state.density !== "minimal") leftChildren.push(ui.el("div", { className: "bv-runtime-note", role: "status" }, [ui.icon("info", 11), runtimeCaption()]));
     if (state.density === "full") leftChildren.push(ui.el("div", { className: "bv-runtime-signal", role: "status" }, ["players ", ui.badge(String(runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length), "info"), " · shuttle ", ui.badge(evidenceState(runtimeShuttle()), evidenceState(runtimeShuttle()) === "tracked" ? "in" : "unknown")]));
     var left = ui.el("div", { className: "bv-overlay-stack left" }, leftChildren);
     // Panel switches are independent controls: density sets the default
     // presentation, while an explicit toggle always wins and reopens a panel.
-    if (state.panels.stats) left.appendChild(statsPanel());
     overlay.appendChild(left);
-    if (state.panels.map) overlay.appendChild(ui.el("div", { className: "bv-overlay-map" }, [mapPanel()]));
-    if (state.panels.feed) overlay.appendChild(ui.el("div", { className: "bv-overlay-stack right" }, [feedPanel()]));
-    var actions = ui.el("div", { className: "bv-overlay-actions" }, [ui.button("Density: " + state.density, { size: "sm", icon: "sliders", onClick: cycleDensity }), ui.button("Summary", { size: "sm", icon: "table", onClick: openSummary })]);
-    overlay.appendChild(actions);
+    overlay.appendChild(evidenceVisibilityPanel());
+    if (state.panels.stats) overlay.appendChild(statsPanel());
+    if (state.panels.map) overlay.appendChild(mapPanel());
+    if (state.panels.feed) overlay.appendChild(feedPanel());
+    // Controls are a panel too: only their quiet header is draggable, while
+    // the buttons remain ordinary controls and never start a panel gesture.
+    overlay.appendChild(controlsPanel());
     return overlay;
   }
 
@@ -1138,7 +1203,7 @@
     var canDelete = Boolean(editingEventId && labelForEvent(editingEventId));
     var saveButton = ui.button(saveActionLabel, { variant: "primary", size: "sm", disabled: !saveLabel, onClick: saveDraft });
     saveButton.setAttribute("data-bso-label-save", "true");
-    var panel = ui.panel("Manual labeling", { icon: "pencil", mediaTime: state.time, className: "bv-label-panel", bodyStyle: { flex: "1" }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), state.lastEdit ? ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit }) : null, canDelete ? ui.button("Delete label", { variant: "danger", size: "sm", onClick: deleteExistingLabel }) : null, ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Close", { variant: "ghost", size: "sm", onClick: closeLabeling }), saveButton])]) }, []);
+    var panel = ui.panel("Manual labeling", { layoutId: "manual", icon: "pencil", mediaTime: state.time, className: "bv-label-panel bv-overlay-label", bodyStyle: { flex: "1" }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), state.lastEdit ? ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit }) : null, canDelete ? ui.button("Delete label", { variant: "danger", size: "sm", onClick: deleteExistingLabel }) : null, ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Close", { variant: "ghost", size: "sm", onClick: closeLabeling }), saveButton])]) }, []);
     panel.tabIndex = 0;
     panel.setAttribute("data-bso-label-mode", editingEventId ? "edit" : "create");
     panel.setAttribute("data-bso-draft-state", saveLabel ? "dirty" : "ready");
@@ -1293,12 +1358,17 @@
 
   function render() {
     if (!root) return;
+    // Runtime/status updates replace the panel DOM. Never leave a pointer
+    // gesture attached to a retired node or let it write stale geometry.
+    if (panelGesture) { setPanelGestureState(panelGesture, false); panelGesture = null; }
     updateDiagnosticsMarkers();
     root.replaceChildren();
     if (!state.enabled && !state.seeding && !state.labeling) return;
     if (state.seeding) root.appendChild(seedFlow());
     else if (state.enabled) root.appendChild(liveOverlay());
-    if (state.labeling && !state.seeding) root.appendChild(ui.el("div", { className: "bv-overlay-label" }, [manualPanel()]));
+    if (state.labeling && !state.seeding) root.appendChild(manualPanel());
+    refreshPanelLayouts();
+    installPanelInteractionsInRoot();
   }
   function applyStoredState(nextState) {
     var key = currentVideoKey();
@@ -1368,7 +1438,7 @@
       state = window.BVState.reduceExtensionState(state, { type: "CAMERA_CUT" });
       state.videoKey = activeVideoKey || currentVideoKey();
       calibration = null;
-      seedCardDrag = null;
+      panelGesture = null;
       seedPoints = [];
       persist(); render();
     }
@@ -1425,6 +1495,11 @@
     document.addEventListener("fullscreenchange", positionToVideo);
     document.addEventListener("webkitfullscreenchange", positionToVideo);
     window.addEventListener("keydown", handleKeyboardShortcuts);
+    // Pointer capture covers normal browsers; the window listeners keep a
+    // gesture alive in embedded/recovery DOMs that do not implement capture.
+    window.addEventListener("pointermove", panelPointerMove);
+    window.addEventListener("pointerup", function (event) { finishPanelGesture(event, false); });
+    window.addEventListener("pointercancel", function (event) { finishPanelGesture(event, true); });
     ["yt-navigate-start", "yt-navigate-finish", "popstate", "hashchange"].forEach(function (name) {
       var listener = handleNavigation;
       window.addEventListener(name, listener);

@@ -30,7 +30,7 @@ test("panel toggles and keyboard shortcuts are explicit and re-render safe", asy
   const content = await source("content.js");
   assert.match(content, /SET_PANELS/);
   assert.match(content, /SET_DENSITY/);
-  assert.match(content, /if \(state\.panels\.stats\) left\.appendChild/);
+  assert.match(content, /if \(state\.panels\.stats\) overlay\.appendChild\(statsPanel\(\)\)/);
   assert.match(content, /if \(state\.panels\.map\)/);
   assert.match(content, /runtimeEvidenceDrawing/);
   assert.match(content, /data-bso-player-count/);
