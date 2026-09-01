@@ -10,17 +10,17 @@
     "default_title": "Badminton Vision",
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "design-system/assets/icon-16.svg",
-      "32": "design-system/assets/icon-32.svg",
-      "48": "design-system/assets/icon.svg",
-      "128": "design-system/assets/icon.svg"
+      "16": "design-system/assets/icon-16.png",
+      "32": "design-system/assets/icon-32.png",
+      "48": "design-system/assets/icon-48.png",
+      "128": "design-system/assets/icon-128.png"
     }
   },
   "icons": {
-    "16": "design-system/assets/icon-16.svg",
-    "32": "design-system/assets/icon-32.svg",
-    "48": "design-system/assets/icon.svg",
-    "128": "design-system/assets/icon.svg"
+    "16": "design-system/assets/icon-16.png",
+    "32": "design-system/assets/icon-32.png",
+    "48": "design-system/assets/icon-48.png",
+    "128": "design-system/assets/icon-128.png"
   },
   "background": {
     "service_worker": "background/service-worker.js"
