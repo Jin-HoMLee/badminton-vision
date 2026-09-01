@@ -18,7 +18,7 @@
   function tabUrlForInfo() { return activeTabUrl; }
   var trackers = [
     { id: "court", label: "Court", health: "degraded", note: "not seeded", on: true, noSwitch: true },
-    { id: "players", label: "Players", health: "degraded", note: "unknown · awaiting local runtime", on: true },
+    { id: "players", label: "Player boxes", health: "degraded", note: "off by default · detection still runs", on: false },
     { id: "body", label: "Body pose", health: "degraded", note: "starting · local pose model", on: true, disabled: false },
     { id: "shuttle", label: "Shuttle", health: "degraded", note: "unknown · awaiting local runtime", on: true },
     { id: "score", label: "Score OCR", health: "degraded", note: "partial", on: true },
@@ -259,7 +259,7 @@
     var trackerSection = section(trackerHeader, trackerBody, trackerAside);
 
     var densitySection = section(ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-3)" } }, ["How much to show", ui.infoTip("How much to show", "Changes only what appears on the video. Everything is still analysed either way.")]), ui.segmented([{ value: "minimal", label: "Minimal" }, { value: "balanced", label: "Balanced" }, { value: "full", label: "Full" }], state.density, function (value) { dispatch({ type: "SET_DENSITY", value: value }, { type: "SET_DENSITY", value: value }); }, true));
-    var panelSection = section("Panels on the video", ui.el("div", { className: "bv-panel-toggles" }, [panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), panelToggle("Evidence visibility", "Which live signals are drawn", "evidence"), ui.toggle("Compare with the pros", "Coming later — needs a licensed benchmark", false, null, { disabled: true, id: "panel-pro" })]));
+    var panelSection = section("On-video controls", ui.el("div", { className: "bv-panel-toggles" }, [ui.el("p", { className: "bv-helper", style: { marginTop: "0" } }, ["The default video layer is detection-only. Choose a panel here when you want it over the video; these choices are saved for this video."]), panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), panelToggle("Evidence visibility", "Which live signals are drawn", "evidence"), panelToggle("Live controls", "Quick density and summary shortcuts", "controls"), ui.toggle("Compare with the pros", "Coming later — needs a licensed benchmark", false, null, { disabled: true, id: "panel-pro" })]));
 
     var primaryLabel = state.enabled ? "Open overlay" : "Turn on — step 1 of 3";
     var primary = ui.button(primaryLabel, { variant: "primary", full: true, icon: state.enabled ? "layout" : "play", disabled: !detected, title: !detected ? "Open a YouTube watch page first" : null, onClick: function () { dispatch({ type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, { type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, finishAction); } });

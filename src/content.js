@@ -91,6 +91,10 @@
   var publishedRuntimeKey = null;
   var lastRuntimeRenderAt = 0;
   var panelGesture = null;
+  // The live video keeps one compact access point visible. Its on-demand menu
+  // is intentionally transient; durable panel/evidence choices live in the
+  // popup-backed, video-local state.
+  var overlayMenuOpen = false;
 
   function hasSeenMessage(message) {
     var requestId = message && message.requestId;
@@ -387,6 +391,7 @@
     calibration = null;
     seedPoints = [];
     panelGesture = null;
+    overlayMenuOpen = false;
     editingEventId = null;
     strokes = [];
     suggestion = null;
@@ -1125,6 +1130,61 @@
       ui.button("Summary", { size: "sm", icon: "table", onClick: openSummary })
     ]);
   }
+  function overlayPanelShortcut(label, panel, icon, description) {
+    var button = ui.button(label, {
+      variant: state.panels[panel] ? "secondary" : "ghost",
+      size: "sm",
+      icon: icon,
+      pressed: state.panels[panel],
+      title: description || "Show " + label.toLowerCase() + " on the video",
+      onClick: function () {
+        state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: panel, value: true });
+        overlayMenuOpen = false;
+        persist();
+        render();
+      }
+    });
+    button.setAttribute("data-bso-overlay-shortcut", panel);
+    return button;
+  }
+  function overlayAccessPoint() {
+    var access = ui.el("div", { className: "bv-overlay-access" });
+    var button = ui.button("Panels", {
+      variant: "ghost",
+      size: "sm",
+      icon: overlayMenuOpen ? "x" : "layout",
+      pressed: overlayMenuOpen,
+      title: overlayMenuOpen ? "Close overlay shortcuts" : "Open overlay shortcuts",
+      onClick: function () { overlayMenuOpen = !overlayMenuOpen; render(); }
+    });
+    button.setAttribute("aria-expanded", String(overlayMenuOpen));
+    button.setAttribute("aria-controls", "bv-overlay-shortcuts");
+    button.setAttribute("data-bso-overlay-access", "true");
+    access.appendChild(button);
+    var manualShortcut = ui.button("Label it myself", { variant: "ghost", size: "sm", icon: "pencil", onClick: function () { overlayMenuOpen = false; openLabeling(); } });
+    manualShortcut.setAttribute("data-bso-overlay-shortcut", "manual");
+    var menu = ui.el("div", {
+      className: "bv-overlay-menu",
+      id: "bv-overlay-shortcuts",
+      role: "menu",
+      "aria-label": "Overlay shortcuts",
+      "data-bso-overlay-menu": "true",
+      hidden: !overlayMenuOpen
+    }, [
+      ui.el("strong", { className: "bv-overlay-menu-title" }, ["Overlay shortcuts"]),
+      ui.el("span", { className: "bv-overlay-menu-help" }, ["Choose what to open over the video."]),
+      overlayPanelShortcut("Shots this rally", "feed", "list", "Show the live stroke feed"),
+      overlayPanelShortcut("Rally stats", "stats", "activity", "Show rally statistics"),
+      overlayPanelShortcut("Court map", "map", "crosshair", "Show the court map"),
+      overlayPanelShortcut("Evidence visibility", "evidence", "activity", "Show detection-layer visibility controls"),
+      overlayPanelShortcut("Live controls", "controls", "sliders", "Show density and summary shortcuts"),
+      manualShortcut,
+      ui.button("Density: " + state.density, { variant: "ghost", size: "sm", icon: "sliders", onClick: cycleDensity }),
+      ui.button("Summary", { variant: "ghost", size: "sm", icon: "table", onClick: openSummary })
+    ]);
+    access.appendChild(menu);
+    return access;
+  }
   function liveOverlay() {
     var overlay = ui.el("div", {
       className: "bv-overlay-root",
@@ -1140,27 +1200,19 @@
     // Evidence is drawn in normalized video coordinates and never intercepts
     // pointer input, so player/shuttle rendering cannot block playback or seed clicks.
     overlay.appendChild(runtimeEvidenceDrawing());
-    var stale = runtimeIsStale();
-    var statusState = runtimeView.phase === "fallback" ? "stale" : stale ? "stale" : "live";
-    var statusLabel = runtimeView.phase === "fallback" ? "Analysis fallback" : stale ? "Analysis behind" : "Rally " + state.rally;
-    var statusDetail = stale && Number.isFinite(runtimeView.ageSeconds)
-      ? "+" + runtimeView.ageSeconds.toFixed(1) + "s"
-      : state.time;
-    var leftChildren = [ui.statusChip(statusState, statusLabel, statusDetail, openLabeling)];
+    var leftChildren = [];
     if (state.density !== "minimal") leftChildren.push(ui.el("div", { className: "bv-runtime-note", role: "status" }, [ui.icon("info", 11), runtimeCaption()]));
     if (state.density === "full") leftChildren.push(ui.el("div", { className: "bv-runtime-signal", role: "status" }, ["players ", ui.badge(String(runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length), "info"), " · shuttle ", ui.badge(evidenceState(runtimeShuttle()), evidenceState(runtimeShuttle()) === "tracked" ? "in" : "unknown")]));
-    var left = ui.el("div", { className: "bv-overlay-stack left" }, leftChildren);
-    // Panel switches are independent controls: density sets the default
-    // presentation, while an explicit toggle always wins and reopens a panel.
-    // Evidence visibility is a panel like the rest: hideable and re-openable.
-    overlay.appendChild(left);
+    if (leftChildren.length) overlay.appendChild(ui.el("div", { className: "bv-overlay-stack left" }, leftChildren));
+    // The access point is the only default interactive surface. The popup is
+    // canonical for durable visibility choices; this menu is a small shortcut
+    // for opening an already-supported panel while watching.
+    overlay.appendChild(overlayAccessPoint());
     if (state.panels.evidence) overlay.appendChild(evidenceVisibilityPanel());
     if (state.panels.stats) overlay.appendChild(statsPanel());
     if (state.panels.map) overlay.appendChild(mapPanel());
     if (state.panels.feed) overlay.appendChild(feedPanel());
-    // Controls are a panel too: only their quiet header is draggable, while
-    // the buttons remain ordinary controls and never start a panel gesture.
-    overlay.appendChild(controlsPanel());
+    if (state.panels.controls) overlay.appendChild(controlsPanel());
     return overlay;
   }
 
@@ -1527,6 +1579,12 @@
     // Escape is a global dismiss affordance, including while a shot button is
     // focused. Other shortcuts yield to native controls so Enter/Space do not
     // accidentally save a draft when activating a picker button.
+    if (key === "escape" && overlayMenuOpen) {
+      event.preventDefault();
+      overlayMenuOpen = false;
+      render();
+      return;
+    }
     if (key === "escape" && state.labeling && !state.seeding) {
       event.preventDefault();
       closeLabeling();
@@ -1626,6 +1684,7 @@
       persist(); render();
     }
     else if (message.type === "DISABLE") {
+      overlayMenuOpen = false;
       stopRuntime("disabled");
       state = window.BVState.reduceExtensionState(state, { type: "DISABLE" });
       persist(); render();

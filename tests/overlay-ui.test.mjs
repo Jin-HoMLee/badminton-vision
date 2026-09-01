@@ -69,6 +69,7 @@ test("overlay panels reserve the native player strip and every panel collapses f
   const css = await read("src/styles.css");
   const ui = await read("src/ui.js");
   const content = await read("src/content.js");
+  const state = await read("src/state.js");
   // The bottom strip is reserved in tokens, default placement, and clamping.
   assert.match(css, /--overlay-controls-reserve:\s*72px/);
   assert.match(css, /\[data-bso-panel="map"\]\s*\{[^}]*bottom:\s*calc\(var\(--overlay-controls-reserve\) \+ 16px\)/s);
@@ -101,8 +102,13 @@ test("overlay panels reserve the native player strip and every panel collapses f
   assert.match(content, /iconButton\("x", "Hide court map"/);
   assert.match(content, /iconButton\("x", "Hide stroke feed"/);
   assert.doesNotMatch(content, /iconButton\("chevron-(up|down)", "Hide (stats|court map|stroke feed|evidence visibility)"/);
-  // The evidence panel is a panel like the rest: hideable from its header and
-  // re-openable from the popup panel list.
+  // The evidence panel is a panel like the rest: hidden in Minimal and
+  // re-openable from the popup panel list or the in-video access point.
+  assert.match(state, /panels: \{ feed: false, stats: false, map: false, evidence: false, controls: false \}/);
+  assert.match(state, /trackerSettings: \{ court: true, players: false, body: true, shuttle: true, racket: true \}/);
+  assert.match(content, /data-bso-overlay-access/);
+  assert.match(content, /data-bso-overlay-menu/);
+  assert.match(css, /\.bv-overlay-access\s*\{[^}]*top:\s*var\(--overlay-gutter\)[^}]*right:\s*var\(--overlay-gutter\)/s);
   assert.match(await read("src/popup.js"), /panelToggle\("Evidence visibility"/);
 });
 

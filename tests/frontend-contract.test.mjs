@@ -8,6 +8,7 @@ const source = async (name) => readFile(new URL(name, root), "utf8");
 test("popup exposes local actions and honest unavailable states", async () => {
   const popup = await source("popup.js");
   assert.match(popup, /data-bso-action.*open-overlay/);
+  assert.match(popup, /saved for this video/);
   assert.match(popup, /data-bso-action.*manual-only/);
   assert.match(popup, /data-bso-action.*seed-court/);
   assert.match(popup, /data-bso-action.*disable/);
@@ -29,6 +30,9 @@ test("the production runtime does not construct the retired plain-text overlay",
 test("panel toggles and keyboard shortcuts are explicit and re-render safe", async () => {
   const content = await source("content.js");
   assert.match(content, /SET_PANELS/);
+  assert.match(content, /data-bso-overlay-access/);
+  assert.match(content, /data-bso-overlay-menu/);
+  assert.match(content, /overlayPanelShortcut/);
   assert.match(content, /SET_DENSITY/);
   assert.match(content, /if \(state\.panels\.stats\) overlay\.appendChild\(statsPanel\(\)\)/);
   assert.match(content, /if \(state\.panels\.map\)/);
