@@ -192,7 +192,12 @@
     // design-system DOM only needs a modest refresh cadence for age/time labels.
     if (statusChanged || now - lastRuntimeRenderAt >= 250) {
       lastRuntimeRenderAt = now;
-      render();
+      // Runtime/media updates can land between pointerdown and pointerup. Do
+      // not replace the manual form under an in-flight user gesture; its
+      // controls read the latest clock when invoked and only need the visible
+      // timestamp patched in place.
+      if (state.labeling) refreshLabelingClock();
+      else render();
     }
   }
   function runtimeIsStale() { return Boolean(state.stale || runtimeView.stale); }
@@ -357,7 +362,7 @@
         if (Number.isFinite(nextTime) && nextTime >= 0) {
           mediaTime = nextTime;
           if (!state.stale) state.time = formatMediaTime(nextTime);
-          if (state.labeling) render();
+          if (state.labeling) refreshLabelingClock();
         }
       };
       video.addEventListener("timeupdate", mediaTimeListener);
@@ -785,7 +790,9 @@
 
   function openLabeling(record) {
     state = window.BVState.reduceExtensionState(state, { type: "OPEN_LABELING" });
-    if (record && record.eventId != null) editingEventId = String(record.eventId);
+    // Opening a fresh draft must never inherit the id of a previously edited
+    // row. Existing-label mode is entered only through an explicit record.
+    editingEventId = record && record.eventId != null ? String(record.eventId) : null;
     draft = record ? newDraft(record) : newDraft();
     persist();
     render();
@@ -838,7 +845,12 @@
     if (!saved) return;
     send({ type: "ACCEPT_SUGGESTION", eventId: accepted.eventId });
     suggestion = null;
-    closeLabeling();
+    if (state.labeling) {
+      editingEventId = null;
+      draft = newDraft();
+      persist();
+    }
+    render();
   }
   function undoLastEdit() {
     var edit = state.lastEdit;
@@ -846,6 +858,10 @@
     state = window.BVState.reduceExtensionState(state, { type: "UNDO_LABEL", videoKey: activeVideoKey, edit: edit, labels: window.BVReview.undoLabelMutation(state.manualLabels, edit) });
     strokes = reviewStrokes();
     suggestion = edit.previousSuggestion ? window.BVReview.clone(edit.previousSuggestion) : null;
+    if (state.labeling) {
+      editingEventId = null;
+      draft = newDraft();
+    }
     persist();
     send({ type: "UNDO_LABEL", eventId: edit.eventId });
     render();
@@ -887,6 +903,53 @@
     });
     var link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([window.BVAnalysis.toShotsCsv(rows)], { type: "text/csv" })); link.download = "badminton-vision-shots.csv"; link.click(); setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
   }
+  function refreshLabelingClock() {
+    if (!state.labeling || !root || typeof root.querySelector !== "function") return false;
+    var panel = root.querySelector(".bv-label-panel");
+    if (!panel) return false;
+    var time = panel.querySelector(".bv-panel-time");
+    if (time) time.textContent = state.time || "";
+    panel.setAttribute("data-bso-media-time", state.time || "");
+    return true;
+  }
+  function syncManualDraft() {
+    if (!state.labeling || !root || typeof root.querySelector !== "function") return false;
+    var panel = root.querySelector(".bv-label-panel");
+    if (!panel) return false;
+    var activeSuggestion = state.enabled ? suggestion : null;
+    var saveLabel = draft.shot || (activeSuggestion && activeSuggestion.shot);
+    var windowLabel = panel.querySelector("[data-bso-label-window]");
+    if (windowLabel) windowLabel.textContent = (draft.start || "current timestamp") + " → " + (draft.end || "—");
+    panel.querySelectorAll("[data-bso-shot]").forEach(function (button) {
+      var shot = button.getAttribute("data-bso-shot");
+      var selected = draft.shot === shot;
+      button.className = "bv-shot" + (selected ? " selected" : activeSuggestion && activeSuggestion.shot === shot ? " suggested" : "");
+      button.setAttribute("aria-pressed", String(selected));
+      var shortcut = button.querySelector(".bv-kbd");
+      if (shortcut) shortcut.className = "bv-kbd" + (selected ? " accent" : "");
+    });
+    panel.querySelectorAll("[data-bso-player-id]").forEach(function (button) {
+      button.setAttribute("aria-checked", String(button.getAttribute("data-bso-player-id") === (draft.playerId || "")));
+    });
+    panel.querySelectorAll("[data-bso-axis]").forEach(function (axis) {
+      var value = draft.axes[axis.getAttribute("data-bso-axis")];
+      axis.querySelectorAll("[data-bso-axis-option]").forEach(function (button) {
+        var selected = button.getAttribute("data-bso-axis-option") === value;
+        button.className = "bv-axis-option" + (selected ? " selected" : "");
+        button.setAttribute("aria-pressed", String(selected));
+      });
+    });
+    var save = panel.querySelector("[data-bso-label-save]");
+    if (save) {
+      var actionLabel = editingEventId ? "Save correction" : draft.shot ? "Save label" : activeSuggestion ? "Accept suggestion" : "Save label";
+      save.disabled = !saveLabel;
+      if (save.textContent !== actionLabel) save.replaceChildren(document.createTextNode(actionLabel));
+    }
+    panel.setAttribute("data-bso-label-mode", editingEventId ? "edit" : "create");
+    panel.setAttribute("data-bso-draft-state", saveLabel ? "dirty" : "ready");
+    refreshLabelingClock();
+    return true;
+  }
   function manualPanel() {
     // Offline mode has no suggestion source. Fixture suggestions only enter
     // the correction path when the live overlay is explicitly enabled.
@@ -894,10 +957,26 @@
     var saveLabel = draft.shot || (activeSuggestion && activeSuggestion.shot);
     var saveActionLabel = editingEventId ? "Save correction" : draft.shot ? "Save label" : activeSuggestion ? "Accept suggestion" : "Save label";
     var canDelete = Boolean(editingEventId && labelForEvent(editingEventId));
-    var panel = ui.panel("Manual labeling", { icon: "pencil", mediaTime: state.time, className: "bv-label-panel", bodyStyle: { flex: "1" }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), state.lastEdit ? ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit }) : null, canDelete ? ui.button("Delete label", { variant: "danger", size: "sm", onClick: deleteExistingLabel }) : null, ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Cancel", { variant: "ghost", size: "sm", onClick: closeLabeling }), ui.button(saveActionLabel, { variant: "primary", size: "sm", disabled: !saveLabel, onClick: saveDraft })])]) }, []);
+    var saveButton = ui.button(saveActionLabel, { variant: "primary", size: "sm", disabled: !saveLabel, onClick: saveDraft });
+    saveButton.setAttribute("data-bso-label-save", "true");
+    var panel = ui.panel("Manual labeling", { icon: "pencil", mediaTime: state.time, className: "bv-label-panel", bodyStyle: { flex: "1" }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), state.lastEdit ? ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit }) : null, canDelete ? ui.button("Delete label", { variant: "danger", size: "sm", onClick: deleteExistingLabel }) : null, ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Close", { variant: "ghost", size: "sm", onClick: closeLabeling }), saveButton])]) }, []);
     panel.tabIndex = 0;
+    panel.setAttribute("data-bso-label-mode", editingEventId ? "edit" : "create");
+    panel.setAttribute("data-bso-draft-state", saveLabel ? "dirty" : "ready");
+    panel.setAttribute("data-bso-media-time", state.time || "");
     var body = panel.querySelector(".bv-panel-body");
     body.appendChild(ui.callout("guide", "Manual / offline mode", "Playback is read-only. No court seed, inference model, or production CV evidence is required."));
+    body.appendChild(ui.el("div", { className: "bv-segment-window" }, [ui.el("span", { className: "bv-mono", "data-bso-label-window": "true" }, [(draft.start || "current timestamp") + " → " + (draft.end || "—")]), ui.el("span", { className: "bv-segment-controls" }, [ui.button("Start", { variant: "ghost", size: "sm", disabled: currentMediaTimestamp() == null, onClick: function () { if (currentMediaTimestamp() != null) draft.start = formatMediaTime(currentMediaTimestamp()); syncManualDraft(); } }), ui.button("End", { variant: "ghost", size: "sm", disabled: currentMediaTimestamp() == null, onClick: function () { if (currentMediaTimestamp() != null) draft.end = formatMediaTime(currentMediaTimestamp()); syncManualDraft(); } })]) ]));
+    if (activeSuggestion) body.appendChild(ui.el("div", { className: "bv-manual-suggestion" }, [ui.badge("auto suggestion", "warn"), ui.el("span", { className: "bv-feed-shot" + (draft.shot ? " replaced" : "") }, [activeSuggestion.shot]), ui.confidence(activeSuggestion.confidence, { showWord: true }), ui.el("span", { style: { marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "var(--sp-2)", font: "var(--type-ui-sm)", color: "var(--text-faint)" } }, ["accept", ui.kbd("↵", true)])]));
+    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Shot family"]));
+    body.appendChild(ui.shotPicker(draft.shot, activeSuggestion && activeSuggestion.shot, function (shot) { draft.shot = shot; syncManualDraft(); }));
+    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Player identity (optional)"]));
+    body.appendChild(ui.segmented([{ value: "", label: "Unknown" }, { value: "A", label: "Player A" }, { value: "B", label: "Player B" }], draft.playerId || "", function (player) { draft.playerId = player || null; syncManualDraft(); }, true, "data-bso-player-id"));
+    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Dimensions (optional)"]));
+    var axisList = ui.el("div", { className: "bv-axis-list" });
+    data.axes.forEach(function (axis) { axisList.appendChild(ui.dimensionAxis(axis.label, axis.options, draft.axes[axis.label], function (value) { draft.axes[axis.label] = value; syncManualDraft(); })); });
+    body.appendChild(axisList);
+    body.appendChild(ui.el("p", { className: "bv-helper" }, ["Manual labels are first-class records. Saving updates the same event id and appends provenance — it never creates a duplicate or invents CV evidence."]));
     if (state.manualLabels && state.manualLabels.length) {
       var savedLabels = ui.el("div", { className: "bv-manual-saved", "aria-label": "Saved labels for this video" });
       savedLabels.appendChild(ui.el("span", { className: "bv-field-label" }, ["Saved labels for this video"]));
@@ -907,18 +986,9 @@
       });
       body.appendChild(savedLabels);
     }
-    body.appendChild(ui.el("div", { className: "bv-segment-window" }, [ui.el("span", { className: "bv-mono" }, [(draft.start || "current timestamp") + " → " + (draft.end || "—")]), ui.el("span", { className: "bv-segment-controls" }, [ui.button("Start", { variant: "ghost", size: "sm", disabled: currentMediaTimestamp() == null, onClick: function () { if (currentMediaTimestamp() != null) draft.start = formatMediaTime(currentMediaTimestamp()); render(); } }), ui.button("End", { variant: "ghost", size: "sm", disabled: currentMediaTimestamp() == null, onClick: function () { if (currentMediaTimestamp() != null) draft.end = formatMediaTime(currentMediaTimestamp()); render(); } })]) ]));
-    if (activeSuggestion) body.appendChild(ui.el("div", { className: "bv-manual-suggestion" }, [ui.badge("auto suggestion", "warn"), ui.el("span", { className: "bv-feed-shot" + (draft.shot ? " replaced" : "") }, [activeSuggestion.shot]), ui.confidence(activeSuggestion.confidence, { showWord: true }), ui.el("span", { style: { marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "var(--sp-2)", font: "var(--type-ui-sm)", color: "var(--text-faint)" } }, ["accept", ui.kbd("↵", true)])]));
-    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Shot family"]));
-    body.appendChild(ui.shotPicker(draft.shot, activeSuggestion && activeSuggestion.shot, function (shot) { draft.shot = shot; render(); }));
-    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Player identity (optional)"]));
-    body.appendChild(ui.segmented([{ value: "", label: "Unknown" }, { value: "A", label: "Player A" }, { value: "B", label: "Player B" }], draft.playerId || "", function (player) { draft.playerId = player || null; render(); }, true));
-    body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Dimensions (optional)"]));
-    var axisList = ui.el("div", { className: "bv-axis-list" });
-    data.axes.forEach(function (axis) { axisList.appendChild(ui.dimensionAxis(axis.label, axis.options, draft.axes[axis.label], function (value) { draft.axes[axis.label] = value; render(); })); });
-    body.appendChild(axisList);
-    body.appendChild(ui.el("p", { className: "bv-helper" }, ["Manual labels are first-class records. Saving updates the same event id and appends provenance — it never creates a duplicate or invents CV evidence."]));
-    setTimeout(function () { panel.focus(); }, 0);
+    setTimeout(function () {
+      if (panel.isConnected && state.labeling && root && root.querySelector(".bv-label-panel") === panel) panel.focus();
+    }, 0);
     return panel;
   }
   function saveDraft() {
@@ -968,7 +1038,12 @@
     if (!saved) return;
     send({ type: "LABEL_EVENT", eventId: eventId, shot: shot, provenance: "manual", startSec: startSec, endSec: endSec });
     if (activeSuggestion) suggestion = null;
-    closeLabeling();
+    // A save completes this draft, not the labeling session. Keep the panel
+    // open with a fresh event id and freshly bound controls for the next shot.
+    editingEventId = null;
+    draft = newDraft();
+    persist();
+    render();
   }
   function deleteExistingLabel() {
     var existing = editingEventId && labelForEvent(editingEventId);
@@ -986,7 +1061,9 @@
     persist();
     send({ type: "DELETE_LABEL", eventId: existing.eventId, provenance: "manual" });
     editingEventId = null;
-    closeLabeling();
+    draft = newDraft();
+    persist();
+    render();
   }
   function closeLabeling() {
     state = window.BVState.reduceExtensionState(state, { type: "CLOSE_LABELING" });
@@ -1020,15 +1097,15 @@
     if (key >= "1" && key <= "9") {
       draft.shot = ["Serve", "Clear", "Drop", "Smash", "Half Smash", "Lift", "Net Shot", "Net Kill", "Push"][Number(key) - 1];
       event.preventDefault();
-      render();
+      syncManualDraft();
     } else if (key === "s") {
       draft.start = formatMediaTime(mediaTime);
       event.preventDefault();
-      render();
+      syncManualDraft();
     } else if (key === "e") {
       draft.end = formatMediaTime(mediaTime);
       event.preventDefault();
-      render();
+      syncManualDraft();
     } else if (event.key === "Enter" && (draft.shot || suggestion)) {
       event.preventDefault();
       saveDraft();
@@ -1046,6 +1123,7 @@
   }
   function applyStoredState(nextState) {
     var key = currentVideoKey();
+    var wasLabeling = state.labeling;
     state = window.BVState.stateForVideo(nextState, key);
     if (key) {
       state.videoKey = key;
@@ -1060,6 +1138,14 @@
     }
     activeVideoKey = key;
     if (video && Number.isFinite(video.currentTime) && !state.stale) state.time = formatMediaTime(video.currentTime);
+    // A restored open panel starts a new draft at the actual media clock. Do
+    // not carry the module's pre-video 00:00 draft into a reloaded page, while
+    // preserving an in-progress draft when an external state update arrives
+    // during an already-open labeling session.
+    if (state.labeling && !wasLabeling) {
+      editingEventId = null;
+      draft = newDraft();
+    }
     restoreCalibrationState();
     if (state.enabled) startRuntime();
     persist();

@@ -165,6 +165,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
   let onMessage;
   const messageListeners = [];
   let runtimeStarts = 0;
+  let runtimeChange = null;
   const chromeApi = {
     runtime: {
       lastError: null,
@@ -201,7 +202,8 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
     : ["src/state.js", "src/calibration.js", "src/seed-card.js", "src/fixtures.js", "src/review.js", "src/analysis.js", "src/ui.js", "src/content.js"];
   if (!bundle) {
     context.BVRuntime = {
-      startIntegratedRuntime: () => {
+      startIntegratedRuntime: (options = {}) => {
+        runtimeChange = options.onChange || null;
         runtimeStarts += 1;
         return { controller: { sessionId: "test-session" } };
       }
@@ -214,7 +216,8 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
     vm.runInContext(await loadContentBundle(), context, { filename: "dist/content.bundle.js" });
   }
   if (bundle) {
-    context.BVRuntime.startIntegratedRuntime = () => {
+    context.BVRuntime.startIntegratedRuntime = (options = {}) => {
+      runtimeChange = options.onChange || null;
       runtimeStarts += 1;
       return { controller: { sessionId: "test-session" } };
     };
@@ -229,6 +232,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
     messageListeners,
     get onMessage() { return onMessage; },
     get runtimeStarts() { return runtimeStarts; },
+    runtimeUpdate(view) { runtimeChange?.(view); },
     flushStorage(value = storedState) {
       assert.equal(storageReads.length, 1);
       storageReads.shift()({ bvState: value });
@@ -412,6 +416,162 @@ test("the bundled content entrypoint is parse-safe and mounts one host, listener
   session.onMessage(request);
   assert.equal(session.overlayRoot().querySelectorAll("[data-bso-court-seeding]").length, 1);
   assert.equal(session.runtimeStarts, 1);
+});
+
+test("manual labeling survives three sequential saves, rerenders, reload, and CRUD", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "OPEN_LABELING", requestId: "manual-three-open" });
+  let root = live.overlayRoot();
+  let panel = root.querySelector(".bv-label-panel");
+  assert.ok(panel, "the real manual-label entry path opens the panel");
+  const playbackBefore = { paused: live.video.paused, muted: live.video.muted, playbackRate: live.video.playbackRate, src: live.video.currentSrc || live.video.src };
+
+  function setTime(seconds) {
+    live.video.currentTime = seconds;
+    live.video.dispatchEvent({ type: "timeupdate", target: live.video });
+  }
+  function clickData(node, attribute, value) {
+    const button = node.querySelectorAll(`[${attribute}]`).find((item) => value == null || item.getAttribute(attribute) === value);
+    assert.ok(button, `control ${attribute}=${value || ""} exists`);
+    button.dispatchEvent({ type: "click", target: button });
+    return button;
+  }
+  function savedRows(node) {
+    const saved = node.querySelector(".bv-manual-saved");
+    return saved ? saved.querySelectorAll('[data-bso-label-source="manual"]') : [];
+  }
+  function saveCurrent(node) {
+    clickData(node, "data-bso-label-save", "true");
+    return live.overlayRoot();
+  }
+  function markSegment(start, end, shot) {
+    setTime(start);
+    assert.ok(root.querySelector("[data-bso-label-window]"), "the segment display survives the clock update");
+    const startButton = buttonWithText(root, "Start");
+    assert.ok(startButton);
+    startButton.dispatchEvent({ type: "click", target: startButton });
+    setTime(end);
+    const endButton = buttonWithText(root, "End");
+    assert.ok(endButton);
+    endButton.dispatchEvent({ type: "click", target: endButton });
+    clickData(root, "data-bso-shot", shot);
+    root = live.overlayRoot();
+  }
+
+  // First successful interaction: no runtime result is allowed to replace the
+  // panel while the user marks the first segment.
+  markSegment(20, 20.5, "Serve");
+  assert.equal(root.querySelector(".bv-label-panel"), panel, "the first control keeps the live panel node");
+  root = saveCurrent(root);
+  assert.ok(root.querySelector(".bv-label-panel"), "saving the first label keeps Manual labeling open");
+  assert.equal(savedRows(root).length, 1);
+
+  markSegment(22, 22.5, "Clear");
+  root = saveCurrent(root);
+  assert.equal(savedRows(root).length, 2, "the second save appends a per-video record");
+
+  // Captain-reported failure reproduction: the third interaction is masked by
+  // an asynchronous media/runtime update. Before this fix, publishRuntimeView
+  // and timeupdate called render(), replacing the form between pointerdown and
+  // pointerup; the visible symptom was that Start/End or a picker click did
+  // nothing, usually from the third shot onward. The first click could pass
+  // when it happened between render ticks.
+  panel = root.querySelector(".bv-label-panel");
+  live.runtimeUpdate({ phase: "result", message: "new runtime frame", reason: "", analyzer: "test", inference: false, fallbacks: [], capabilities: {}, stale: false, ageSeconds: null, result: { kind: "test", state: "unknown", players: [], tracking: null, shuttle: null, strokeEvents: [], rally: { state: "unknown" }, rallyEnd: { state: "unknown" }, winner: { state: "unknown" } } });
+  assert.equal(root.querySelector(".bv-label-panel"), panel, "a runtime result does not replace an in-flight manual form");
+  markSegment(24, 24.75, "Drive");
+  panel = root.querySelector(".bv-label-panel");
+  assert.equal(panel.getAttribute("data-bso-draft-state"), "dirty");
+
+  // Exercise every third-label control without allowing one control's handler
+  // to invalidate the next control's DOM reference.
+  const shotButtons = root.querySelectorAll("[data-bso-shot]");
+  assert.equal(shotButtons.length, 11);
+  shotButtons.forEach((button) => {
+    button.dispatchEvent({ type: "click", target: button });
+    assert.equal(root.querySelector(".bv-label-panel"), panel);
+  });
+  clickData(root, "data-bso-shot", "Drive");
+  assert.equal(root.querySelector('[data-bso-shot="Drive"]').getAttribute("aria-pressed"), "true");
+  const playerButtons = root.querySelectorAll("[data-bso-player-id]");
+  assert.equal(playerButtons.length, 3);
+  playerButtons.forEach((button) => {
+    button.dispatchEvent({ type: "click", target: button });
+    assert.equal(root.querySelector(".bv-label-panel"), panel);
+  });
+  assert.equal(root.querySelector('[data-bso-player-id="B"]').getAttribute("aria-checked"), "true");
+  const axisNodes = root.querySelectorAll("[data-bso-axis]");
+  assert.equal(axisNodes.length, 6);
+  axisNodes.forEach((axis) => {
+    const options = axis.querySelectorAll("[data-bso-axis-option]");
+    assert.equal(options.length, 3);
+    options.forEach((button) => {
+      button.dispatchEvent({ type: "click", target: button });
+      assert.equal(root.querySelector(".bv-label-panel"), panel);
+    });
+    assert.equal(axis.querySelectorAll(".selected").length, 1);
+  });
+  root = saveCurrent(root);
+  assert.ok(root.querySelector(".bv-label-panel"), "the third save leaves the panel open");
+  assert.equal(root.querySelector("[data-bso-label-mode]").getAttribute("data-bso-label-mode"), "create", "a new save exits edit mode");
+  assert.equal(root.querySelector("[data-bso-draft-state]").getAttribute("data-bso-draft-state"), "ready", "the next-label draft is clean");
+  assert.equal(root.querySelectorAll("[data-bso-shot]").filter((button) => button.className.split(/\s+/).includes("selected")).length, 0, "the next draft has no selected shot");
+  assert.equal(root.querySelector("[data-bso-label-save]").disabled, true, "the next draft cannot save until a shot is chosen");
+  assert.equal(savedRows(root).length, 3);
+  const persisted = live.storageWrites.at(-1).bvState;
+  const videoKey = "youtube:real-match";
+  assert.equal(persisted.manualLabelsByVideo[videoKey].length, 3, "all three labels are stored under the active video");
+  assert.deepEqual(JSON.parse(JSON.stringify(persisted.manualLabelsByVideo[videoKey].map((label) => label.shot))), ["Serve", "Clear", "Drive"]);
+  assert.equal(persisted.manualLabelsByVideo[videoKey][2].playerId, "B");
+  assert.equal(Object.keys(persisted.manualLabelsByVideo[videoKey][2].axes).length, 6);
+
+  // A fresh content instance must reload the same per-video records and a
+  // clean draft at the current media time, rather than leaking another video.
+  const reloaded = await createSession({ storedState: JSON.parse(JSON.stringify(persisted)) });
+  reloaded.flushStorage();
+  root = reloaded.overlayRoot();
+  assert.ok(root.querySelector(".bv-label-panel"), "the persisted labeling panel remains available after reload");
+  assert.equal(savedRows(root).length, 3);
+  assert.equal(root.querySelector("[data-bso-draft-state]").getAttribute("data-bso-draft-state"), "ready");
+  assert.match(textOf(root.querySelector("[data-bso-label-window]")), /^00:12\.000 → —$/);
+
+  // Existing-label edit preserves the event id and remains an intentional edit
+  // mode; deleting then undoing restores the deterministic saved record.
+  let rows = savedRows(root);
+  const editedId = rows[0].getAttribute("data-bso-event-id");
+  rows[0].dispatchEvent({ type: "click", target: rows[0] });
+  root = reloaded.overlayRoot();
+  assert.equal(root.querySelector("[data-bso-label-mode]").getAttribute("data-bso-label-mode"), "edit");
+  clickData(root, "data-bso-shot", "Drop");
+  clickData(root, "data-bso-label-save", "true");
+  root = reloaded.overlayRoot();
+  assert.equal(savedRows(root).length, 3);
+  assert.equal(savedRows(root)[0].getAttribute("data-bso-event-id"), editedId);
+  assert.equal(root.querySelector("[data-bso-draft-state]").getAttribute("data-bso-draft-state"), "ready");
+
+  rows = savedRows(root);
+  rows[1].dispatchEvent({ type: "click", target: rows[1] });
+  root = reloaded.overlayRoot();
+  const deleteButton = buttonWithText(root, "Delete label");
+  assert.ok(deleteButton);
+  deleteButton.dispatchEvent({ type: "click", target: deleteButton });
+  root = reloaded.overlayRoot();
+  assert.equal(savedRows(root).length, 2, "delete removes only the selected manual record");
+  const undoButton = buttonWithText(root, "Undo");
+  assert.ok(undoButton);
+  undoButton.dispatchEvent({ type: "click", target: undoButton });
+  root = reloaded.overlayRoot();
+  assert.equal(savedRows(root).length, 3, "undo restores the deleted record");
+  assert.doesNotThrow(() => buttonWithText(root, "Export CSV").dispatchEvent({ type: "click", target: buttonWithText(root, "Export CSV") }));
+  assert.ok(reloaded.documentRef.created.some((node) => node.tagName === "A" && node.download === "badminton-vision-shots.csv"));
+
+  const closeButton = buttonWithText(root, "Close");
+  assert.ok(closeButton);
+  closeButton.dispatchEvent({ type: "click", target: closeButton });
+  assert.equal(reloaded.overlayRoot().querySelector(".bv-label-panel"), null, "only explicit Close closes the normal labeling session");
+  const playbackAfter = { paused: reloaded.video.paused, muted: reloaded.video.muted, playbackRate: reloaded.video.playbackRate, src: reloaded.video.currentSrc || reloaded.video.src };
+  assert.deepEqual(playbackAfter, playbackBefore, "manual labeling never mutates playback");
 });
 
 test("popup and content controls visibly change density, panels, and manual labels", async () => {
