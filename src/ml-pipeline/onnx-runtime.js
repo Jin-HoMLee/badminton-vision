@@ -85,21 +85,20 @@
       const ort = this.ort;
       if (!ort) throw new Error('ONNX Runtime not available');
 
-      // Set WebGPU provider
-      ort.env.wasm.wasmPaths = undefined; // Will use default paths
+      // Check if WebGPU API is available
+      if (!globalThis.navigator?.gpu) {
+        throw new Error('WebGPU API not available');
+      }
+
+      // Attempt to initialize a WebGPU adapter (without creating session on about:blank)
       try {
-        await ort.InferenceSession.create('about:blank', {
-          providers: [{ name: 'webgpu', options: { device: 'gpu-preferred' } }],
-          executionProviders: ['webgpu']
-        }).catch(() => {
-          // Session creation may fail but we want to test provider registration
-          throw new Error('WebGPU not available');
-        });
-      } catch (e) {
-        // Attempt to check if WebGPU is available
-        if (!globalThis.navigator?.gpu) {
-          throw new Error('WebGPU API not available');
+        const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+        if (!adapter) {
+          throw new Error('No WebGPU adapter available');
         }
+        // Successfully got adapter, WebGPU is available
+      } catch (e) {
+        throw new Error('WebGPU not available: ' + e.message);
       }
     }
 
@@ -107,15 +106,25 @@
       const ort = this.ort;
       if (!ort) throw new Error('ONNX Runtime not available');
 
-      // Test WebGL provider
+      // Test WebGL provider by checking if canvas supports WebGL context
       try {
-        const session = await ort.InferenceSession.create('about:blank', {
-          providers: [{ name: 'webgl', options: {} }],
-          executionProviders: ['webgl']
-        }).catch(() => {
-          throw new Error('WebGL not available');
-        });
-        session.release?.();
+        const Canvas = globalThis.OffscreenCanvas || (globalThis.document?.createElement ? () => globalThis.document.createElement('canvas') : null);
+        if (!Canvas) {
+          throw new Error('Canvas not available for WebGL test');
+        }
+
+        let canvas;
+        if (typeof Canvas === 'function') {
+          canvas = new Canvas(1, 1);
+        } else {
+          canvas = Canvas(1, 1);
+        }
+
+        const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+        if (!gl) {
+          throw new Error('WebGL context not supported');
+        }
+        // Successfully got WebGL context
       } catch (e) {
         throw new Error('WebGL provider failed: ' + e.message);
       }
@@ -125,9 +134,15 @@
       const ort = this.ort;
       if (!ort) throw new Error('ONNX Runtime not available');
 
-      // WASM is always the last fallback
-      ort.env.wasm.wasmPaths = undefined;
-      ort.env.wasm.numThreads = Math.min(navigator.hardwareConcurrency || 4, 4);
+      // WASM is always available as fallback - just configure it
+      try {
+        ort.env.wasm.wasmPaths = undefined; // Use default paths
+        if (globalThis.navigator?.hardwareConcurrency) {
+          ort.env.wasm.numThreads = Math.min(globalThis.navigator.hardwareConcurrency, 4);
+        }
+      } catch (e) {
+        throw new Error('WASM configuration failed: ' + e.message);
+      }
     }
 
     /**

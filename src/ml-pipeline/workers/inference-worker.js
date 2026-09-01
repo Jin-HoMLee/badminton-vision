@@ -1,13 +1,21 @@
-/* global globalThis, BSOOnnxRuntime, BSOBlazePoseAdapter, BSOYOLOv8ShuttleAdapter, BSOTrackNetProcessor */
 /**
  * Web Worker for parallel ML inference (pose, shuttle, tracking).
  * Prevents main thread blocking during model inference.
  *
  * Message format:
- * - init: { type: 'init', payload: { models: { pose, shuttle, tracknet } } }
- * - infer: { type: 'infer', payload: { frame, width, height, mediaTime, requestId } }
- * - release: { type: 'release' }
+ * - init: { type: 'init', id, payload: { pose: { modelPath }, shuttle: { modelPath }, tracknet: { modelPath } } }
+ * - infer: { type: 'infer', id, payload: { frame, frameData, width, height, mediaTime, requestId, sessionId } }
+ * - release: { type: 'release', id }
  */
+
+// Import dependencies inline since workers run in isolated context
+importScripts(
+  '/src/ml-pipeline/onnx-runtime.js',
+  '/src/ml-pipeline/adapters/blazepose-adapter.js',
+  '/src/ml-pipeline/adapters/yolov8-shuttle-adapter.js',
+  '/src/ml-pipeline/adapters/tracknet-processor.js',
+  '/src/extension/common/player-tracking.js'
+);
 
 let onnxManager = null;
 let poseAnalyzer = null;
@@ -19,55 +27,79 @@ let tracknetProcessor = null;
  */
 async function initializeAnalyzers(config) {
   try {
-    // Initialize ONNX Runtime
-    onnxManager = new globalThis.BSOOnnxRuntime.OnnxRuntimeManager();
+    // Initialize ONNX Runtime using globalThis after importScripts
+    const OnnxRuntimeModule = globalThis.BSOOnnxRuntime;
+    if (!OnnxRuntimeModule || !OnnxRuntimeModule.OnnxRuntimeManager) {
+      return {
+        success: false,
+        error: 'ONNX Runtime module not loaded'
+      };
+    }
+
+    onnxManager = new OnnxRuntimeModule.OnnxRuntimeManager();
     const runtimeStatus = await onnxManager.initialize();
 
     if (!runtimeStatus.available) {
       return {
         success: false,
-        error: 'ONNX Runtime initialization failed: ' + runtimeStatus.reason
+        error: 'ONNX Runtime initialization failed: ' + runtimeStatus.reason,
+        runtime: runtimeStatus
       };
     }
 
     // Initialize pose analyzer
     if (config.pose) {
-      poseAnalyzer = new globalThis.BSOBlazePoseAdapter.BlazePoseAnalyzer({
-        modelPath: config.pose.modelPath,
-        onnxManager
-      });
+      const BlazePoseModule = globalThis.BSOBlazePoseAdapter;
+      if (BlazePoseModule && BlazePoseModule.BlazePoseAnalyzer) {
+        poseAnalyzer = new BlazePoseModule.BlazePoseAnalyzer({
+          modelPath: config.pose.modelPath,
+          onnxManager,
+          environment: globalThis
+        });
 
-      const poseStatus = await poseAnalyzer.initialize();
-      if (!poseStatus.available) {
-        console.warn('Pose analyzer initialization failed:', poseStatus.reason);
+        const poseStatus = await poseAnalyzer.initialize();
+        if (!poseStatus.available) {
+          console.warn('Pose analyzer initialization failed:', poseStatus.reason);
+          poseAnalyzer = null;
+        }
       }
     }
 
     // Initialize shuttle detector
     if (config.shuttle) {
-      shuttleDetector = new globalThis.BSOYOLOv8ShuttleAdapter.YOLOv8ShuttleDetector({
-        modelPath: config.shuttle.modelPath,
-        onnxManager,
-        confidenceThreshold: config.shuttle.confidenceThreshold || 0.4
-      });
+      const YOLOv8Module = globalThis.BSOYOLOv8ShuttleAdapter;
+      if (YOLOv8Module && YOLOv8Module.YOLOv8ShuttleDetector) {
+        shuttleDetector = new YOLOv8Module.YOLOv8ShuttleDetector({
+          modelPath: config.shuttle.modelPath,
+          onnxManager,
+          confidenceThreshold: config.shuttle.confidenceThreshold || 0.4,
+          environment: globalThis
+        });
 
-      const shuttleStatus = await shuttleDetector.initialize();
-      if (!shuttleStatus.available) {
-        console.warn('Shuttle detector initialization failed:', shuttleStatus.reason);
+        const shuttleStatus = await shuttleDetector.initialize();
+        if (!shuttleStatus.available) {
+          console.warn('Shuttle detector initialization failed:', shuttleStatus.reason);
+          shuttleDetector = null;
+        }
       }
     }
 
     // Initialize TrackNet (post-processing only)
     if (config.tracknet) {
-      tracknetProcessor = new globalThis.BSOTrackNetProcessor.TrackNetV3Processor({
-        modelPath: config.tracknet.modelPath,
-        onnxManager,
-        mode: 'post-processing'
-      });
+      const TrackNetModule = globalThis.BSOTrackNetProcessor;
+      if (TrackNetModule && TrackNetModule.TrackNetV3Processor) {
+        tracknetProcessor = new TrackNetModule.TrackNetV3Processor({
+          modelPath: config.tracknet.modelPath,
+          onnxManager,
+          mode: 'post-processing',
+          environment: globalThis
+        });
 
-      const tracknetStatus = await tracknetProcessor.initialize();
-      if (!tracknetStatus.available) {
-        console.warn('TrackNet processor initialization failed:', tracknetStatus.reason);
+        const tracknetStatus = await tracknetProcessor.initialize();
+        if (!tracknetStatus.available) {
+          console.warn('TrackNet processor initialization failed:', tracknetStatus.reason);
+          tracknetProcessor = null;
+        }
       }
     }
 
@@ -81,6 +113,7 @@ async function initializeAnalyzers(config) {
       }
     };
   } catch (error) {
+    console.error('Analyzer initialization error:', error);
     return {
       success: false,
       error: error.message
@@ -160,7 +193,7 @@ globalThis.onmessage = async (event) => {
           height: payload.height
         };
 
-        response = await runInference(frame, {
+        const result = await runInference(frame, {
           sessionId: payload.sessionId,
           requestId: payload.requestId,
           mediaTime: payload.mediaTime,
@@ -168,9 +201,12 @@ globalThis.onmessage = async (event) => {
           doShuttle: payload.doShuttle !== false
         });
 
-        response.type = 'infer-response';
-        response.id = id;
-        response.success = !response.error;
+        response = {
+          type: 'infer-response',
+          id,
+          success: !result.error,
+          result
+        };
         break;
       }
 
