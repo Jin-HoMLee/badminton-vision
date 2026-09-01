@@ -140,11 +140,13 @@
     return node;
   }
 
-  function segmented(options, value, onChange, full) {
+  function segmented(options, value, onChange, full, valueAttribute) {
     var node = el("div", { className: "bv-segmented" + (full ? " full" : ""), role: "radiogroup" });
     options.forEach(function (option) {
       option = typeof option === "string" ? { value: option, label: option } : option;
-      node.appendChild(el("button", { type: "button", role: "radio", "aria-checked": option.value === value, disabled: option.disabled, onClick: function () { if (onChange && !option.disabled) onChange(option.value); } }, [option.label]));
+      var attrs = { type: "button", role: "radio", "aria-checked": option.value === value, disabled: option.disabled, onClick: function () { if (onChange && !option.disabled) onChange(option.value); } };
+      if (valueAttribute) attrs[valueAttribute] = option.value;
+      node.appendChild(el("button", attrs, [option.label]));
     });
     return node;
   }
@@ -187,12 +189,12 @@
   }
 
   function dimensionAxis(label, options, value, onChange) {
-    return el("div", { className: "bv-axis" }, [el("span", { className: "bv-axis-label" }, [label]), el("span", { className: "bv-axis-options" }, options.map(function (option) { return el("button", { className: "bv-axis-option" + (option === value ? " selected" : ""), type: "button", "aria-pressed": option === value, onClick: function () { onChange(option); } }, [option]); }))]);
+    return el("div", { className: "bv-axis", "data-bso-axis": label }, [el("span", { className: "bv-axis-label" }, [label]), el("span", { className: "bv-axis-options" }, options.map(function (option) { return el("button", { className: "bv-axis-option" + (option === value ? " selected" : ""), type: "button", "aria-pressed": option === value, "data-bso-axis-option": option, onClick: function () { onChange(option); } }, [option]); }))]);
   }
 
   function shotPicker(value, suggested, onChange) {
     var shots = ["Serve", "Clear", "Drop", "Smash", "Half Smash", "Lift", "Net Shot", "Net Kill", "Push", "Drive", "Block"];
-    return el("div", { className: "bv-shot-picker" }, shots.map(function (shot, i) { var selected = value === shot; return el("button", { className: "bv-shot" + (selected ? " selected" : suggested === shot ? " suggested" : ""), type: "button", "aria-pressed": selected, onClick: function () { onChange(shot); } }, [shot, i < 9 ? kbd(i + 1, selected) : null]); }));
+    return el("div", { className: "bv-shot-picker" }, shots.map(function (shot, i) { var selected = value === shot; return el("button", { className: "bv-shot" + (selected ? " selected" : suggested === shot ? " suggested" : ""), type: "button", "aria-pressed": selected, "data-bso-shot": shot, onClick: function () { onChange(shot); } }, [shot, i < 9 ? kbd(i + 1, selected) : null]); }));
   }
 
   function courtDiagram(opts) {
