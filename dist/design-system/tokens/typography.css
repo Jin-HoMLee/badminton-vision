@@ -1,0 +1,24 @@
+:root,:host{
+--font-display:"Space Grotesk","Space Grotesk Fallback",system-ui,sans-serif;
+--font-sans:"IBM Plex Sans",system-ui,sans-serif;
+--font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,monospace;
+
+/* Overlay UI is dense: the scale starts small and steps tightly. */
+--fs-10:10px;--fs-11:11px;--fs-12:12px;--fs-13:13px;--fs-14:14px;--fs-16:16px;--fs-18:18px;--fs-22:22px;--fs-28:28px;--fs-36:36px;--fs-48:48px;
+--lh-tight:1.1; /* @kind font */--lh-snug:1.25; /* @kind font */--lh-normal:1.45; /* @kind font */--lh-loose:1.6; /* @kind font */
+--fw-regular:400; /* @kind font */--fw-medium:500; /* @kind font */--fw-semibold:600; /* @kind font */--fw-bold:700; /* @kind font */
+--ls-tight:-0.02em; /* @kind font */--ls-normal:0; /* @kind font */--ls-wide:0.02em; /* @kind font */--ls-caps:0.09em; /* @kind font */
+
+/* Semantic type roles */
+--type-display:var(--fw-bold) var(--fs-48)/var(--lh-tight) var(--font-display);
+--type-h1:var(--fw-bold) var(--fs-28)/var(--lh-snug) var(--font-display);
+--type-h2:var(--fw-semibold) var(--fs-22)/var(--lh-snug) var(--font-display);
+--type-h3:var(--fw-semibold) var(--fs-16)/var(--lh-snug) var(--font-display);
+--type-body:var(--fw-regular) var(--fs-14)/var(--lh-normal) var(--font-sans);
+--type-body-sm:var(--fw-regular) var(--fs-13)/var(--lh-normal) var(--font-sans);
+--type-ui:var(--fw-medium) var(--fs-13)/var(--lh-snug) var(--font-sans);
+--type-ui-sm:var(--fw-medium) var(--fs-12)/var(--lh-snug) var(--font-sans);
+--type-label:var(--fw-semibold) var(--fs-10)/var(--lh-snug) var(--font-sans);
+--type-mono:var(--fw-medium) var(--fs-12)/var(--lh-snug) var(--font-mono);
+--type-metric:var(--fw-semibold) var(--fs-28)/var(--lh-tight) var(--font-mono);
+}

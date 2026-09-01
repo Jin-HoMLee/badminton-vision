@@ -1,0 +1,10 @@
+:root,:host{
+/* Motion never competes with the video. Short, flat, opacity-and-2px-translate only. */
+--dur-instant:80ms; /* @kind other */--dur-fast:130ms; /* @kind other */--dur-base:180ms; /* @kind other */--dur-slow:260ms; /* @kind other */
+--ease-standard:cubic-bezier(.2,0,0,1); /* @kind other */
+--ease-out:cubic-bezier(0,0,0,1); /* @kind other */
+--ease-in:cubic-bezier(.4,0,1,1); /* @kind other */
+--transition-control:background-color var(--dur-fast) var(--ease-standard),border-color var(--dur-fast) var(--ease-standard),color var(--dur-fast) var(--ease-standard);
+--transition-panel:opacity var(--dur-base) var(--ease-out),transform var(--dur-base) var(--ease-out); /* @kind other */
+}
+@media (prefers-reduced-motion:reduce){:root,:host{--dur-instant:0ms; /* @kind other */--dur-fast:0ms; /* @kind other */--dur-base:0ms; /* @kind other */--dur-slow:0ms; /* @kind other */}}

@@ -1,0 +1,16 @@
+:root,:host{
+/* Panels float over moving video, so elevation is mostly a dark spread + a hairline
+   top highlight, never a soft grey drop shadow. */
+--shadow-chip:0 1px 2px rgba(0,0,0,.4);
+--shadow-panel:0 8px 28px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.06) inset;
+--shadow-raised:0 16px 44px rgba(0,0,0,.58),0 1px 0 rgba(255,255,255,.07) inset;
+--shadow-modal:0 28px 80px rgba(0,0,0,.66),0 1px 0 rgba(255,255,255,.08) inset;
+--focus-ring:0 0 0 2px var(--ink-900),0 0 0 4px var(--lime-500);
+
+--blur-panel:blur(14px) saturate(1.15); /* @kind other */
+--blur-chip:blur(8px) saturate(1.1); /* @kind other */
+
+/* Protection gradient: laid under text that sits directly on video. */
+--scrim-bottom:linear-gradient(to top,rgba(6,9,11,.88) 0%,rgba(6,9,11,.55) 45%,rgba(6,9,11,0) 100%); /* @kind color */
+--scrim-top:linear-gradient(to bottom,rgba(6,9,11,.8) 0%,rgba(6,9,11,0) 100%); /* @kind color */
+}
