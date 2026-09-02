@@ -60,9 +60,17 @@ class FakeNode {
 
   appendChild(child) {
     if (child == null) return child;
+    if (child.parentNode && child.parentNode.children) {
+      const index = child.parentNode.children.indexOf(child);
+      if (index >= 0) child.parentNode.children.splice(index, 1);
+    }
     this.children.push(child);
     child.parentNode = this;
     return child;
+  }
+
+  contains(node) {
+    return this === node || this.children.some((child) => child === node || child.contains?.(node));
   }
 
   replaceChildren(...children) {
@@ -160,11 +168,15 @@ class FakeDocument extends FakeNode {
   }
 }
 
-async function createSession({ bundle = false, storedState = { videoKey: "youtube:real-match", enabled: false, seeded: false }, runtimeError = null } = {}) {
+async function createSession({ bundle = false, storedState = { videoKey: "youtube:real-match", enabled: false, seeded: false }, runtimeError = null, videoPresent = true } = {}) {
   const documentRef = new FakeDocument();
-  const video = new FakeNode("video");
-  Object.assign(video, { currentTime: 12, paused: false, muted: false, playbackRate: 1, readyState: 4, videoWidth: 640, videoHeight: 360 });
-  documentRef.body.appendChild(video);
+  const video = videoPresent ? new FakeNode("video") : null;
+  if (video) {
+    Object.assign(video, { currentTime: 12, paused: false, muted: false, playbackRate: 1, readyState: 4, videoWidth: 640, videoHeight: 360 });
+    const videoContainer = new FakeNode("div");
+    documentRef.body.appendChild(videoContainer);
+    videoContainer.appendChild(video);
+  }
   const retiredOverlay = new FakeNode("div");
   retiredOverlay.setAttribute("data-bso-runtime-overlay", "true");
   documentRef.body.appendChild(retiredOverlay);
@@ -400,9 +412,30 @@ test("content geometry ignores unrelated DOM churn while retaining video ancesto
   session.emitMutations([{ type: "childList", target: session.documentRef.body, addedNodes: [new FakeNode("span")], removedNodes: [] }]);
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(positionCalls, 0, "an unrelated YouTube DOM mutation does not remeasure the overlay");
+  session.video.rect = { left: 91, top: 30, width: 640, height: 360 };
+  session.emitMutations([{ type: "childList", target: session.video.parentNode, addedNodes: [new FakeNode("span")], removedNodes: [] }]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(positionCalls, 1, "a video ancestor mutation reanchors after a same-size shift");
+  assert.equal(session.host().style.left, "91px");
   session.emitMutations([{ type: "attributes", target: session.video, attributeName: "class" }]);
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(positionCalls, 1, "a video geometry mutation still reanchors the overlay");
+  assert.equal(positionCalls, 2, "a video geometry mutation still reanchors the overlay");
+});
+
+test("a direct video insertion after startup attaches the overlay and media listeners", async () => {
+  const session = await createSession({ videoPresent: false });
+  session.flushStorage();
+  const video = new FakeNode("video");
+  Object.assign(video, { currentTime: 19, paused: false, muted: false, playbackRate: 1, readyState: 4, videoWidth: 640, videoHeight: 360 });
+  session.documentRef.body.appendChild(video);
+  session.emitMutations([{ type: "childList", target: session.documentRef.body, addedNodes: [video], removedNodes: [] }]);
+  assert.equal(session.host().style.display, "block");
+  assert.equal(session.host().style.width, "640px");
+  video.currentTime = 23;
+  video.dispatchEvent({ type: "timeupdate", target: video });
+  session.onMessage({ type: "OPEN_LABELING", requestId: "late-video-label" });
+  assert.equal(session.overlayRoot().querySelector(".bv-label-panel").getAttribute("data-bso-media-time"), "00:23.000");
+  assert.equal(session.host().getAttribute("data-bso-enabled"), "false");
 });
 
 test("Live Step 1 injects the declared content path when the tab predates extension installation", async () => {
@@ -622,6 +655,22 @@ test("court setup keeps corners clickable without a visible drag instruction", a
   assert.equal(live.host().getAttribute("data-bso-seed-count"), "0", "moving the setup header does not seed a point");
   layer.dispatchEvent({ type: "click", target: layer, clientX: 80, clientY: 280 });
   assert.equal(live.host().getAttribute("data-bso-seed-count"), "1", "a click on the layer remains a court-corner action");
+});
+
+test("runtime results do not replace the active court setup while seeding", async () => {
+  const session = await createSession();
+  session.flushStorage();
+  session.onMessage({ type: "START_SEED", requestId: "seed-runtime-1" });
+  const root = session.overlayRoot();
+  const layer = root.querySelector("[data-bso-court-seeding]");
+  let structuralRenders = 0;
+  const replaceChildren = root.replaceChildren.bind(root);
+  root.replaceChildren = (...children) => { structuralRenders += 1; return replaceChildren(...children); };
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.1 })));
+  assert.equal(structuralRenders, 0, "a playing runtime result leaves the court setup DOM intact");
+  assert.equal(session.overlayRoot().querySelector("[data-bso-court-seeding]"), layer);
+  layer.dispatchEvent({ type: "click", target: layer, clientX: 80, clientY: 280 });
+  assert.equal(session.host().getAttribute("data-bso-seed-count"), "1", "corner input remains available after a runtime result");
 });
 
 test("content runtime initialization failures remain visible and keep manual UI available", async () => {
@@ -1088,6 +1137,21 @@ test("structural panel updates release pointer capture before replacing the surf
   assert.equal(header.getAttribute("aria-grabbed"), "false");
 });
 
+test("resetting court setup releases pointer capture before replacing its card", async () => {
+  const session = await createSession();
+  session.flushStorage();
+  session.onMessage({ type: "START_SEED", requestId: "seed-capture-1" });
+  let layer = session.overlayRoot().querySelector("[data-bso-court-seeding]");
+  layer.dispatchEvent({ type: "click", target: layer, clientX: 80, clientY: 280 });
+  const card = session.overlayRoot().querySelector("[data-bso-seed-card]");
+  const header = card.querySelector("[data-bso-panel-drag-handle]");
+  header.dispatchEvent({ type: "pointerdown", target: header, pointerId: 43, button: 0, clientX: 10, clientY: 10, preventDefault() {}, stopPropagation() {} });
+  assert.equal(header.capturedPointerId, 43);
+  buttonWithText(session.overlayRoot(), "Reset court").dispatchEvent({ type: "click", target: buttonWithText(session.overlayRoot(), "Reset court") });
+  assert.equal(header.releasedPointerId, 43, "resetting setup releases the retired header capture");
+  assert.equal(header.getAttribute("aria-grabbed"), "false");
+});
+
 test("playing runtime updates preserve panel surfaces, focus, and scroll state", async () => {
   const session = await createSession({ storedState: {
     videoKey: "youtube:real-match",
@@ -1125,6 +1189,55 @@ test("playing runtime updates preserve panel surfaces, focus, and scroll state",
   assert.equal(session.overlayRoot(), root, "subsequent playing results remain non-destructive");
   assert.equal(feedPanel.querySelector('[data-bso-panel-drag-handle]'), header, "panel controls remain attached across results");
   assert.equal(feed.scrollTop, 37, "scroll remains stable across subsequent results");
+});
+
+test("runtime results refresh open stats, court map, and full-density signals without replacing chrome", async () => {
+  const session = await createLiveEvidenceSession();
+  session.onMessage({ type: "SET_DENSITY", value: "full", requestId: "runtime-panels-full" });
+  const root = session.overlayRoot();
+  const stats = root.querySelector('[data-bso-panel="stats"]');
+  const statsHeader = stats.querySelector("[data-bso-panel-drag-handle]");
+  const map = root.querySelector('[data-bso-panel="map"]');
+  const mapHeader = map.querySelector("[data-bso-panel-drag-handle]");
+  const initialMapCircles = map.querySelector(".bv-court").querySelectorAll("circle").length;
+  const signal = root.querySelector(".bv-runtime-signal");
+  assert.ok(textOf(signal).includes("players 0"));
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.2 })));
+  assert.equal(session.overlayRoot(), root);
+  assert.equal(stats.querySelector("[data-bso-panel-drag-handle]"), statsHeader, "stats chrome remains attached");
+  assert.equal(map.querySelector("[data-bso-panel-drag-handle]"), mapHeader, "court chrome remains attached");
+  assert.ok(textOf(stats).includes("tracked"), "stats reflects the tracked runtime result without stroke events");
+  assert.ok(map.querySelector(".bv-court").querySelectorAll("circle").length > initialMapCircles, "court map reflects tracked player/shuttle positions without stroke events");
+  assert.ok(textOf(root.querySelector(".bv-runtime-signal")).includes("players 1"), "full-density runtime signal reflects the tracked player");
+  assert.ok(textOf(root.querySelector(".bv-runtime-signal")).includes("tracked"), "full-density runtime signal reflects the tracked shuttle");
+});
+
+test("runtime feed reconciliation removes, updates, reorders, and retains rows", async () => {
+  const session = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  session.flushStorage();
+  session.onMessage({ type: "SET_PANELS", panels: { feed: true }, requestId: "feed-reconcile-open" });
+  const makeResult = (strokeEvents) => Object.assign(evidenceResult(), { strokeEvents });
+  const first = [
+    { eventId: "a", sequence: 1, shot_family: "Clear", hit_media_time: 12, status: "accepted", classification_confidence: 0.4 },
+    { eventId: "b", sequence: 2, shot_family: "Drop", hit_media_time: 13, status: "accepted", classification_confidence: 0.5 },
+    { eventId: "d", sequence: 3, shot_family: "Lift", hit_media_time: 14, status: "accepted", classification_confidence: 0.6 }
+  ];
+  session.publishRuntimeView(resultView(makeResult(first)));
+  let feed = session.overlayRoot().querySelector(".bv-feed");
+  const retained = feed.querySelector('[data-bso-event-id="d"]');
+  const changed = feed.querySelector('[data-bso-event-id="b"]');
+  const second = [
+    { eventId: "c", sequence: 1, shot_family: "Serve", hit_media_time: 11, status: "accepted", classification_confidence: 0.7 },
+    { eventId: "b", sequence: 2, shot_family: "Smash", hit_media_time: 13, status: "corrected", classification_confidence: 0.9 },
+    { eventId: "d", sequence: 3, shot_family: "Lift", hit_media_time: 14, status: "accepted", classification_confidence: 0.6 }
+  ];
+  session.publishRuntimeView(resultView(makeResult(second)));
+  feed = session.overlayRoot().querySelector(".bv-feed");
+  assert.deepEqual(feed.querySelectorAll("[data-bso-event-id]").map((row) => row.getAttribute("data-bso-event-id")), ["c", "b", "d"]);
+  assert.equal(feed.querySelector('[data-bso-event-id="a"]'), null, "removed runtime rows leave the feed");
+  assert.notEqual(feed.querySelector('[data-bso-event-id="b"]'), changed, "changed runtime rows are replaced");
+  assert.equal(feed.querySelector('[data-bso-event-id="d"]'), retained, "unchanged runtime rows retain their DOM node");
+  assert.equal(feed.querySelector('[data-bso-event-id="b"]').querySelector(".bv-confidence").getAttribute("title"), "confidence 90%");
 });
 
 test("live result updates redraw accepted pose, shuttle, and supplied racket evidence without blocking input", async () => {

@@ -72,23 +72,23 @@ mutation; capture remains one-in-flight and the video invariants are
 read-only.
 
 The fix keeps runtime updates non-destructive. `src/content.js` patches runtime
-attributes, timestamps, evidence SVG, evidence availability, and newly arrived
+attributes, timestamps, evidence SVG, evidence availability, and reconciled
 feed rows in place; it preserves panel headers, controls, scroll surfaces, and
 pointer capture. Structural changes explicitly release capture before retiring
-a surface, so no stale gesture can block the next interaction. Stats bodies are
-replaced only when the evidence list changes and their scroll offset is restored. Geometry observation now ignores overlay
-churn and unrelated DOM mutations, schedules relevant video-ancestor geometry
-work once per frame, and still reacts to video replacement and geometry
-changes. Inference, frame transport, playback, panel layout, and calibration
-are unchanged. The intentional load-shedding is measured by those regressions: a playing
-runtime result causes zero structural root renders, preserves the same header
-and feed/scroll nodes through a drag, and an unrelated DOM mutation causes zero
-video geometry reads while a video attribute mutation causes one. The playing-
-path regression is covered by the `playing runtime updates preserve panel
-surfaces, focus, and scroll state` and `content geometry ignores unrelated DOM
-churn while retaining video ancestor updates` tests in
-`tests/live-onboarding.test.mjs`; the headed procedure and playback invariants
-remain in [`docs/e2e-smoke.md`](e2e-smoke.md).
+a surface, so no stale gesture can block the next interaction. Runtime-owned
+stats and court-map bodies are selectively refreshed on result changes while
+their panel chrome remains attached. Geometry observation ignores overlay churn
+and unrelated page mutations, schedules relevant video-container geometry work
+once per frame, and still reacts to direct video insertion, replacement, and
+geometry changes. Inference, frame transport, playback, panel layout, and
+calibration are unchanged. The intentional load-shedding is measured by those
+regressions: a playing runtime result causes zero structural root renders,
+preserves the same header and feed/scroll nodes through a drag, and an
+unrelated DOM mutation causes zero video geometry reads while a video ancestor
+mutation causes one. The playing-path regressions are covered by the runtime
+seeding, panel-presentation, feed-reconciliation, pointer-capture, direct-video,
+and geometry tests in `tests/live-onboarding.test.mjs`; the headed procedure
+and playback invariants remain in [`docs/e2e-smoke.md`](e2e-smoke.md).
 
 ## Native player controls stay interactive
 

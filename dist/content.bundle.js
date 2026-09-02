@@ -7401,7 +7401,7 @@
         // controls read the latest clock when invoked and only need the visible
         // timestamp patched in place.
         if (state.labeling) refreshLabelingClock();
-        else if (!refreshRuntimePresentation({ resultChanged: resultChanged, strokesChanged: strokesChanged })) render();
+        else if (!state.seeding && !refreshRuntimePresentation({ resultChanged: resultChanged, strokesChanged: strokesChanged })) render();
       }
     }
     function runtimeIsStale() { return Boolean(state.stale || runtimeView.stale); }
@@ -7465,6 +7465,14 @@
       var shuttle = runtimeShuttle();
       var shuttleState = shuttle && shuttle.state === "tracked" ? "shuttle candidate tracked" : "shuttle unknown";
       return runtimeView.inference ? "local pose + shuttle runtime · " + shuttleState : "local runtime · awaiting analyzer";
+    }
+    function runtimeSignalKey() {
+      return [runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length, evidenceState(runtimeShuttle())].join("\u001f");
+    }
+    function runtimeSignalNode() {
+      var node = ui.el("div", { className: "bv-runtime-signal", role: "status" }, ["players ", ui.badge(String(runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length), "info"), " · shuttle ", ui.badge(evidenceState(runtimeShuttle()), evidenceState(runtimeShuttle()) === "tracked" ? "in" : "unknown")]);
+      node.setAttribute("data-bso-runtime-signal-key", runtimeSignalKey());
+      return node;
     }
     function evidenceState(value) { return value && value.state ? value.state : "unknown"; }
     function imagePointToCourt(point) {
@@ -7577,10 +7585,11 @@
       suggestion = isFixtureRuntime() && data.suggestion ? Object.assign({}, data.suggestion) : null;
       if (suggestion && strokes.some(function (stroke) { return String(stroke.eventId) === String(suggestion.eventId); })) suggestion = null;
     }
+    function runtimeStrokeKey(stroke) {
+      return [stroke && stroke.eventId, stroke && stroke.sequence, stroke && stroke.shot, stroke && stroke.time, stroke && stroke.status, stroke && stroke.source, stroke && stroke.player, stroke && stroke.playerId, stroke && stroke.confidence, stroke && stroke.fixtureRow].map(function (value) { return JSON.stringify(value); }).join("\u001f");
+    }
     function runtimeStrokesKey(items) {
-      return (Array.isArray(items) ? items : []).map(function (stroke) {
-        return [stroke && stroke.eventId, stroke && stroke.shot, stroke && stroke.time, stroke && stroke.status, stroke && stroke.source].join("\u001f");
-      }).join("\u001e");
+      return (Array.isArray(items) ? items : []).map(runtimeStrokeKey).join("\u001e");
     }
     function replaceRuntimeNode(current, next) {
       if (!current || !next || !current.parentNode) return false;
@@ -7633,6 +7642,11 @@
       });
       return true;
     }
+    function runtimeFeedItem(stroke) {
+      var row = ui.strokeFeedItem(stroke, function () { openExistingLabel(stroke); });
+      row.setAttribute("data-bso-runtime-row-key", runtimeStrokeKey(stroke));
+      return row;
+    }
     function refreshRuntimeFeed(panel) {
       if (!panel || !panel.querySelector) return false;
       var feed = panel.querySelector(".bv-feed");
@@ -7640,13 +7654,35 @@
       var rows = feed.querySelectorAll ? feed.querySelectorAll("[data-bso-event-id]") : [];
       var byId = Object.create(null);
       Array.prototype.forEach.call(rows, function (row) { byId[row.getAttribute("data-bso-event-id")] = row; });
-      var empty = panel.querySelector(".bv-empty");
-      if (strokes.length && empty && typeof empty.remove === "function") empty.remove();
-      strokes.forEach(function (stroke) {
-        var id = String(stroke.eventId);
-        if (byId[id]) return;
-        feed.appendChild(ui.strokeFeedItem(stroke, function () { openExistingLabel(stroke); }));
+      var wanted = Object.create(null);
+      strokes.forEach(function (stroke) { wanted[String(stroke.eventId)] = true; });
+      Array.prototype.forEach.call(rows, function (row) {
+        if (wanted[row.getAttribute("data-bso-event-id")]) return;
+        if (typeof row.remove === "function") row.remove();
+        else if (row.parentNode && typeof row.parentNode.removeChild === "function") row.parentNode.removeChild(row);
       });
+      var empty = panel.querySelector(".bv-empty");
+      if (strokes.length) {
+        if (empty) {
+          if (typeof empty.remove === "function") empty.remove();
+          else if (empty.parentNode && typeof empty.parentNode.removeChild === "function") empty.parentNode.removeChild(empty);
+        }
+        strokes.forEach(function (stroke) {
+          var id = String(stroke.eventId);
+          var row = byId[id];
+          var key = runtimeStrokeKey(stroke);
+          if (row && row.getAttribute("data-bso-runtime-row-key") !== key) {
+            var replacement = runtimeFeedItem(stroke);
+            if (!replaceRuntimeNode(row, replacement)) return;
+            row = replacement;
+          }
+          if (!row) row = runtimeFeedItem(stroke);
+          row.setAttribute("data-bso-runtime-row-key", key);
+          feed.appendChild(row);
+        });
+      } else if (!empty) {
+        feed.appendChild(ui.emptyState("No accepted stroke evidence", "Pose and shuttle signals do not establish a hit, shot family, rally end, or winner. Add a manual label while playback continues.", ui.button("Label current segment", { variant: "ghost", size: "sm", onClick: openLabeling }), "help"));
+      }
       return true;
     }
     function refreshRuntimePresentation(options) {
@@ -7693,12 +7729,13 @@
         var feedPanel = overlay.querySelector('[data-bso-panel="feed"]');
         refreshRuntimeFeed(feedPanel);
       }
-      // Stats and map have no controls in their bodies. Rebuild only when the
-      // evidence list changes, preserving their scroll offsets; pose/shuttle
-      // marks above remain current on every accepted runtime result.
-      if (options.strokesChanged) {
+      var runtimeSignal = overlay.querySelector(".bv-runtime-signal");
+      if (runtimeSignal && runtimeSignal.getAttribute("data-bso-runtime-signal-key") !== runtimeSignalKey()) replaceRuntimeNode(runtimeSignal, runtimeSignalNode());
+      if (options.resultChanged || options.strokesChanged) {
         var statsPanelNode = overlay.querySelector('[data-bso-panel="stats"]');
         if (statsPanelNode) replaceRuntimePanelBody(statsPanelNode, statsPanel);
+        var mapPanelNode = overlay.querySelector('[data-bso-panel="map"]');
+        if (mapPanelNode) replaceRuntimePanelBody(mapPanelNode, mapPanel);
       }
       return true;
     }
@@ -7809,6 +7846,18 @@
         ? window.requestAnimationFrame.bind(window)
         : function (callback) { return setTimeout(callback, 0); };
       positionFrameHandle = schedule(function () { positionToVideo(); });
+    }
+    function isVideoLayoutAncestor(target) {
+      if (!video || !target || target === video) return false;
+      var ancestor = video.parentNode;
+      while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+        if (ancestor === target) return true;
+        ancestor = ancestor.parentNode;
+      }
+      return false;
+    }
+    function mutationNodeContainsVideo(node) {
+      return Boolean(node && (node === video || node.matches && node.matches("video") || node.querySelector && node.querySelector("video") || node.contains && video && node.contains(video)));
     }
     function resetVideoResizeObserver() {
       if (videoResizeObserver) videoResizeObserver.disconnect();
@@ -8313,7 +8362,7 @@
     }
     function resetSeed() {
       state = window.BVState.reduceExtensionState(state, { type: "RESET_COURT" });
-      panelGesture = null;
+      clearPanelGesture();
       seedPoints = [];
       calibration = null;
       persist();
@@ -8479,7 +8528,7 @@
     }
     function feedPanel() {
       var rows = ui.el("div", { className: "bv-feed" });
-      strokes.forEach(function (stroke) { rows.appendChild(ui.strokeFeedItem(stroke, function () { openExistingLabel(stroke); })); });
+      strokes.forEach(function (stroke) { rows.appendChild(runtimeFeedItem(stroke)); });
       if (!strokes.length) rows.appendChild(ui.emptyState("No accepted stroke evidence", "Pose and shuttle signals do not establish a hit, shot family, rally end, or winner. Add a manual label while playback continues.", ui.button("Label current segment", { variant: "ghost", size: "sm", onClick: openLabeling }), "help"));
       var children = [];
       if (state.lastEdit) children.push(ui.el("div", { className: "bv-review-undo", role: "status" }, [ui.el("span", {}, [(state.lastEdit.source === "manual" ? "Saved manual label at " : "Saved review suggestion at ") + (state.lastEdit.time || "the current timestamp") + "."]), ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit })]));
@@ -8574,7 +8623,7 @@
       overlay.appendChild(runtimeEvidenceDrawing());
       var leftChildren = [];
       if (state.density !== "minimal") leftChildren.push(ui.el("div", { className: "bv-runtime-note", role: "status" }, [ui.icon("info", 11), runtimeCaption()]));
-      if (state.density === "full") leftChildren.push(ui.el("div", { className: "bv-runtime-signal", role: "status" }, ["players ", ui.badge(String(runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length), "info"), " · shuttle ", ui.badge(evidenceState(runtimeShuttle()), evidenceState(runtimeShuttle()) === "tracked" ? "in" : "unknown")]));
+      if (state.density === "full") leftChildren.push(runtimeSignalNode());
       if (leftChildren.length) overlay.appendChild(ui.el("div", { className: "bv-overlay-stack left" }, leftChildren));
       // The access point is the only default interactive surface. The popup is
       // canonical for durable visibility choices; this menu is a small shortcut
@@ -9166,13 +9215,14 @@
           // with active gestures during playback.
           if (host && (target === host || host.contains && host.contains(target))) return;
           if (record.type === "attributes") {
-            if (!video || target === video || target && target.contains && target.contains(video)) needsPosition = true;
+            if (video && (target === video || isVideoLayoutAncestor(target))) needsPosition = true;
             return;
           }
+          if (isVideoLayoutAncestor(target)) needsPosition = true;
           var nodes = [];
           if (record.addedNodes) nodes = nodes.concat(Array.prototype.slice.call(record.addedNodes));
           if (record.removedNodes) nodes = nodes.concat(Array.prototype.slice.call(record.removedNodes));
-          if (nodes.some(function (node) { return node === video || node && node.querySelector && node.querySelector("video") || node && node.contains && video && node.contains(video); })) needsAttach = true;
+          if (nodes.some(mutationNodeContainsVideo)) needsAttach = true;
         });
         if (needsAttach) attachVideo();
         else if (needsPosition) scheduleVideoPosition();
