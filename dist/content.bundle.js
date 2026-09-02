@@ -6757,6 +6757,9 @@
         if (value.panelOverridesByVideo[panelVideoKey]) value.panelOverrides = copyPanelOverrides(value.panelOverridesByVideo[panelVideoKey]);
         if (value.panelsByVideo[panelVideoKey]) value.panels = Object.assign({}, defaults.panels, value.panelsByVideo[panelVideoKey]);
         if (value.trackerSettingsByVideo[panelVideoKey]) value.trackerSettings = Object.assign({}, defaults.trackerSettings, value.trackerSettingsByVideo[panelVideoKey]);
+        else value.trackerSettings = Object.assign({}, defaults.trackerSettings, raw.trackerSettings || {});
+      } else {
+        value.trackerSettings = Object.assign({}, defaults.trackerSettings, raw.trackerSettings || {});
       }
       var labelOptions = options || {};
       var mapSource = raw.manualLabelsByVideo || raw.labelsByVideo || (raw.manualLabelStore && raw.manualLabelStore.videos) || {};
@@ -6778,7 +6781,6 @@
       if (raw.videoKey != null && value.manualLabelsByVideo[String(raw.videoKey)]) value.manualLabels = copyRecords(value.manualLabelsByVideo[String(raw.videoKey)]);
       value.lastEdit = copyEdit(raw.lastEdit);
       if (raw.videoKey != null && value.labelUndoByVideo[String(raw.videoKey)]) value.lastEdit = copyEdit(value.labelUndoByVideo[String(raw.videoKey)]);
-      value.trackerSettings = Object.assign({}, defaults.trackerSettings, raw.trackerSettings || {});
       return value;
     }
   

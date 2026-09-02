@@ -149,7 +149,7 @@ test("default overlay preferences are evidence-only, video-local, and reversible
   const otherVideo = state.stateForVideo(current, videoB);
   assert.deepEqual(JSON.parse(JSON.stringify(otherVideo.panels)), { feed: false, stats: false, map: false, controls: false });
   assert.equal(otherVideo.trackerSettings.body, true);
-  const restored = state.stateForVideo(current, videoA);
+  const restored = state.stateForVideo(otherVideo, videoA);
   assert.equal(restored.panels.stats, true);
   assert.equal(restored.trackerSettings.body, false);
 
