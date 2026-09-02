@@ -43,14 +43,10 @@ test("panel toggles and keyboard shortcuts are explicit and re-render safe", asy
   assert.match(content, /TOGGLE_PANEL.*panel: \"map\"/);
   assert.match(content, /key === "o"/);
   assert.match(content, /key >= "1" && key <= "9"/);
-  // Keyboard shortcuts capture via currentMediaTimestamp() which prefers live video.currentTime
-  assert.match(content, /formatMediaTime\(currentMediaTimestamp\(\)\)/);
   assert.match(content, /key === "escape"/);
   assert.match(content, /event\.key === "Enter"/);
   assert.match(content, /isInteractiveTarget/);
   assert.match(content, /window\.addEventListener\("keydown", handleKeyboardShortcuts\)/);
-  // Behavioral verification: keyboard shortcuts S and E are tested in live-onboarding.test.mjs
-  assert.match(content, /function currentMediaTimestamp\(\)/);
 });
 
 test("summary navigation and both CSV exports remain local", async () => {

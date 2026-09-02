@@ -249,6 +249,12 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
     runtimeUpdate(view) { runtimeChange?.(view); },
     publishRuntimeView(view) { assert.equal(typeof runtimeOnChange, "function"); runtimeOnChange(view); },
     emitWindow(name) { (windowListeners[name] || []).slice().forEach((listener) => listener({ type: name })); },
+    emitKey(key, { target = null } = {}) {
+      let prevented = false;
+      const event = { type: "keydown", key, target, preventDefault() { prevented = true; } };
+      (windowListeners.keydown || []).slice().forEach((listener) => listener(event));
+      return prevented;
+    },
     flushStorage(value = storedState) {
       assert.equal(storageReads.length, 1);
       storageReads.shift()({ bvState: value });
@@ -1477,34 +1483,42 @@ test("popup shows the real tab video identity and keeps the fixture as a labeled
   assert.equal(textOf(other.app).includes("Detecting video"), false);
 });
 
-test("keyboard shortcuts capture the live video time, verifying currentMediaTimestamp() prefers video.currentTime", async () => {
+test("S and E keyboard shortcuts and the Start/End controls both capture the live video clock", async () => {
   const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
   live.flushStorage();
   live.onMessage({ type: "OPEN_LABELING", requestId: "keyboard-shortcut-test" });
   let root = live.overlayRoot();
+  assert.ok(root.querySelector(".bv-label-panel"), "manual labeling panel is open");
 
-  // Verify the panel is open and ready for input
-  const panel = root.querySelector(".bv-label-panel");
-  assert.ok(panel, "manual labeling panel is open");
+  // Playback advances the media clock between timeupdate callbacks, so the
+  // cached mediaTime (seeded at 12s on attach) is stale at capture time.
+  live.video.currentTime = 47;
+  assert.equal(live.emitKey("s"), true, "the S shortcut is handled by the registered keydown listener");
+  root = live.overlayRoot();
+  assert.ok(root.querySelector("[data-bso-label-window]").textContent.includes("00:47.000"), `S captures the live clock: ${root.querySelector("[data-bso-label-window]").textContent}`);
 
-  // Manually update the draft using buttons to verify the implementation handles currentMediaTimestamp() correctly
-  // Setting time via currentTime without timeupdate to verify live clock capture
-  live.video.currentTime = 12;
-  // Simulate Start button click which calls currentMediaTimestamp()
+  live.video.currentTime = 63.5;
+  assert.equal(live.emitKey("e"), true, "the E shortcut is handled by the registered keydown listener");
+  root = live.overlayRoot();
+  assert.ok(root.querySelector("[data-bso-label-window]").textContent.includes("01:03.500"), `E captures the live clock: ${root.querySelector("[data-bso-label-window]").textContent}`);
+
+  live.emitKey("4");
+  live.emitKey("Enter");
+  const saved = live.storageWrites.at(-1).bvState.manualLabelsByVideo["youtube:real-match"].at(-1);
+  assert.equal(saved.shot, "Smash");
+  assert.equal(saved.startSec, 47);
+  assert.equal(saved.endSec, 63.5);
+
+  // The equivalent Start/End controls share the same boundary.
+  live.onMessage({ type: "OPEN_LABELING", requestId: "start-end-control-test" });
+  root = live.overlayRoot();
+  live.video.currentTime = 81;
   buttonWithText(root, "Start").dispatchEvent({ type: "click" });
-
-  // Verify the timestamp window shows the live time (12.000)
+  live.video.currentTime = 95.25;
   root = live.overlayRoot();
-  const labelWindow = root.querySelector("[data-bso-label-window]");
-  assert.ok(labelWindow && labelWindow.textContent.includes("00:12"), `timestamp window shows 12 seconds: ${labelWindow ? labelWindow.textContent : "not found"}`);
-
-  // Set video time to 30 seconds without firing timeupdate
-  live.video.currentTime = 30;
-  // Simulate End button click which calls currentMediaTimestamp()
   buttonWithText(root, "End").dispatchEvent({ type: "click" });
-
-  // Verify the timestamp window shows the live end time (30.000)
   root = live.overlayRoot();
-  const updatedLabelWindow = root.querySelector("[data-bso-label-window]");
-  assert.ok(updatedLabelWindow && updatedLabelWindow.textContent.includes("00:30"), `timestamp window shows end at 30 seconds: ${updatedLabelWindow ? updatedLabelWindow.textContent : "not found"}`);
+  const controlWindow = root.querySelector("[data-bso-label-window]").textContent;
+  assert.ok(controlWindow.includes("01:21.000"), `Start captures the live clock: ${controlWindow}`);
+  assert.ok(controlWindow.includes("01:35.250"), `End captures the live clock: ${controlWindow}`);
 });
