@@ -500,13 +500,40 @@ test("popup mode and panel controls are single-activation and visibly stateful",
   switchButton.dispatchEvent({ type: "click" });
   switchButton = popup.app.querySelector('[aria-label="Toggle Shots this rally"]');
   assert.equal(switchButton.getAttribute("aria-checked"), "false", "one switch click is not cancelled by label activation");
-  for (const label of ["Rally stats", "Court map", "Evidence visibility"]) {
+  for (const label of ["Rally stats", "Court map"]) {
     switchButton = popup.app.querySelector(`[aria-label="Toggle ${label}"]`);
     const before = switchButton.getAttribute("aria-checked");
     switchButton.dispatchEvent({ type: "click" });
     switchButton = popup.app.querySelector(`[aria-label="Toggle ${label}"]`);
     assert.notEqual(switchButton.getAttribute("aria-checked"), before, `${label} switch changes state`);
   }
+
+  // Evidence visibility is one compact, keyboard-operable disclosure in the
+  // popup rather than a fourth on-video panel.
+  let disclosureToggle = popup.app.querySelector("[data-bso-evidence-disclosure-toggle]");
+  const disclosureId = disclosureToggle.getAttribute("aria-controls");
+  assert.equal(disclosureToggle.getAttribute("aria-expanded"), "false");
+  assert.equal(disclosureToggle.getAttribute("aria-label"), "Expand Evidence visibility controls");
+  assert.equal(popup.app.querySelector(`[id="${disclosureId}"]`).getAttribute("hidden") !== null, true);
+  disclosureToggle.dispatchEvent({ type: "click" });
+  disclosureToggle = popup.app.querySelector("[data-bso-evidence-disclosure-toggle]");
+  assert.equal(disclosureToggle.getAttribute("aria-expanded"), "true");
+  assert.equal(popup.app.querySelector(`[id="${disclosureId}"]`).getAttribute("hidden"), null);
+  assert.equal(popup.app.querySelector(`[data-bso-evidence-control="body"]`).querySelector("button").getAttribute("aria-label"), "Toggle Pose keypoints + skeleton");
+  assert.ok(popup.app.querySelector(`[data-bso-evidence-control="players"]`));
+  assert.ok(popup.app.querySelector(`[data-bso-evidence-control="racket"]`));
+  assert.ok(popup.app.querySelector(`[data-bso-evidence-control="shuttle"]`));
+  assert.ok(popup.app.querySelector("[data-bso-court-projection-toggle]"));
+  const firstEvidenceControl = popup.app.querySelector(`[data-bso-evidence-control="body"]`).querySelector("button");
+  assert.equal(firstEvidenceControl.focused, true, "opening the disclosure moves focus to its first available control");
+  const bodyBefore = firstEvidenceControl.getAttribute("aria-checked");
+  firstEvidenceControl.dispatchEvent({ type: "click" });
+  assert.notEqual(popup.app.querySelector(`[data-bso-evidence-control="body"]`).querySelector("button").getAttribute("aria-checked"), bodyBefore);
+  assert.equal(popup.app.querySelector("[data-bso-evidence-disclosure-toggle]").getAttribute("aria-expanded"), "true", "normal evidence setting rerenders keep the disclosure expanded");
+  disclosureToggle = popup.app.querySelector("[data-bso-evidence-disclosure-toggle]");
+  disclosureToggle.dispatchEvent({ type: "click" });
+  assert.equal(popup.app.querySelector("[data-bso-evidence-disclosure-toggle]").getAttribute("aria-expanded"), "false");
+  assert.equal(popup.app.querySelector("[data-bso-evidence-disclosure-toggle]").focused, true, "closing the disclosure returns focus to its trigger");
 });
 
 test("minimal live overlay keeps only detection evidence and one on-demand access point", async () => {
@@ -540,6 +567,7 @@ test("minimal live overlay keeps only detection evidence and one on-demand acces
   assert.ok(root.querySelector('[data-bso-overlay-shortcut="stats"]'));
   assert.ok(root.querySelector('[data-bso-overlay-shortcut="feed"]'));
   assert.ok(root.querySelector('[data-bso-overlay-shortcut="map"]'));
+  assert.equal(root.querySelector('[data-bso-overlay-shortcut="evidence"]'), null, "the retired standalone evidence panel is not an overlay shortcut");
   assert.ok(root.querySelector('[data-bso-overlay-shortcut="manual"]'), "manual labeling is available from the same access point");
   root.querySelector('[data-bso-overlay-shortcut="stats"]').dispatchEvent({ type: "click" });
   root = live.overlayRoot();
@@ -666,7 +694,7 @@ test("all overlay panels expose independent move and resize semantics", async ()
   live.onMessage({ type: "SET_DENSITY", value: "full", requestId: "layout-full-1" });
   let root = live.overlayRoot();
   const panelIds = root.querySelectorAll("[data-bso-panel-layout]").map((panel) => panel.getAttribute("data-bso-panel"));
-  assert.deepEqual(panelIds.sort(), ["controls", "evidence", "feed", "map", "stats"]);
+  assert.deepEqual(panelIds.sort(), ["controls", "feed", "map", "stats"]);
   for (const panelId of panelIds) {
     const panel = root.querySelector(`[data-bso-panel="${panelId}"]`);
     assert.ok(panel.querySelector("[data-bso-panel-drag-handle]"), `${panelId} has a natural header drag surface`);
@@ -716,16 +744,7 @@ test("panel movement and controls remain separate, with layout retained across r
   const resized = live.storageWrites.at(-1).bvState.panelLayouts.feed;
   assert.ok(resized.width <= 0.875 && resized.height <= 1, "resize is capped to the video bounds");
 
-  const evidence = root.querySelector('[data-bso-panel="evidence"]');
-  const evidenceHeader = evidence.querySelector("[data-bso-panel-drag-handle]");
-  pointer(evidenceHeader, "pointerdown", 10, 10, 10);
-  pointer(evidenceHeader, "pointermove", 150, 100, 10);
-  pointer(evidenceHeader, "pointerup", 150, 100, 10);
-  assert.ok(live.storageWrites.at(-1).bvState.panelLayoutsByVideo["youtube:real-match"].evidence, "evidence visibility layout is persisted independently");
-  const evidenceResize = evidence.querySelector("[data-bso-panel-resize-handle]");
-  const beforeEvidenceWidth = live.storageWrites.at(-1).bvState.panelLayouts.evidence.width;
-  evidenceResize.dispatchEvent({ type: "keydown", target: evidenceResize, key: "ArrowRight", preventDefault() {}, stopPropagation() {} });
-  assert.ok(live.storageWrites.at(-1).bvState.panelLayouts.evidence.width >= beforeEvidenceWidth, "resize keyboard affordance changes only the panel size");
+  assert.equal(root.querySelector('[data-bso-panel="evidence"]'), null, "evidence visibility is not movable on-video furniture");
 });
 
 test("court setup keeps corners clickable without a visible drag instruction", async () => {
@@ -1372,11 +1391,7 @@ test("live result updates redraw accepted pose, shuttle, and supplied racket evi
   assert.equal(drawing.querySelectorAll(".bv-pose-keypoint").length, 18);
   assert.ok(drawing.querySelectorAll(".bv-pose-bone").length >= 10, "named body points are connected");
   assert.equal(drawing.querySelectorAll(".bv-player-box").length, 0, "player boxes are opt-in in the minimal detection layer");
-  root.querySelector("[data-bso-overlay-access]").dispatchEvent({ type: "click" });
-  root = session.overlayRoot();
-  root.querySelector('[data-bso-overlay-shortcut="evidence"]').dispatchEvent({ type: "click" });
-  root = session.overlayRoot();
-  root.querySelector('[data-bso-evidence-control="players"]').querySelector("button").dispatchEvent({ type: "click" });
+  session.onMessage({ type: "SET_TRACKER", tracker: "players", value: true, requestId: "live-players-on" });
   root = session.overlayRoot();
   drawing = root.querySelector(".bv-runtime-evidence");
   assert.equal(drawing.querySelectorAll(".bv-player-box").length, 1, "player boxes appear after an explicit opt-in");
@@ -1399,86 +1414,6 @@ test("live result updates redraw accepted pose, shuttle, and supplied racket evi
   assert.equal(box.getAttribute("data-player-state"), "tracked");
 });
 
-test("live evidence visibility switches are independent, persistent across result rerenders, and honest about missing signals", async () => {
-  const session = await createLiveEvidenceSession();
-  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12 })));
-  let accessRoot = session.overlayRoot();
-  accessRoot.querySelector("[data-bso-overlay-access]").dispatchEvent({ type: "click" });
-  accessRoot = session.overlayRoot();
-  accessRoot.querySelector('[data-bso-overlay-shortcut="evidence"]').dispatchEvent({ type: "click" });
-  const toggle = (name) => session.overlayRoot().querySelector(`[data-bso-evidence-control="${name}"]`).querySelector("button");
-  const projectionToggle = () => session.overlayRoot().querySelector("[data-bso-court-projection-toggle]").querySelector("button");
-  const has = (selector) => Boolean(session.overlayRoot().querySelector(".bv-runtime-evidence").querySelector(selector));
-
-  toggle("body").dispatchEvent({ type: "click" });
-  assert.equal(has(".bv-pose-keypoint"), false);
-  assert.equal(has(".bv-player-box"), false, "player boxes remain off until explicitly enabled");
-  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.1, keypointOffset: 0.01 })));
-  assert.equal(has(".bv-pose-keypoint"), false, "pose visibility survives a result rerender");
-
-  toggle("players").dispatchEvent({ type: "click" });
-  assert.equal(has(".bv-player-box"), true, "the evidence panel can explicitly enable player boxes");
-  assert.equal(has(".bv-pose-keypoint"), false);
-  toggle("shuttle").dispatchEvent({ type: "click" });
-  assert.equal(has(".bv-shuttle-trajectory"), false);
-  assert.equal(has(".bv-shuttle-point"), false);
-  toggle("racket").dispatchEvent({ type: "click" });
-  assert.equal(has(".bv-racket-signal"), false);
-  // The calibrated court polygon has exactly one toggle (Court projection);
-  // turning it off removes the projection from the video.
-  assert.equal(projectionToggle().getAttribute("aria-checked"), "true");
-  projectionToggle().dispatchEvent({ type: "click" });
-  assert.equal(session.overlayRoot().querySelector(".bv-calibration-court"), null);
-  assert.equal(session.overlayRoot().querySelector('[data-bso-evidence-control="court"]'), null, "there is no second court toggle");
-
-  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.2, includeRacket: false, unknown: true })));
-  assert.equal(toggle("racket").getAttribute("aria-checked"), "false", "explicit racket visibility remains off");
-  const racketControl = session.overlayRoot().querySelector('[data-bso-evidence-control="racket"]');
-  assert.equal(racketControl.getAttribute("data-bso-evidence-state"), "unavailable", "missing racket output is unavailable, not guessed");
-  assert.equal(toggle("racket").disabled, true);
-  assert.equal(session.overlayRoot().querySelector('[data-bso-evidence-control="shuttle"]').getAttribute("data-bso-evidence-state"), "unknown");
-  assert.equal(has(".bv-racket-signal"), false);
-  assert.equal(has(".bv-shuttle-point"), false);
-  assert.equal(has(".bv-player-box"), false);
-
-  session.onMessage({ type: "DISABLE", requestId: "live-evidence-disable" });
-  assert.equal(session.runtimeStops, 1, "disabling the overlay stops the runtime session");
-  assert.equal(session.overlayRoot().children.length, 0, "disable removes all live evidence and controls");
-  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.3 })));
-  assert.equal(session.overlayRoot().children.length, 0, "a late result cannot resurrect disabled evidence");
-});
-
-test("evidence toggles keep their checked state while availability disables the row", async () => {
-  const session = await createLiveEvidenceSession();
-  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12 })));
-  let root = session.overlayRoot();
-  root.querySelector("[data-bso-overlay-access]").dispatchEvent({ type: "click" });
-  root = session.overlayRoot();
-  root.querySelector('[data-bso-overlay-shortcut="evidence"]').dispatchEvent({ type: "click" });
-  const toggle = (name) => session.overlayRoot().querySelector(`[data-bso-evidence-control="${name}"]`).querySelector("button");
-  const bodyRow = () => session.overlayRoot().querySelector('[data-bso-evidence-control="body"]');
-  assert.equal(toggle("body").getAttribute("aria-checked"), "true", "pose evidence starts on");
-  const fallback = {
-    phase: "fallback", message: "Local analyzer result received", reason: "pose-model-unavailable",
-    analyzer: "lightweight-openpose-lite-256-v1", inference: false, fallbacks: ["pose-model-unavailable"],
-    capabilities: { inference: false, analyzer: "lightweight-openpose-lite-256-v1", backend: "wasm" },
-    result: evidenceResult({ mediaTime: 12.1, includeRacket: false, unknown: true }),
-    currentMediaTime: 12.1, ageSeconds: 0, stale: false
-  };
-  session.publishRuntimeView(fallback);
-  assert.equal(bodyRow().getAttribute("data-bso-evidence-state"), "unavailable");
-  assert.equal(toggle("body").disabled, true, "pose evidence is disabled while the analyzer output is unavailable");
-  assert.equal(toggle("body").getAttribute("aria-checked"), "true", "an on setting stays on while its row is disabled");
-  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.2, keypointOffset: 0.01 })));
-  assert.equal(toggle("body").disabled, false, "pose evidence re-enables when keypoints return");
-  assert.equal(toggle("body").getAttribute("aria-checked"), "true", "recovery does not flip the remembered on setting");
-  assert.ok(session.overlayRoot().querySelector(".bv-runtime-evidence").querySelector(".bv-pose-keypoint"), "the drawn skeleton matches the on setting");
-  toggle("body").dispatchEvent({ type: "click" });
-  assert.equal(toggle("body").getAttribute("aria-checked"), "false", "one click turns the on setting off");
-  const saved = session.storageWrites.slice().reverse().find((write) => write.bvState).bvState;
-  assert.equal(saved.trackerSettings.body, false, "the click persists the off choice");
-  assert.equal(session.overlayRoot().querySelector(".bv-runtime-evidence").querySelector(".bv-pose-keypoint"), null, "the skeleton follows the persisted off setting");
-});
 
 test("live overlay panels keep the native player control strip clear and stay movable", async () => {
   const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
@@ -1496,7 +1431,7 @@ test("live overlay panels keep the native player control strip clear and stay mo
     left: parseFloat(panel.style.left), top: parseFloat(panel.style.top),
     width: parseFloat(panel.style.width), height: parseFloat(panel.style.height)
   }));
-  assert.ok(panelRects.length >= 5, "the full live overlay renders its panels");
+  assert.ok(panelRects.length >= 4, "the full live overlay renders its remaining panels");
   for (const rect of panelRects) {
     assert.ok(Number.isFinite(rect.left) && Number.isFinite(rect.top) && Number.isFinite(rect.width) && Number.isFinite(rect.height), `${rect.panel} has a clamped pixel placement`);
     assert.ok(rect.top + rect.height <= viewportHeight - stripReserve + 1e-9, `${rect.panel} never covers the player control strip`);
@@ -1535,7 +1470,7 @@ test("every live panel collapses to its header bar, re-expands, and persists per
   live.flushStorage();
   live.onMessage({ type: "SET_DENSITY", value: "full", requestId: "collapse-full-1" });
   let root = live.overlayRoot();
-  for (const id of ["feed", "stats", "map", "controls", "evidence"]) {
+  for (const id of ["feed", "stats", "map", "controls"]) {
     const panel = root.querySelector(`[data-bso-panel="${id}"]`);
     assert.ok(panel, `${id} panel renders`);
     const collapse = panel.querySelector("[data-bso-panel-collapse]");
@@ -1561,16 +1496,9 @@ test("every live panel collapses to its header bar, re-expands, and persists per
   collapsedFeed = root.querySelector('[data-bso-panel="feed"]');
   assert.equal(collapsedFeed.getAttribute("data-bso-panel-collapsed"), "true", "collapse survives a panel rerender");
 
-  // Evidence visibility is not part of Balanced's default furniture. Re-open
-  // it through the single access point before exercising its panel behavior.
-  root.querySelector("[data-bso-overlay-access]").dispatchEvent({ type: "click" });
-  root = live.overlayRoot();
-  root.querySelector('[data-bso-overlay-shortcut="evidence"]').dispatchEvent({ type: "click" });
-  root = live.overlayRoot();
-  // Collapse evidence too, then expand the feed again.
-  root.querySelector('[data-bso-panel="evidence"]').querySelector("[data-bso-panel-collapse]").dispatchEvent({ type: "click" });
-  root = live.overlayRoot();
-  assert.equal(root.querySelector('[data-bso-panel="evidence"]').getAttribute("data-bso-panel-collapsed"), "true");
+  // Evidence visibility is not live overlay furniture. It remains available
+  // through the popup disclosure while the feed can independently expand.
+  assert.equal(root.querySelector('[data-bso-panel="evidence"]'), null);
   root.querySelector('[data-bso-panel="feed"]').querySelector("[data-bso-panel-collapse]").dispatchEvent({ type: "click" });
   root = live.overlayRoot();
   const expandedFeed = root.querySelector('[data-bso-panel="feed"]');
@@ -1597,32 +1525,37 @@ test("every live panel collapses to its header bar, re-expands, and persists per
   const reloaded = await createSession({ storedState: persisted });
   reloaded.flushStorage();
   root = reloaded.overlayRoot();
-  assert.equal(root.querySelector('[data-bso-panel="evidence"]').getAttribute("data-bso-panel-collapsed"), "true", "collapsed evidence comes back after reload");
+  assert.equal(root.querySelector('[data-bso-panel="evidence"]'), null, "the retired evidence panel never comes back after reload");
   assert.equal(root.querySelector('[data-bso-panel="feed"]').getAttribute("data-bso-panel-collapsed"), "false", "expanded panels stay expanded after reload");
 });
 
-test("evidence visibility hides and reopens like the other panels", async () => {
-  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
-  live.flushStorage();
+test("evidence visibility remains a single popup control surface while content stays panel-free", async () => {
+  const live = await createLiveEvidenceSession();
+  live.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12 })));
   let root = live.overlayRoot();
-  assert.equal(root.querySelector('[data-bso-panel="evidence"]'), null, "evidence visibility stays off by default");
-  root.querySelector("[data-bso-overlay-access]").dispatchEvent({ type: "click" });
+  assert.equal(root.querySelector('[data-bso-panel="evidence"]'), null, "the evidence visibility panel is not mounted");
+  assert.equal(root.querySelector('[data-bso-overlay-shortcut="evidence"]'), null, "the old overlay shortcut is retired");
+
+  const has = (selector) => Boolean(live.overlayRoot().querySelector(".bv-runtime-evidence").querySelector(selector));
+  const setTracker = (tracker, value, requestId) => live.onMessage({ type: "SET_TRACKER", tracker, value, requestId });
+  setTracker("body", false, "evidence-body-off");
+  assert.equal(has(".bv-pose-keypoint"), false);
+  live.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.1, keypointOffset: 0.01 })));
+  assert.equal(has(".bv-pose-keypoint"), false, "pose visibility survives a result rerender");
+
+  setTracker("players", true, "evidence-players-on");
+  assert.equal(has(".bv-player-box"), true, "player boxes still respond to the retained visibility setting");
+  setTracker("shuttle", false, "evidence-shuttle-off");
+  assert.equal(has(".bv-shuttle-trajectory"), false);
+  assert.equal(has(".bv-shuttle-point"), false);
+  setTracker("racket", false, "evidence-racket-off");
+  assert.equal(has(".bv-racket-signal"), false);
+
+  live.onMessage({ type: "SET_COURT_LINES", videoKey: "youtube:real-match", value: false, requestId: "evidence-court-off" });
+  assert.equal(live.overlayRoot().querySelector(".bv-calibration-court"), null, "court projection keeps its one retained visibility setting");
   root = live.overlayRoot();
-  root.querySelector('[data-bso-overlay-shortcut="evidence"]').dispatchEvent({ type: "click" });
-  root = live.overlayRoot();
-  assert.ok(root.querySelector('[data-bso-panel="evidence"]'), "the access point opens evidence visibility on demand");
-  root.querySelector('[aria-label="Hide evidence visibility"]').dispatchEvent({ type: "click" });
-  assert.equal(live.overlayRoot().querySelector('[data-bso-panel="evidence"]'), null, "the evidence panel hides like other panels");
-  assert.equal(live.storageWrites.at(-1).bvState.panels.evidence, false);
-  // Reopen through the panel message the popup sends for its toggle.
-  live.onMessage({ type: "SET_PANELS", panels: { evidence: true }, requestId: "evidence-reopen-1" });
-  assert.ok(live.overlayRoot().querySelector('[data-bso-panel="evidence"]'), "the evidence panel reopens from the popup toggle");
-  // Density presets do not resurrect an explicitly hidden evidence panel.
-  live.onMessage({ type: "SET_DENSITY", value: "full", requestId: "evidence-density-1" });
-  assert.ok(live.overlayRoot().querySelector('[data-bso-panel="evidence"]'), "evidence stays visible when the panel is on");
-  live.onMessage({ type: "SET_PANELS", panels: { evidence: false }, requestId: "evidence-hide-1" });
-  live.onMessage({ type: "SET_DENSITY", value: "balanced", requestId: "evidence-density-2" });
-  assert.equal(live.overlayRoot().querySelector('[data-bso-panel="evidence"]'), null, "an explicit hide survives a density preset");
+  assert.equal(root.querySelector('[data-bso-evidence-control="players"]'), null, "evidence controls do not leak into the content overlay");
+  assert.equal(live.storageWrites.at(-1).bvState.trackerSettingsByVideo["youtube:real-match"].body, false);
 });
 
 test("the calibrated court projection renders in the bright highlight and has exactly one per-video toggle", async () => {
@@ -1641,10 +1574,6 @@ test("the calibrated court projection renders in the bright highlight and has ex
 
   const session = await createLiveEvidenceSession();
   let root = session.overlayRoot();
-  root.querySelector("[data-bso-overlay-access]").dispatchEvent({ type: "click" });
-  root = session.overlayRoot();
-  root.querySelector('[data-bso-overlay-shortcut="evidence"]').dispatchEvent({ type: "click" });
-  root = session.overlayRoot();
   let court = root.querySelector(".bv-calibration-court");
   assert.ok(court, "the fitted court projection draws after setup");
   const drawnLines = court.querySelectorAll("[data-court-line-role]");
@@ -1653,12 +1582,21 @@ test("the calibrated court projection renders in the bright highlight and has ex
     const stroke = line.getAttribute("stroke");
     assert.match(stroke, /^var\(--court-setup-(?:line|net)\)$/, "drawn court lines use the bright setup highlight");
   }
-  // One clearly labeled toggle controls the whole projection.
-  const projectionToggle = root.querySelector("[data-bso-court-projection-toggle]").querySelector("button");
+
+  // The one clearly labeled projection toggle lives in the popup disclosure,
+  // while its message changes the content renderer without mounting a panel.
+  const popup = await createPopupSession();
+  let popupRoot = popup.app;
+  assert.equal(popupRoot.querySelector("[data-bso-evidence-disclosure]").getAttribute("hidden") !== null, true);
+  popupRoot.querySelector("[data-bso-evidence-disclosure-toggle]").dispatchEvent({ type: "click" });
+  const projectionToggle = popup.app.querySelector("[data-bso-court-projection-toggle]").querySelector("button");
   assert.equal(projectionToggle.getAttribute("aria-checked"), "true");
-  assert.ok(textOf(root.querySelector("[data-bso-court-projection-toggle]")).includes("Court projection"));
-  assert.equal(textOf(root).includes("Court setup lines"), false, "the retired second toggle is gone");
+  assert.ok(textOf(popup.app.querySelector("[data-bso-court-projection-toggle]")).includes("Court projection"));
+  assert.equal(textOf(popup.app).includes("Court setup lines"), false, "the retired second toggle is gone");
   projectionToggle.dispatchEvent({ type: "click" });
+  assert.equal(popup.sent.at(-1).message.type, "SET_COURT_LINES");
+
+  session.onMessage({ type: "SET_COURT_LINES", videoKey: "youtube:real-match", value: false, requestId: "lines-content-off" });
   assert.equal(session.overlayRoot().querySelector(".bv-calibration-court"), null, "hiding the projection removes the court polygon");
   assert.equal(session.storageWrites.at(-1).bvState.courtLinesByVideo["youtube:real-match"], false, "the hide is stored per video");
   session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.1 })));
@@ -1670,7 +1608,7 @@ test("the calibrated court projection renders in the bright highlight and has ex
   const reloaded = await createSession({ storedState: persisted });
   reloaded.flushStorage();
   assert.equal(reloaded.overlayRoot().querySelector(".bv-calibration-court"), null, "the projection hide survives reload");
-  reloaded.overlayRoot().querySelector("[data-bso-court-projection-toggle]").querySelector("button").dispatchEvent({ type: "click" });
+  reloaded.onMessage({ type: "SET_COURT_LINES", videoKey: "youtube:real-match", value: true, requestId: "lines-reenable" });
   assert.ok(reloaded.overlayRoot().querySelector(".bv-calibration-court"), "re-enabling restores the projection");
   assert.equal(reloaded.storageWrites.at(-1).bvState.courtLinesByVideo["youtube:real-match"], undefined, "showing again clears the stored hide");
 });
@@ -1686,7 +1624,7 @@ test("native player control points stay reachable while panels stay interactive"
     left: parseFloat(panel.style.left), top: parseFloat(panel.style.top),
     width: parseFloat(panel.style.width), height: parseFloat(panel.style.height)
   }));
-  assert.ok(rects.length >= 6, "full density plus the manual panel renders all panel surfaces");
+  assert.ok(rects.length >= 5, "full density plus the manual panel renders all remaining panel surfaces");
   // The native strip (pause, seek bar, volume, settings) must never sit under
   // any panel surface, including the tall manual panel on a small player.
   const viewportHeight = 360;
@@ -1761,7 +1699,7 @@ test("collapse and close are visually distinct header affordances on every panel
   live.flushStorage();
   live.onMessage({ type: "SET_DENSITY", value: "full", requestId: "afford-full-1" });
   const root = live.overlayRoot();
-  for (const id of ["feed", "stats", "map", "controls", "evidence"]) {
+  for (const id of ["feed", "stats", "map", "controls"]) {
     const panel = root.querySelector(`[data-bso-panel="${id}"]`);
     const collapse = panel.querySelector("[data-bso-panel-collapse]");
     const close = panel.querySelectorAll("button").find((button) => String(button.getAttribute("aria-label") || "").indexOf("Hide ") === 0);

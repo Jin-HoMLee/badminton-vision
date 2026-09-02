@@ -3,6 +3,7 @@
   var root = document.getElementById("app");
   var state = window.BVState.initialExtensionState();
   var expanded = false;
+  var disclosureFocusTarget = null;
   var detected = false;
   var runtimeStatus = null;
   var actionError = null;
@@ -22,10 +23,10 @@
     // visible as a separate status row without counting it as a detector.
     { id: "court", label: "Court map", health: "degraded", note: "optional · not set up", on: false, noSwitch: true },
     { id: "players", label: "Player boxes", health: "degraded", note: "off by default · detection still runs", on: false },
-    { id: "body", label: "Body pose", health: "degraded", note: "starting · local pose model", on: true, disabled: false },
-    { id: "shuttle", label: "Shuttle", health: "degraded", note: "unknown · awaiting local runtime", on: true },
+    { id: "body", label: "Pose keypoints + skeleton", health: "degraded", note: "starting · local pose model", on: true, disabled: false },
+    { id: "shuttle", label: "Shuttle path + candidate", health: "degraded", note: "unknown · awaiting local runtime", on: true },
     { id: "score", label: "Score OCR", health: "degraded", note: "partial", on: true },
-    { id: "racket", label: "Racket", health: "unavailable", note: "not in MVP", on: false, disabled: true }
+    { id: "racket", label: "Racket evidence", health: "unavailable", note: "not in MVP", on: false, disabled: true }
   ];
 
   function chromeAvailable() { return typeof chrome !== "undefined"; }
@@ -141,12 +142,57 @@
     var colorHealth = tracker.health === "degraded" ? "warn" : "";
     var switchButton = null;
     if (!tracker.noSwitch) {
-      switchButton = ui.el("button", { className: "bv-mini-switch", type: "button", role: "switch", "aria-checked": tracker.on, disabled: tracker.disabled, title: tracker.disabled ? tracker.note : "Toggle " + tracker.label, "aria-label": "Toggle " + tracker.label, onClick: function () { dispatch({ type: "SET_TRACKER", tracker: tracker.id, value: !tracker.on }, { type: "SET_TRACKER", tracker: tracker.id, value: !tracker.on }); } }, [ui.el("i")]);
+      switchButton = ui.el("button", { className: "bv-mini-switch", type: "button", role: "switch", "aria-checked": tracker.on, disabled: tracker.disabled, title: tracker.disabled ? tracker.note : "Toggle " + tracker.label, "aria-label": "Toggle " + tracker.label, onClick: function () { setEvidenceTracker(tracker.id, !tracker.on); } }, [ui.el("i")]);
     }
-    return ui.el("div", { className: "bv-tracker-row" + (tracker.disabled ? " unavailable" : "") }, [ui.el("i", { className: "bv-tracker-dot " + dotClass }), ui.el("span", { className: "bv-tracker-label" }, [tracker.label]), ui.el("span", { className: "bv-tracker-meta" }, [ui.el("span", { className: "bv-tracker-note " + colorHealth }, [tracker.on ? tracker.note : "off"]), switchButton])]);
+    var row = ui.el("div", { className: "bv-tracker-row" + (tracker.disabled ? " unavailable" : "") }, [ui.el("i", { className: "bv-tracker-dot " + dotClass }), ui.el("span", { className: "bv-tracker-label" }, [tracker.label]), ui.el("span", { className: "bv-tracker-meta" }, [ui.el("span", { className: "bv-tracker-note " + colorHealth }, [tracker.on ? tracker.note : "off"]), switchButton])]);
+    if (["body", "players", "racket", "shuttle"].indexOf(tracker.id) >= 0) {
+      row.setAttribute("data-bso-evidence-control", tracker.id);
+      row.setAttribute("data-bso-evidence-state", tracker.evidenceState || "unknown");
+    }
+    return row;
   }
   function panelToggle(label, description, key, disabled) {
     return ui.toggle(label, description, state.panels[key], function (next) { dispatch({ type: "TOGGLE_PANEL", panel: key, value: next }, { type: "SET_PANELS", panels: Object.assign({}, state.panels, { [key]: next }) }); }, { disabled: disabled, id: "panel-" + key });
+  }
+  function evidenceVideoKey() {
+    return state.videoKey || window.BVState.videoKeyForUrl(activeTabUrl);
+  }
+  function setEvidenceTracker(tracker, value) {
+    dispatch({ type: "SET_TRACKER", tracker: tracker, value: value }, { type: "SET_TRACKER", tracker: tracker, value: value });
+  }
+  function toggleEvidenceDisclosure() {
+    expanded = !expanded;
+    disclosureFocusTarget = expanded ? "first-control" : "toggle";
+    render();
+  }
+  function courtProjectionToggle() {
+    var visible = window.BVState.courtLinesForVideo(state, evidenceVideoKey());
+    var toggle = ui.toggle("Court projection", visible ? "calibrated court polygon over the video" : "hidden until re-enabled", visible, function (next) {
+      dispatch({ type: "SET_COURT_LINES", videoKey: evidenceVideoKey(), value: next }, { type: "SET_COURT_LINES", videoKey: evidenceVideoKey(), value: next });
+    }, { id: "court-lines" });
+    toggle.setAttribute("data-bso-court-projection-toggle", "true");
+    toggle.setAttribute("data-bso-evidence-state", "available");
+    return toggle;
+  }
+  function restoreDisclosureFocus() {
+    if (!disclosureFocusTarget) return;
+    var target = null;
+    if (disclosureFocusTarget === "toggle") {
+      target = root.querySelector("[data-bso-evidence-disclosure-toggle]");
+    } else {
+      var disclosure = root.querySelector("[data-bso-evidence-disclosure]");
+      // Keep focus in the actual evidence controls (rather than the read-only
+      // Court/Score status rows) and use a stable, meaningful order.
+      var evidenceOrder = ["body", "players", "shuttle", "racket"];
+      for (var index = 0; disclosure && index < evidenceOrder.length; index += 1) {
+        var row = disclosure.querySelector('[data-bso-evidence-control="' + evidenceOrder[index] + '"]');
+        var control = row && row.querySelector("button");
+        if (control && !control.disabled) { target = control; break; }
+      }
+      if (!target) target = root.querySelector("[data-bso-evidence-disclosure-toggle]");
+    }
+    disclosureFocusTarget = null;
+    if (target && typeof target.focus === "function") target.focus();
   }
 
   function render() {
@@ -175,7 +221,9 @@
       }
     }
     if (playerTracker) {
-      playerTracker.disabled = !productionReady;
+      // Player-box visibility stays an enabled preference even before the
+      // runtime supplies a box; the renderer simply has nothing to draw yet.
+      playerTracker.disabled = false;
       playerTracker.on = productionReady;
       playerTracker.health = productionReady && runtimeStatus.playerState === "tracked" ? "ok" : "degraded";
       playerTracker.note = productionReady ? ((runtimeStatus.playerCount || 0) + " visible · " + (runtimeStatus.playerState || "unknown")) : fixtureReady ? "unknown · fixture probe" : "unknown · local runtime";
@@ -193,12 +241,25 @@
       racketTracker.note = racketSupported ? (runtimeStatus.racketState || "unknown") + " · runtime signal" : "unavailable · no runtime racket output";
     }
     trackers.forEach(function (tracker) {
-      if (state.trackerSettings && state.trackerSettings[tracker.id] != null && !tracker.disabled) tracker.on = Boolean(state.trackerSettings[tracker.id]);
+      // Keep the remembered visibility value visible even when a signal is
+      // currently unavailable; disabling the switch must not erase a
+      // video-local preference that the content renderer will reuse later.
+      if (state.trackerSettings && state.trackerSettings[tracker.id] != null) tracker.on = Boolean(state.trackerSettings[tracker.id]);
     });
-    var trackerCount = trackers.filter(function (t) { return t.on; }).length;
+    var visibilityTrackers = trackers.filter(function (tracker) { return ["body", "players", "racket", "shuttle"].indexOf(tracker.id) >= 0; });
+    var projectionVisible = window.BVState.courtLinesForVideo(state, evidenceVideoKey());
+    var visibleEvidenceCount = visibilityTrackers.filter(function (tracker) { return tracker.on; }).length + (projectionVisible ? 1 : 0);
+    var evidenceControlCount = visibilityTrackers.length + 1;
     var degraded = trackers.some(function (t) { return t.on && t.health === "degraded"; });
     var runtimeFallback = runtimeStatus && (runtimeStatus.phase === "fallback" || runtimeStatus.inference === false && runtimeStatus.analyzer === "none");
     var runtimeStale = Boolean(state.stale || runtimeStatus && runtimeStatus.stale);
+    // These status values mirror the former on-video evidence controls. The
+    // popup now owns their one visible control surface, while the content
+    // script remains the read-only renderer for the selected layers.
+    if (poseTracker) poseTracker.evidenceState = runtimeFallback || fixtureReady ? "unavailable" : productionReady ? "available" : "unknown";
+    if (playerTracker) playerTracker.evidenceState = productionReady && runtimeStatus && runtimeStatus.playerCount > 0 ? "available" : "unknown";
+    if (shuttleTracker) shuttleTracker.evidenceState = fixtureReady ? "unavailable" : productionReady && runtimeStatus && runtimeStatus.shuttleState === "tracked" ? "available" : "unknown";
+    if (racketTracker) racketTracker.evidenceState = racketTracker.disabled ? "unavailable" : runtimeStatus && runtimeStatus.racketState === "tracked" ? "available" : "unknown";
     var runtimeReady = Boolean(runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer && runtimeStatus.analyzer !== "none");
     var courtConfiguration = window.BVState && typeof window.BVState.courtConfigurationState === "function"
       ? window.BVState.courtConfigurationState(state)
@@ -261,17 +322,19 @@
           : ui.callout("guide", "Local runtime pending", "The local pose model is starting. Until evidence arrives, player, shuttle, shot, rally-end, and winner fields remain unknown.");
     var intro = ui.el("div", { className: "bv-popup-intro" }, [ui.statusChip(statusState, statusLabel, statusDetail), ui.el("div", { className: "bv-detected" }, [ui.el("span", { className: "bv-detected-icon" }, [ui.icon(detected ? "check" : "info", 15)]), ui.el("span", { className: "bv-detected-copy" }, detectedChildren)]), actionError ? ui.callout("warn", "Could not reach the YouTube tab", actionError + " Reload the tab and try again.") : null, !detected ? ui.callout("info", "Overlay unavailable here", "Open a youtube.com/watch page to use live overlay, court setup, or manual labeling. The summary remains available locally.") : backendNotice, !state.enabled && detected ? ui.callout("guide", "Inference starts independently", "Turn on the overlay to run body pose, shuttle, and racket evidence. Court setup is optional and only enables court-map projection.") : state.enabled && courtConfiguration === "recalibrating" ? ui.callout("info", "Court map recalibration in progress", "Raw video detections stay live. Finish the four-corner setup to replace the previous court-relative mapping.") : state.enabled && courtConfiguration !== "calibrated" ? ui.callout("info", "Court map not set up", "Raw video detections stay live without calibration. Set up the court only when you want projected court-relative coordinates.") : null, state.cameraCut ? ui.callout("warn", "Camera cut", "The court projection is stale. Re-seed the court; raw inference continues while the video keeps playing.") : null]);
 
-    var barNodes = trackers.map(function (t) { return ui.el("i", { className: t.on ? (t.health === "degraded" ? "warn" : "") : "off" }); });
-    var trackerHeader = ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-4)" } }, ["What's being tracked", ui.el("span", { className: "bv-tracker-bars" }, barNodes)]);
-    var trackerAside = ui.el("button", { className: "bv-link-button", type: "button", onClick: function () { expanded = !expanded; render(); } }, [trackerCount + " of " + trackers.length + " on", ui.icon(expanded ? "chevron-up" : "chevron-down", 12)]);
+    var barNodes = visibilityTrackers.map(function (t) { return ui.el("i", { className: t.on ? (t.health === "degraded" ? "warn" : "") : "off" }); }).concat([ui.el("i", { className: projectionVisible ? "" : "off" })]);
+    var trackerHeader = ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-4)" } }, ["Evidence visibility", ui.el("span", { className: "bv-tracker-bars" }, barNodes)]);
+    var trackerAside = ui.el("button", { className: "bv-link-button", type: "button", "aria-expanded": expanded, "aria-controls": "bv-evidence-visibility-controls", "aria-label": (expanded ? "Collapse" : "Expand") + " Evidence visibility controls", "data-bso-evidence-disclosure-toggle": "true", onClick: toggleEvidenceDisclosure }, [visibleEvidenceCount + " of " + evidenceControlCount + " visible", ui.icon(expanded ? "chevron-up" : "chevron-down", 12)]);
     var runtimeSummary = fixtureReady || runtimeStatus && runtimeStatus.resultKind === "runtime-integration-probe"
       ? "fixture result observed · not production CV"
       : productionReady ? "local pose + bounded shuttle candidate · " + (runtimeStatus.backend || "backend pending") : runtimeFallback ? "local analysis unavailable · playback unaffected" : "local runtime starting · nothing uploaded";
-    var trackerBody = expanded ? ui.el("div", { className: "bv-tracker-list" }, trackers.map(trackerRow).concat([ui.el("p", { className: "bv-helper" }, ["Automatic output stays evidence-aware. If a signal is unknown, dependent values stay blank rather than being guessed."])])) : ui.el("div", { className: "bv-tracker-summary" }, [ui.badge(degraded ? "some parts unsure" : "all working", degraded ? "warn" : "in"), ui.el("small", {}, [runtimeSummary]) ]);
+    var trackerSummary = ui.el("div", { className: "bv-tracker-summary" }, [ui.badge(degraded ? "some parts unsure" : "all working", degraded ? "warn" : "in"), ui.el("small", {}, [runtimeSummary])]);
+    var evidenceRows = expanded ? trackers.map(trackerRow).concat([ui.el("p", { className: "bv-helper bv-evidence-disclosure-help" }, ["Choose which live signals are drawn over the video. Automatic output remains local and unknown values are never guessed."]), courtProjectionToggle()]) : [];
+    var trackerBody = ui.el("div", { className: "bv-evidence-section-body" }, [trackerSummary, ui.el("div", { className: "bv-tracker-list bv-evidence-disclosure", id: "bv-evidence-visibility-controls", role: "region", "aria-label": "Evidence visibility controls", "data-bso-evidence-disclosure": "true", hidden: !expanded }, evidenceRows)]);
     var trackerSection = section(trackerHeader, trackerBody, trackerAside);
 
     var densitySection = section(ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-3)" } }, ["How much to show", ui.infoTip("How much to show", "Changes only what appears on the video. Everything is still analysed either way.")]), ui.segmented([{ value: "minimal", label: "Minimal" }, { value: "balanced", label: "Balanced" }, { value: "full", label: "Full" }], state.density, function (value) { dispatch({ type: "SET_DENSITY", value: value }, { type: "SET_DENSITY", value: value }); }, true));
-    var panelSection = section("On-video controls", ui.el("div", { className: "bv-panel-toggles" }, [ui.el("p", { className: "bv-helper", style: { marginTop: "0" } }, ["The default video layer is detection-only. Choose a panel here when you want it over the video; these choices are saved for this video."]), panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), panelToggle("Evidence visibility", "Which live signals are drawn", "evidence"), panelToggle("Live controls", "Quick density and summary shortcuts", "controls"), ui.toggle("Compare with the pros", "Coming later — needs a licensed benchmark", false, null, { disabled: true, id: "panel-pro" })]));
+    var panelSection = section("On-video controls", ui.el("div", { className: "bv-panel-toggles" }, [ui.el("p", { className: "bv-helper", style: { marginTop: "0" } }, ["The default video layer is detection-only. Choose a panel here when you want it over the video; these choices are saved for this video."]), panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), panelToggle("Live controls", "Quick density and summary shortcuts", "controls"), ui.toggle("Compare with the pros", "Coming later — needs a licensed benchmark", false, null, { disabled: true, id: "panel-pro" })]));
 
     var primaryLabel = state.enabled ? "Open overlay" : "Turn on inference";
     var primary = ui.button(primaryLabel, { variant: "primary", full: true, icon: state.enabled ? "layout" : "play", disabled: !detected, title: !detected ? "Open a YouTube watch page first" : null, onClick: function () { dispatch({ type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, { type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, finishAction); } });
@@ -286,6 +349,7 @@
     summaryButton.setAttribute("data-bso-action", "export");
     var actions = ui.el("div", { className: "bv-footer-actions" }, [primary, ui.el("div", { className: "bv-footer-row" }, [seedButton, manualButton]), disableButton, summaryButton]);
     root.replaceChildren(header, intro, trackerSection, densitySection, panelSection, actions);
+    restoreDisclosureFocus();
   }
 
   function load() {

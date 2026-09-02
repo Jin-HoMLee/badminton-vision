@@ -36,7 +36,7 @@ test("public setup journey keeps minimal density and exposes reversible states",
   const state = await stateModule();
   let current = state.initialExtensionState();
   assert.equal(current.density, "minimal");
-  assert.deepEqual(JSON.parse(JSON.stringify(current.panels)), { feed: false, stats: false, map: false, evidence: false, controls: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(current.panels)), { feed: false, stats: false, map: false, controls: false });
   assert.equal(current.trackerSettings.body, true);
   assert.equal(current.trackerSettings.shuttle, true);
   assert.equal(current.trackerSettings.players, false);
@@ -139,10 +139,15 @@ test("default overlay preferences are evidence-only, video-local, and reversible
   current = state.reduceExtensionState(current, { type: "SET_TRACKER", tracker: "body", value: false });
   assert.equal(current.panels.stats, true);
   assert.equal(current.trackerSettings.body, false);
-  assert.deepEqual(JSON.parse(JSON.stringify(current.panelsByVideo[videoA])), { feed: false, stats: true, map: false, evidence: true, controls: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(current.panelsByVideo[videoA])), { feed: false, stats: true, map: false, controls: false });
+  assert.equal(current.panels.evidence, undefined, "the retired standalone evidence panel has no visibility state owner");
+  const legacy = state.initialExtensionState({ videoKey: videoA, panels: { evidence: true }, panelLayouts: { evidence: { x: 0.2, y: 0.2, width: 0.3, height: 0.3 } }, collapsedPanels: { evidence: true } });
+  assert.equal(legacy.panels.evidence, undefined, "legacy panel visibility cannot resurrect the standalone surface");
+  assert.equal(legacy.panelLayouts.evidence, undefined, "legacy evidence geometry is discarded");
+  assert.equal(legacy.collapsedPanels.evidence, undefined, "legacy evidence collapse state is discarded");
 
   const otherVideo = state.stateForVideo(current, videoB);
-  assert.deepEqual(JSON.parse(JSON.stringify(otherVideo.panels)), { feed: false, stats: false, map: false, evidence: false, controls: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(otherVideo.panels)), { feed: false, stats: false, map: false, controls: false });
   assert.equal(otherVideo.trackerSettings.body, true);
   const restored = state.stateForVideo(current, videoA);
   assert.equal(restored.panels.stats, true);
@@ -151,12 +156,11 @@ test("default overlay preferences are evidence-only, video-local, and reversible
   current = state.reduceExtensionState(current, { type: "SET_DENSITY", value: "full" });
   assert.equal(current.panels.feed, true);
   assert.equal(current.panels.map, true);
-  assert.equal(current.panels.evidence, true);
   current = state.reduceExtensionState(current, { type: "SET_DENSITY", value: "minimal" });
   assert.equal(current.panels.stats, true, "an explicit panel choice survives a density change");
   assert.equal(current.panels.feed, false);
   assert.equal(current.panels.map, false);
-  assert.equal(current.panels.evidence, true, "an explicit evidence-panel choice survives a density change");
+  assert.equal(current.panels.evidence, undefined, "density never creates the retired standalone evidence panel");
 });
 
 test("court instruction position is video-local, normalized, and safely reset", async () => {
@@ -230,19 +234,16 @@ test("panel collapse and court-line visibility persist per video like layout sta
   current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL_COLLAPSE", panel: "feed", videoKey: videoA, value: true });
   assert.equal(current.collapsedPanels.feed, true);
   assert.deepEqual(JSON.parse(JSON.stringify(current.collapsedPanelsByVideo[videoA])), { feed: true });
-  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL_COLLAPSE", panel: "evidence", videoKey: videoA, value: true });
-  assert.deepEqual(JSON.parse(JSON.stringify(current.collapsedPanels)), { feed: true, evidence: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(current.collapsedPanels)), { feed: true });
   current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL_COLLAPSE", panel: "feed", videoKey: videoA, value: false });
   assert.equal(current.collapsedPanels.feed, undefined);
   // Non-collapsible panels (the transient setup card) are ignored.
   current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL_COLLAPSE", panel: "courtSetup", videoKey: videoA, value: true });
   assert.equal(current.collapsedPanels.courtSetup, undefined);
-  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL_COLLAPSE", panel: "evidence", videoKey: videoA, value: true });
-
   const persisted = JSON.parse(JSON.stringify(current));
   const restoredA = state.stateForVideo(persisted, videoA);
   const restoredB = state.stateForVideo(persisted, videoB);
-  assert.deepEqual(JSON.parse(JSON.stringify(restoredA.collapsedPanels)), { evidence: true }, "collapse is restored for the same video");
+  assert.deepEqual(JSON.parse(JSON.stringify(restoredA.collapsedPanels)), {}, "expanded panels have no stored collapse state");
   assert.deepEqual(JSON.parse(JSON.stringify(restoredB.collapsedPanels)), {}, "collapse does not leak to another video");
 
   // Court-setup lines: explicit hides are video-scoped; default is visible.
@@ -255,16 +256,9 @@ test("panel collapse and court-line visibility persist per video like layout sta
   current = state.reduceExtensionState(current, { type: "SET_COURT_LINES", videoKey: videoA, value: true });
   assert.equal(state.courtLinesForVideo(current, videoA), true);
 
-  // Evidence visibility is a panel like the rest: an explicit toggle survives
-  // density presets and partial SET_PANELS messages.
-  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL", panel: "evidence", value: false });
-  assert.equal(current.panels.evidence, false);
-  current = state.reduceExtensionState(current, { type: "SET_DENSITY", value: "full" });
-  assert.equal(current.panels.evidence, false, "density presets do not resurrect the evidence panel");
-  assert.equal(current.panels.stats, true);
-  current = state.reduceExtensionState(current, { type: "SET_PANELS", panels: { feed: false } });
-  assert.equal(current.panels.evidence, false, "partial panel messages keep other explicit toggles");
+  // The retired standalone evidence panel is not a panel lifecycle owner.
+  // Evidence preferences remain independently video-local below.
+  current = state.reduceExtensionState(current, { type: "SET_PANELS", panels: { evidence: true, feed: false } });
+  assert.equal(current.panels.evidence, undefined);
   assert.equal(current.panels.feed, false);
-  current = state.reduceExtensionState(current, { type: "SET_PANELS", panels: { evidence: true } });
-  assert.equal(current.panels.evidence, true);
 });

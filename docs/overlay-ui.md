@@ -39,14 +39,16 @@ clicks, video playback, and the normalized evidence SVG remain outside that
 surface. Minimal mode draws only the pure detection layer (court projection
 when enabled, pose keypoints/skeleton, shuttle path/candidate, and supplied
 racket evidence) plus one compact **Panels** access point. Stats, court map,
-stroke feed, manual labeling, live controls, and Evidence visibility are
-on-demand surfaces; the popup is the canonical place to persist their
-video-local visibility choices. Resize handles clamp to the video viewport and
-expose arrow/Home keyboard behavior; a rerender reapplies the saved layout
-without changing playback. The setup header retains an accessible label and
-native tooltip, but no visible drag copy or grip button. The focused geometry,
-default-layer, and DOM regressions are in `tests/panel-layout.test.mjs` and
-`tests/live-onboarding.test.mjs`.
+stroke feed, manual labeling, and live controls are on-demand surfaces; the
+popup is the canonical place to persist their video-local visibility choices.
+Evidence visibility is also popup-owned: its one compact disclosure contains
+the layer switches and court-projection switch, so no evidence controls are
+mounted as an independently movable overlay. Resize handles clamp to the video
+viewport and expose arrow/Home keyboard behavior; a rerender reapplies the
+saved layout without changing playback. The setup header retains an accessible
+label and native tooltip, but no visible drag copy or grip button. The focused
+geometry, default-layer, and DOM regressions are in `tests/panel-layout.test.mjs`
+and `tests/live-onboarding.test.mjs`.
 
 ## Playback-time interaction freeze diagnosis
 
@@ -74,7 +76,7 @@ mutation; capture remains one-in-flight and the video invariants are
 read-only.
 
 The fix keeps runtime updates non-destructive. `src/content.js` patches runtime
-attributes, timestamps, evidence SVG, evidence availability, and reconciled
+attributes, timestamps, the evidence SVG, and reconciled
 feed rows in place; it preserves panel headers, controls, scroll surfaces, and
 pointer capture. Structural changes explicitly release capture before retiring
 a surface, so no stale gesture can block the next interaction. Runtime-owned
@@ -100,11 +102,7 @@ resumes immediately and no stale pre-cut projection or evidence layer is left
 frozen over the new camera angle. If the manual-labeling form is open when
 the cut arrives, that swap is deferred so the in-flight form is never
 replaced; closing the form renders the reseed flow, so the reseed is only
-delayed, never dropped. The evidence-visibility rows sync only
-disabled/availability while a runtime result refreshes; the switch keeps the
-persisted `trackerSettings` value (and the live drawing honors it), so an ON
-group that is temporarily unavailable renders ON+disabled and one click turns
-it off when availability returns.
+delayed, never dropped.
 
 ## Native player controls stay interactive
 
@@ -146,7 +144,7 @@ drag/resize/collapse regression).
 ## Panel collapse, close, and evidence visibility
 
 Every on-demand live panel (stats, court map, stroke feed, manual labeling,
-live controls, evidence visibility) has a header collapse/expand button
+live controls) has a header collapse/expand button
 (`data-bso-panel-collapse`, `aria-expanded`, chevron icon); a collapsed panel
 renders only its header bar (`bv-panel-collapsed`, no body/footer/resize
 surface) and keeps the header as its drag surface. Collapse state is
@@ -154,15 +152,14 @@ per-panel and per-video (`collapsedPanelsByVideo`, `TOGGLE_PANEL_COLLAPSE`),
 mirroring the layout-state pattern. Minimal mode does not mount these panels
 until the **Panels** access point or popup opens one.
 
-Closing a panel (removing it from the overlay) is a separate affordance and
-visually distinct: hideable panels (stats, court map, stroke feed, evidence
-visibility) carry an `x` icon action labeled `Hide …` (manual labeling uses
-`Close manual labeling`), while collapse always uses the chevron and an
-`Expand/Collapse … panel` label. Collapse and close never share an icon or
-label, so the two actions cannot be confused. The Evidence visibility panel is
-a panel like the rest: gated by `state.panels.evidence` (off in Minimal by
-default, preserved across density presets once explicitly enabled), hideable
-from its header, and re-openable from the popup or the in-video access point.
+Evidence visibility is a single popup disclosure inside the main control
+panel. Its **Evidence visibility** trigger exposes `aria-expanded` and
+`aria-controls`; the compact default is collapsed, and expanding it reveals
+the existing pose, player-box, racket, shuttle, and **Court projection**
+switches. Opening moves focus to the first available switch; closing returns
+focus to the trigger. The switches still dispatch the same `SET_TRACKER` and
+`SET_COURT_LINES` actions and retain their video-local preferences. Legacy
+standalone evidence-panel messages are ignored and cannot mount an overlay.
 Panel and detection-layer visibility choices are stored per video. The manual
 labeling panel rebuilds its body content only when expanded; nothing is lost by
 collapsing because the form is rebuilt on expand.
@@ -181,13 +178,11 @@ Court line rendering uses the bright highlight tokens
 (`--court-setup-line: var(--lime-400)`, `--court-setup-net: var(--lime-300)`)
 instead of the muted diagram tokens — both for the live setup draft on the
 seed surface and for the calibrated projection rendered after lock.
-There is exactly **one** toggle for it — **Court projection** in the Evidence
-visibility panel (`data-bso-court-projection-toggle`), backed by the per-video
-`courtLinesByVideo` store (`SET_COURT_LINES`). The toggle is unavailable until
-a committed calibration exists; pose, shuttle, and racket evidence switches
-remain independent. The retired second control ("Court setup lines") was the
-same rendering with a second switch and has been consolidated into this single
-labeled toggle.
+There is exactly **one** toggle for it — **Court projection** in the popup's
+Evidence visibility disclosure (`data-bso-court-projection-toggle`), backed by
+the per-video `courtLinesByVideo` store (`SET_COURT_LINES`). The retired second
+control ("Court setup lines") was the same rendering with a second switch and
+has been consolidated into this single labeled toggle.
 
 ## Stroke feed
 
@@ -255,11 +250,15 @@ worked around by changing asset names or replacing the supplied logo.
 Using only the captain-approved dedicated Chrome instance, load/reload this
 worktree's fresh `dist/`, open the existing YouTube watch tab, and use the
 native toolbar action. Confirm that Minimal, Balanced, and Full density choices,
-all panel toggles, the Evidence visibility panel, **Set up court**, and
+all panel toggles, the **Evidence visibility** disclosure, **Set up court**, and
 **Label it myself** work. Confirm Minimal leaves only detection evidence and one compact **Panels** access
-point on the video; open that point to reach stats, feed, map, manual labeling,
-and Evidence visibility. Confirm the popup's on-video controls are canonical
-and panel/evidence choices persist independently per video. Confirm the
+point on the video; open that point to reach stats, feed, map, and manual
+labeling. Confirm the popup's on-video controls are canonical and panel/evidence
+choices persist independently per video. Expand the Evidence visibility
+disclosure and confirm its accessible expanded state, retained pose, player-box,
+racket, shuttle, and **Court projection** switches, and keyboard focus
+transition. Confirm no evidence panel or evidence shortcut is mounted in the
+video overlay. Confirm the
 overlay panels are visibly treated and separated, each panel header moves only
 its panel, resize handles stay within the video, setup corner clicks remain setup
 clicks, icon controls retain their hit area, and a manual label can be
@@ -270,8 +269,7 @@ settings menu pass clicks through, that panels dragged toward the bottom clamp
 above the control strip, and that a panel taller than the player still cannot
 cover the strip. Collapse (chevron) and close (x) must read as distinct
 actions; collapse and re-expand every panel from its header (state survives
-navigation/reload), hide and re-open Evidence visibility from the popup or
-access point, and toggle **Court projection** in the Evidence visibility panel
+navigation/reload), and toggle **Court projection** in the popup disclosure
 while the popup's detected block shows the real tab title/channel/duration (the
 fixture appears only as a labeled preview outside a watch page) and
 `paused`, `muted`, `playbackRate`, and `src` remain unchanged. The exact

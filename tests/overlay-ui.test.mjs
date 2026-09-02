@@ -82,10 +82,11 @@ test("overlay panels reserve the native player strip and every panel collapses f
   assert.match(css, /--court-setup-line:\s*var\(--lime-400\)/);
   assert.match(css, /--court-setup-net:\s*var\(--lime-300\)/);
   assert.match(content, /stroke: line\.role === "net" \? "var\(--court-setup-net\)" : "var\(--court-setup-line\)"/);
-  assert.match(content, /ui\.toggle\("Court projection"/);
-  assert.doesNotMatch(content, /ui\.toggle\("Court setup lines"/);
-  assert.doesNotMatch(content, /name: "court", label: "Court projection"/);
-  assert.match(content, /data-bso-court-projection-toggle/);
+  const popup = await read("src/popup.js");
+  assert.match(popup, /ui\.toggle\("Court projection"/);
+  assert.doesNotMatch(popup, /ui\.toggle\("Court setup lines"/);
+  assert.doesNotMatch(popup, /name: "court", label: "Court projection"/);
+  assert.match(popup, /data-bso-court-projection-toggle/);
   // Collapse (chevron, aria-expanded) and close (x icon) are visually and
   // semantically distinct header affordances.
   assert.match(ui, /data-bso-panel-collapse/);
@@ -94,22 +95,26 @@ test("overlay panels reserve the native player strip and every panel collapses f
   assert.match(ui, /aria-expanded/);
   assert.match(css, /\.bv-panel-layout\.bv-panel-collapsed/);
   assert.match(content, /TOGGLE_PANEL_COLLAPSE/);
-  assert.match(content, /if \(state\.panels\.evidence\) overlay\.appendChild\(evidenceVisibilityPanel\(\)\)/);
+  assert.doesNotMatch(content, /evidenceVisibilityPanel|data-bso-panel=\"evidence\"/);
   assert.match(content, /courtLinesVisible\(\)\) overlay\.appendChild\(calibrationDrawing\(\)\)/);
   assert.match(content, /SET_COURT_LINES/);
-  assert.match(content, /iconButton\("x", "Hide evidence visibility"/);
+  assert.doesNotMatch(content, /Hide evidence visibility/);
   assert.match(content, /iconButton\("x", "Hide stats"/);
   assert.match(content, /iconButton\("x", "Hide court map"/);
   assert.match(content, /iconButton\("x", "Hide stroke feed"/);
   assert.doesNotMatch(content, /iconButton\("chevron-(up|down)", "Hide (stats|court map|stroke feed|evidence visibility)"/);
-  // The evidence panel is a panel like the rest: hidden in Minimal and
-  // re-openable from the popup panel list or the in-video access point.
-  assert.match(state, /panels: \{ feed: false, stats: false, map: false, evidence: false, controls: false \}/);
+  // Evidence visibility is a popup disclosure, not movable on-video
+  // furniture. Layer preferences remain independent and video-local.
+  assert.match(state, /panels: \{ feed: false, stats: false, map: false, controls: false \}/);
   assert.match(state, /trackerSettings: \{ court: true, players: false, body: true, shuttle: true, racket: true \}/);
   assert.match(content, /data-bso-overlay-access/);
   assert.match(content, /data-bso-overlay-menu/);
   assert.match(css, /\.bv-overlay-access\s*\{[^}]*top:\s*var\(--overlay-gutter\)[^}]*right:\s*var\(--overlay-gutter\)/s);
-  assert.match(await read("src/popup.js"), /panelToggle\("Evidence visibility"/);
+  assert.match(popup, /Evidence visibility/);
+  assert.match(popup, /data-bso-evidence-disclosure-toggle/);
+  assert.match(popup, /aria-controls/);
+  assert.match(popup, /data-bso-court-projection-toggle/);
+  assert.doesNotMatch(popup, /panelToggle\("Evidence visibility"/);
 });
 
 test("popup actions and overlay panel toggles remain wired", async () => {
