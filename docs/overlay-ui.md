@@ -21,11 +21,13 @@ key or retired overlay entrypoints.
 
 ## Overlay interaction reproduction and boundary
 
-The end-user trigger is the normal toolbar **Enable** action, followed by the
-four-corner court setup, or a density/manual-label action that renders the live
-panels. The masking condition is either an action arriving while the content
-script is still hydrating stored video state, or a narrow/theater/fullscreen
-video rectangle where a panel's default placement would cover a target. The
+The end-user trigger is the normal toolbar **Enable** action, which starts raw
+pose/shuttle/racket evidence independently. The four-corner court setup is an
+optional follow-up only for the court map, alongside density/manual-label
+actions that render the live panels. The masking condition is either an action
+arriving while the content script is still hydrating stored video state, or a
+narrow/theater/fullscreen video rectangle where a panel's default placement
+would cover a target. The
 visible symptom in the old path was an apparently missing/covered setup surface,
 a visible **Drag to move** grip on the court card, or a drag of a panel that
 also activated a button/court target. A stale retired overlay could add another
@@ -109,16 +111,24 @@ collapsing because the form is rebuilt on expand.
 
 ## Court projection
 
+The court map distinguishes its video-local configuration state. Before any
+fit, it shows **NOT SET UP**, explains that mapped coordinates are unavailable,
+and offers **Set up court**. After a committed fit it shows **CALIBRATED** and
+offers **Recalibrate court**. During a new draft it shows **RECALIBRATING** and
+withholds the previous mapped output until the replacement is locked; cancelling
+restores the prior fit. Clearing or camera-cut invalidation returns to setup
+without stopping raw evidence.
+
 The calibrated court polygon drawn over the video during and after setup uses
 bright highlight tokens (`--court-setup-line: var(--lime-400)`,
 `--court-setup-net: var(--lime-300)`) instead of the muted diagram tokens.
 There is exactly **one** toggle for it — **Court projection** in the Evidence
 visibility panel (`data-bso-court-projection-toggle`), backed by the per-video
-`courtLinesByVideo` store (`SET_COURT_LINES`). During active seeding the
-projection always renders (it is the setup feedback); only the persistent
-after-lock projection is toggleable. The retired second control ("Court setup
-lines") was the same rendering with a second switch and has been consolidated
-into this single labeled toggle.
+`courtLinesByVideo` store (`SET_COURT_LINES`). The toggle is unavailable until
+a committed calibration exists; pose, shuttle, and racket evidence switches
+remain independent. The retired second control ("Court setup lines") was the
+same rendering with a second switch and has been consolidated into this single
+labeled toggle.
 
 ## Stroke feed
 

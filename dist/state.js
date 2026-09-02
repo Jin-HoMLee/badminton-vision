@@ -573,10 +573,17 @@
     return result;
   }
 
+  function courtConfigurationState(input) {
+    var current = initialExtensionState(input);
+    if (current.seeding) return current.seeded && current.calibration ? "recalibrating" : "setup";
+    return current.seeded && current.calibration ? "calibrated" : "uncalibrated";
+  }
   function reduceExtensionState(state, action) {
     var current = initialExtensionState(state);
     switch (action && action.type) {
-      case "ENABLE": return Object.assign(current, { enabled: true, seeding: !current.seeded });
+      // Enabling inference is deliberately independent from court setup. The
+      // map can be configured later without hiding or delaying raw evidence.
+      case "ENABLE": return Object.assign(current, { enabled: true, seeding: false });
       case "DISABLE": return Object.assign(current, { enabled: false, seeding: false, labeling: false, stale: false, cameraCut: false });
       case "OPEN_OVERLAY": return Object.assign(current, { enabled: true, labeling: false });
       case "START_SEED": return Object.assign(current, { enabled: true, seeding: true, labeling: false, seedDraftPoints: [], calibrationError: null });
@@ -743,6 +750,10 @@
     PANEL_COLLAPSE_KEYS: PANEL_COLLAPSE_KEYS.slice(),
     panelLayoutsForVideo: panelLayoutsForVideo,
     collapsedPanelsForVideo: collapsedPanelsForVideo,
+    // This is the persisted court lifecycle, separate from inference. During
+    // a re-seed the prior configuration remains recoverable by Cancel, but no
+    // mapped output should be treated as active until the new fit is locked.
+    courtConfigurationState: courtConfigurationState,
     courtLinesForVideo: function (stateOrMap, videoKey) {
       var map = stateOrMap && stateOrMap.courtLinesByVideo ? stateOrMap.courtLinesByVideo : stateOrMap;
       return map && videoKey != null && map[String(videoKey)] === false ? false : true;

@@ -13,7 +13,7 @@ The product is designed for broadcast/pro footage and personal YouTube uploads. 
 ## 2. Captain-decided defaults
 
 - **Initial density: Minimal.** On first enable, show a quiet status chip and the stroke feed; stats and court minimap are collapsed. The user can open them without leaving playback. A later settings choice can use the Balanced arrangement (stats + minimap + feed), but Minimal is the MVP first-run default.
-- **Court seeding: acceptable for MVP.** Ask for four outer-court image anchors once per video. Do not block the MVP on automatic court detection. Offer a skip-to-manual-labeling path.
+- **Court setup: optional for MVP.** Start body-pose, shuttle, and racket inference immediately; ask for four outer-court image anchors only when the user wants court-map or other court-relative output. Do not block the MVP on automatic court detection. Offer a skip-to-manual-labeling path.
 - **Labeling: inline-first.** When a stroke suggestion needs attention, show a compact inline suggestion/correction row in the feed. Open the full shuttle-insights-derived labeling panel on demand.
 - **Feedback retained as a future review loop:** density, court-seed friction, and labeling prominence remain queueable product questions even though the current defaults are recorded above.
 
@@ -21,7 +21,7 @@ The product is designed for broadcast/pro footage and personal YouTube uploads. 
 
 1. **Watch:** open a badminton match and watch normally.
 2. **Enable:** click the BSO toolbar badge. The popup is the control center.
-3. **Seed court:** on the current frame, click the four outer corners of the full doubles court in numbered order. The overlay displays the generated official court lines. This is the only modal setup step; playback continues.
+3. **Set up the court when needed:** inference is already running after Enable. If court-relative output is wanted, click the four outer corners of the full doubles court in numbered order. The overlay displays the generated official court lines; playback continues. Without setup, raw video detections remain available and the court map explains how to set it up.
 4. **Watch live:** the overlay synchronizes to the playing video and shows the current rally, stroke feed, and optional stats/minimap.
 5. **Correct:** accept or reject inline suggestions, or press `O` for the full manual panel. Mark start/end and choose a shot family without pausing playback.
 6. **Export:** view the match summary and download shot/rally CSV. The raw data remains local.
@@ -33,15 +33,15 @@ The product is designed for broadcast/pro footage and personal YouTube uploads. 
 The popup must show:
 
 - YouTube match detected/not detected.
-- Court state: seeded, not seeded, or camera change requires re-seed.
+- Inference state and court-map state separately: body pose/shuttle/racket can run uncalibrated; the map shows setup required, calibrated, or recalibration in progress.
 - Analysis state and backend status; slow/fallback analysis must be honest.
 - **Minimal first-run density** plus panel toggles. Density is a presentation preference, not an analysis setting.
-- Actions: enable/continue, seed/re-seed, manual-only, open overlay, export.
+- Actions: enable/continue inference, set up/recalibrate the map, manual-only, open overlay, export.
 - Pro comparison visible as a disabled/late-phase option, not presented as an MVP capability.
 
-### 4.2 Court seed / only modal step
+### 4.2 Optional court setup / map-only step
 
-The seed surface must:
+The setup surface is optional and must:
 
 - Capture a visual reference from the current video frame without controlling playback.
 - Require four numbered clicks for the **outer full-court doubles corners** only.
@@ -55,7 +55,7 @@ The live overlay is a non-blocking sibling layer with three independent panels:
 
 - **Stroke feed:** the time-ordered event log for the current rally (see §6). It is not a chart of the next predicted shot.
 - **Stats panel:** rally number, rally duration/shot count, score when available, per-player coarse shot mix, and winner/error attribution.
-- **Court minimap:** the canonical court with current player positions, shuttle trajectory, landing point, and an IN/OUT line-call check. Display the distance-to-line estimate only with an uncertainty/confidence state.
+- **Court minimap:** the canonical court with current player positions, shuttle trajectory, landing point, and an IN/OUT line-call check after calibration. Before calibration, show an explicit first-use **Set up court** action rather than mapped detections. Once calibrated, show the calibrated state and a **Recalibrate court** action. Display distance-to-line only with an uncertainty/confidence state.
 
 MVP first load is Minimal: a small live chip/feed. Stats and minimap are collapsible, movable, and independently reopenable. All panels must show the video time they represent and an analysis-age indicator when results lag playback.
 
@@ -99,7 +99,7 @@ Synchronization must require no user interaction with the YouTube player:
 3. The sibling overlay is positioned from the video element's client rect and re-anchored with `ResizeObserver`/DOM observation for theater/fullscreen/resolution changes. All court coordinates are normalized before display.
 4. The renderer consumes the newest result whose timestamp is at or before the current media time. If inference is behind, retain the last result, show its age, and skip work; never wait by blocking playback and never seek to catch up.
 5. On a YouTube SPA navigation or video-element replacement, detach/re-attach observers and reset video-local state. On playback-rate changes, use media timestamps rather than frame counts.
-6. Detect camera cuts or court reprojection drift from player/court tracking. Mark automatic stats stale and request a re-seed; do not change the physical court model and do not touch the player.
+6. Detect camera cuts or court reprojection drift from player/court tracking. Invalidate only the court-relative projection, mark affected automatic stats stale, and request a re-seed; raw body-pose/shuttle/racket evidence continues, and the player is never touched.
 
 The synchronization acceptance test is: a user can watch continuously, change theater/fullscreen or playback rate, and see the overlay follow the same match time without a pause, seek, mute, player click, or visible layout fight.
 
@@ -146,7 +146,7 @@ Show the score, component tooltip, sample size, and source timestamp wherever th
 
 ### In/out line-call check
 
-After a court seed, map the estimated landing point through the homography and compare it to the relevant generated boundary. Display `IN`, `OUT`, distance-to-line, and confidence/unknown. A 40 mm line belongs to the court area it bounds, per BWF Law 1.3. A low-confidence call is a review suggestion, not an official line judge decision.
+Only after a valid court calibration, map the estimated landing point through the homography and compare it to the relevant generated boundary. Display `IN`, `OUT`, distance-to-line, and confidence/unknown. A 40 mm line belongs to the court area it bounds, per BWF Law 1.3. A low-confidence call is a review suggestion, not an official line judge decision.
 
 ### Winner/error attribution
 
@@ -181,7 +181,7 @@ The four user clicks are the four image positions corresponding to `(0,0)`, `(6.
 
 ## 9. MVP boundaries and feasibility notes
 
-In scope: local YouTube capture, player/pose and shuttle/rally pipeline where feasible, one-time manual court seed, four coarse automatic shot families, confidence-aware suggestions, manual 11-class labeling, live feed/stats/minimap, deterministic index, winner/error review states, and CSV export.
+In scope: local YouTube capture, independently runnable player/pose, shuttle, and racket evidence where feasible, optional manual court calibration for map-relative outputs, four coarse automatic shot families, confidence-aware suggestions, manual 11-class labeling, live feed/stats/minimap, deterministic index, winner/error review states, and CSV export.
 
 Out of scope until validated: automatic court detection, fine-grained 18-class ML classification, authoritative officiating, calibrated smash speed, doubles-specific behavior, automatic highlight clipping, live pro coaching, cloud inference, and any model licensing path not cleared for distribution.
 
@@ -190,6 +190,7 @@ The existing shuttle-insights extension is the reuse foundation for the manual p
 ## 10. Acceptance criteria for the next implementation spike
 
 - A packed MV3 build can attach to a YouTube watch page without modifying playback.
+- Enabling inference renders body-pose, shuttle, and racket evidence without requiring court lines or prior calibration; the uncalibrated map offers a clear setup action.
 - Overlay timestamps remain aligned during normal playback, rate changes, theater/fullscreen, DOM/video replacement, and a synthetic inference delay.
 - Four outer-corner clicks produce the full canonical line set with correct normalized dimensions; re-seed handles a camera cut.
 - Minimal is the first-run overlay default; stats/minimap are independently collapsible and the feed is available inline.
@@ -218,7 +219,7 @@ npm test
 npm run check
 ```
 
-Load `dist/` from `chrome://extensions` with **Developer mode → Load unpacked**. The action popup is the 360px control center. On a YouTube watch page it sends explicit messages to the sibling content overlay, which provides the four-corner court seed, Minimal-first live panels, inline suggestion correction, keyboard-first manual labeling, and the summary/export tab. The same content UI receives runtime capability/result messages through the small seam in `src/runtime.js`.
+Load `dist/` from `chrome://extensions` with **Developer mode → Load unpacked**. The action popup is the 360px control center. On a YouTube watch page it sends explicit messages to the sibling content overlay, which provides independent raw inference, optional four-corner court setup, Minimal-first live panels, inline suggestion correction, keyboard-first manual labeling, and the summary/export tab. The same content UI receives runtime capability/result messages through the small seam in `src/runtime.js`.
 
 The canonical analyzer is the bundled local `lightweight-openpose-lite-256-v1`
 path: an Apache-2.0 LiteRT/TFLite conversion with an 18-keypoint heatmap
@@ -251,7 +252,10 @@ assign playback properties, call player controls, or style the video.
 used by fixtures, manual labels, and later runtime messages. Court calibration
 uses the shared browser copy of `analysis/index.js` (`analysis-primitives.js`)
 through `src/calibration.js`; its normalized result is stored with the
-video-local extension state and rendered without changing the player.
+video-local extension state and rendered without changing the player. Calibration
+is map-only: the independent pose, shuttle, and racket evidence path can start
+before setup, while court-relative projections stay unavailable until a valid
+fit is locked.
 
 The supplied design system is copied to `design-system/`; see `design-system/PROVENANCE.md` for source and exclusions. `src/styles.css` imports its local font-policy, color, type, spacing, elevation, motion, and base tokens. The content UI links that stylesheet inside a ShadowRoot, so every token sheet used by the overlay declares the design-system `:root,:host` contract; this keeps surfaces, geometry, offsets, and controls independent of YouTube's document CSS. The supplied system contains no redistributable font binaries, so `tokens/fonts.css` deliberately registers no remote font and the named typography families fall back to local/system fonts. No server, credentials, model binary, or private endpoint is included.
 

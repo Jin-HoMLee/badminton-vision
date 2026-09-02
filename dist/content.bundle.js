@@ -6706,10 +6706,17 @@
       return result;
     }
   
+    function courtConfigurationState(input) {
+      var current = initialExtensionState(input);
+      if (current.seeding) return current.seeded && current.calibration ? "recalibrating" : "setup";
+      return current.seeded && current.calibration ? "calibrated" : "uncalibrated";
+    }
     function reduceExtensionState(state, action) {
       var current = initialExtensionState(state);
       switch (action && action.type) {
-        case "ENABLE": return Object.assign(current, { enabled: true, seeding: !current.seeded });
+        // Enabling inference is deliberately independent from court setup. The
+        // map can be configured later without hiding or delaying raw evidence.
+        case "ENABLE": return Object.assign(current, { enabled: true, seeding: false });
         case "DISABLE": return Object.assign(current, { enabled: false, seeding: false, labeling: false, stale: false, cameraCut: false });
         case "OPEN_OVERLAY": return Object.assign(current, { enabled: true, labeling: false });
         case "START_SEED": return Object.assign(current, { enabled: true, seeding: true, labeling: false, seedDraftPoints: [], calibrationError: null });
@@ -6876,6 +6883,10 @@
       PANEL_COLLAPSE_KEYS: PANEL_COLLAPSE_KEYS.slice(),
       panelLayoutsForVideo: panelLayoutsForVideo,
       collapsedPanelsForVideo: collapsedPanelsForVideo,
+      // This is the persisted court lifecycle, separate from inference. During
+      // a re-seed the prior configuration remains recoverable by Cancel, but no
+      // mapped output should be treated as active until the new fit is locked.
+      courtConfigurationState: courtConfigurationState,
       courtLinesForVideo: function (stateOrMap, videoKey) {
         var map = stateOrMap && stateOrMap.courtLinesByVideo ? stateOrMap.courtLinesByVideo : stateOrMap;
         return map && videoKey != null && map[String(videoKey)] === false ? false : true;
@@ -7294,10 +7305,22 @@
     function send(message) {
       if (hasChrome() && chrome.runtime) chrome.runtime.sendMessage(message, function () { void chrome.runtime.lastError; });
     }
+    function courtConfigurationState() {
+      if (window.BVState && typeof window.BVState.courtConfigurationState === "function") {
+        return window.BVState.courtConfigurationState(Object.assign({}, state, { calibration: state.seeding ? state.calibration : calibration }));
+      }
+      if (state.seeding) return state.seeded && state.calibration ? "recalibrating" : "setup";
+      return state.seeded && calibration ? "calibrated" : "uncalibrated";
+    }
     function courtDiagnosticState() {
-      if (state.seeding) return "seeding";
-      if (state.seeded && calibration) return "seeded";
-      return "not-seeded";
+      var configuration = courtConfigurationState();
+      if (configuration === "setup" || configuration === "recalibrating") return "seeding";
+      return configuration === "calibrated" ? "seeded" : "not-seeded";
+    }
+    function courtMappingAvailable() {
+      // A draft fit belongs to setup feedback only. Until Lock court commits it,
+      // map output must stay empty so an old calibration cannot leak through.
+      return Boolean(calibration && !state.seeding);
     }
     function updateDiagnosticsMarkers() {
       if (!host) return;
@@ -7312,6 +7335,7 @@
       host.setAttribute("data-bso-badminton-detected", info ? (info.badmintonDetected ? "true" : "false") : "unknown");
       host.setAttribute("data-bso-badminton-detection", info && info.badmintonDetectionState || "unknown");
       host.setAttribute("data-bso-court-state", courtDiagnosticState());
+      host.setAttribute("data-bso-court-map-state", courtConfigurationState());
       host.setAttribute("data-bso-seed-count", String(state.seeding ? seedPoints.length : (state.seedPoints || []).length));
       host.setAttribute("data-bso-runtime-phase", runtimeView.phase || "unknown");
       host.setAttribute("data-bso-runtime-analyzer", runtimeView.analyzer || "none");
@@ -7423,14 +7447,26 @@
     function runtimeRacketEvidence() {
       var result = runtimeResult();
       if (!result) return { supported: false, state: "unavailable", items: [] };
-      // Consume only an explicit runtime field. The current production
-      // composition does not emit racket detections, so this remains unavailable
-      // there rather than synthesizing a racket from a hand/keypoint.
+      // Consume only an explicit runtime field. The production composition
+      // emits a pose-derived wrist/elbow proxy; expand its hands into drawable
+      // evidence without inventing a detector result from keypoints here.
       var fields = ["racket", "rackets", "racketSignal", "racketSignals"];
       var suppliedField = fields.find(function (field) { return Object.prototype.hasOwnProperty.call(result, field); });
       if (!suppliedField) return { supported: false, state: "unavailable", items: [] };
       var supplied = result[suppliedField];
-      var items = Array.isArray(supplied) ? supplied.filter(Boolean) : supplied ? [supplied] : [];
+      var suppliedItems = Array.isArray(supplied) ? supplied.filter(Boolean) : supplied ? [supplied] : [];
+      var items = [];
+      suppliedItems.forEach(function (item) {
+        if (item && Array.isArray(item.hands) && item.hands.length) {
+          item.hands.forEach(function (hand) {
+            if (!hand || typeof hand !== "object") return;
+            var expanded = Object.assign({}, hand, { state: hand.state || item.state || "available" });
+            if (!expanded.segment && hand.elbow && hand.wrist) expanded.segment = { start: hand.elbow, end: hand.wrist };
+            if (!expanded.point && hand.wrist) expanded.point = hand.wrist;
+            items.push(expanded);
+          });
+        } else items.push(item);
+      });
       var visible = items.filter(function (item) { return item && typeof item === "object" && item.state !== "unknown"; });
       var stateValue = visible.some(function (item) { return item.state === "tracked" || item.accepted === true; })
         ? "tracked"
@@ -7465,7 +7501,7 @@
     }
     function evidenceState(value) { return value && value.state ? value.state : "unknown"; }
     function imagePointToCourt(point) {
-      if (!point || !calibration || !calibrationApi || typeof calibrationApi.projectImagePoint !== "function") return null;
+      if (!point || !courtMappingAvailable() || !calibrationApi || typeof calibrationApi.projectImagePoint !== "function") return null;
       try {
         var projected = calibrationApi.projectImagePoint(calibration, { x: Number(point.x), y: Number(point.y) });
         if (!projected || !Number.isFinite(projected.x) || !Number.isFinite(projected.y) || projected.x < 0 || projected.x > 1 || projected.y < 0 || projected.y > 1) return null;
@@ -7593,15 +7629,19 @@
     }
     function restoreCalibrationState() {
       calibration = null;
-      if (state.calibration && calibrationApi && calibrationApi.restoreCalibration) {
+      if (state.seeded && state.calibration && calibrationApi && calibrationApi.restoreCalibration) {
         try {
           calibration = calibrationApi.restoreCalibration(state.calibration);
         } catch (error) {
-          // Corrupt storage must not become a silently accepted court.
+          // Corrupt storage must not become a silently accepted court or wipe
+          // unrelated inference/manual state. Court setup is optional, so keep
+          // the live session available and expose the repair action in the map.
           state = window.BVState.initialExtensionState(Object.assign({}, state, {
             seeded: false,
+            seeding: false,
             calibration: null,
             seedPoints: [],
+            seedDraftPoints: [],
             calibrationError: calibrationApi.errorMessage(error)
           }));
         }
@@ -8151,13 +8191,29 @@
       });
       // The calibrated court polygon over the video is one thing with one
       // toggle: a per-video show/hide preference. During the four-corner setup
-      // the same projection always renders as the setup feedback; after the
-      // court is locked this toggle is the only control for it.
-      var projectionVisible = courtLinesVisible();
-      var projectionToggle = ui.toggle("Court projection", projectionVisible ? "calibrated court polygon over the video" : "hidden until re-enabled", projectionVisible, function (next) { setCourtLinesVisible(next); }, { id: "court-lines" });
+      // Draft setup lines are feedback on the seed surface, not court-map
+      // output. The projection preference is therefore disabled until a
+      // committed calibration exists, while the raw evidence controls above
+      // remain independent and usable throughout setup.
+      var projectionAvailable = courtMappingAvailable();
+      var projectionVisible = projectionAvailable && courtLinesVisible();
+      var projectionDescription = projectionAvailable
+        ? projectionVisible ? "calibrated court polygon over the video" : "hidden until re-enabled"
+        : state.seeding ? "finish court setup to enable mapped lines" : "set up the court to enable mapped lines";
+      var projectionToggle = ui.toggle("Court projection", projectionDescription, projectionVisible, function (next) { setCourtLinesVisible(next); }, { id: "court-lines", disabled: !projectionAvailable });
       projectionToggle.setAttribute("data-bso-court-projection-toggle", "true");
+      projectionToggle.setAttribute("data-bso-court-projection-state", projectionAvailable ? "available" : "requires-calibration");
       rows.push(projectionToggle);
       return ui.panel("Evidence visibility", { layoutId: "evidence", icon: "activity", className: "bv-evidence-controls", bodyStyle: { padding: "6px" }, collapsed: panelCollapsed("evidence"), onToggleCollapse: function (value) { togglePanelCollapsed("evidence", value); }, actions: [ui.iconButton("x", "Hide evidence visibility", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "evidence", value: false }); persist(); render(); } })] }, rows);
+    }
+    function startCourtSetup() {
+      state = window.BVState.reduceExtensionState(state, { type: "START_SEED" });
+      state.videoKey = activeVideoKey || currentVideoKey();
+      panelGesture = null;
+      seedPoints = [];
+      calibration = null;
+      persist();
+      render();
     }
     function undoSeedPoint() {
       seedPoints.pop();
@@ -8181,7 +8237,9 @@
       state.seeding = false;
       // Re-show the previously committed calibration if this was a re-seed.
       restoreCalibrationState();
-      state.enabled = Boolean(state.seeded);
+      // Court setup is optional. Cancelling first-use setup must leave the live
+      // inference overlay running, just as cancelling a recalibration restores
+      // the prior mapping without touching raw detections.
       persist();
       render();
     }
@@ -8313,17 +8371,45 @@
       return ui.panel("Stats", { layoutId: "stats", icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", collapsed: panelCollapsed("stats"), onToggleCollapse: function (value) { togglePanelCollapsed("stats", value); }, actions: [ui.iconButton("x", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, children);
     }
     function mapPanel() {
-      var players = playerCourtPoints();
-      var trajectory = shuttleCourtTrajectory();
-      var landing = shuttleCourtCandidate();
+      var configuration = courtConfigurationState();
+      var mapped = courtMappingAvailable();
+      // Mapping is the only consumer that depends on calibration. Keep the
+      // canonical diagram useful before setup, but never pass raw image
+      // detections into court-relative rendering until a committed fit exists.
+      var players = mapped ? playerCourtPoints() : [];
+      var trajectory = mapped ? shuttleCourtTrajectory() : [];
+      var landing = mapped ? shuttleCourtCandidate() : null;
       var shuttle = runtimeShuttle();
       var shuttleState = evidenceState(shuttle);
-      var mapNote = !calibration ? "Seed the court to project live coordinates." : shuttleState === "tracked" && landing ? "Candidate shown; line call remains unknown." : "No accepted shuttle landing evidence.";
-      return ui.panel("Court", { layoutId: "map", icon: "crosshair", mediaTime: state.time, className: "bv-court-panel bv-overlay-map", bodyStyle: { padding: "10px" }, collapsed: panelCollapsed("map"), onToggleCollapse: function (value) { togglePanelCollapsed("map", value); }, actions: [ui.iconButton("x", "Hide court map", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "map", value: false }); persist(); render(); } })] }, [
-        ui.courtDiagram({ renderWidth: 154, players: players, trajectory: trajectory, landing: landing, call: "UNKNOWN", ariaLabel: "Current court map; unknown values are not inferred" }),
-        ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-4)" } }, [ui.badge(shuttleState === "tracked" ? "candidate" : "UNKNOWN", shuttleState === "tracked" ? "info" : "unknown"), ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-10)", color: "var(--text-faint)" } }, [mapNote])]),
+      var mapState = mapped ? "calibrated" : configuration === "recalibrating" ? "recalibrating" : configuration === "setup" ? "setup" : "uncalibrated";
+      var mapNote = mapState === "uncalibrated"
+        ? "Set up the court to project live coordinates."
+        : mapState === "recalibrating"
+          ? "Finish setup to replace the previous court mapping."
+          : shuttleState === "tracked" && landing ? "Candidate shown; line call remains unknown." : "No accepted shuttle landing evidence.";
+      var setupAction = ui.button(mapState === "calibrated" ? "Recalibrate court" : "Set up court", {
+        variant: mapState === "calibrated" ? "ghost" : "primary",
+        size: "sm",
+        icon: "crosshair",
+        disabled: mapState === "recalibrating",
+        title: mapState === "calibrated" ? "Replace the saved court mapping" : "Set up the court before using mapped coordinates",
+        onClick: startCourtSetup
+      });
+      setupAction.setAttribute("data-bso-court-map-action", mapState === "calibrated" ? "recalibrate" : "setup");
+      var panel = ui.panel("Court map", { layoutId: "map", icon: "crosshair", mediaTime: state.time, className: "bv-court-panel bv-overlay-map", bodyStyle: { padding: "10px" }, collapsed: panelCollapsed("map"), onToggleCollapse: function (value) { togglePanelCollapsed("map", value); }, actions: [ui.iconButton("x", "Hide court map", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "map", value: false }); persist(); render(); } })] }, [
+        ui.el("div", { className: "bv-court-map-status", "data-bso-court-map-state": mapState }, [
+          ui.badge(mapState === "calibrated" ? "CALIBRATED" : mapState === "recalibrating" ? "RECALIBRATING" : "NOT SET UP", mapState === "calibrated" ? "in" : "warn"),
+          ui.el("span", { className: "bv-mono" }, [mapNote]),
+          setupAction
+        ]),
+        ui.courtDiagram({ renderWidth: 154, players: players, trajectory: trajectory, landing: landing, call: "UNKNOWN", ariaLabel: mapState === "calibrated" ? "Calibrated court map; unknown values are not inferred" : "Canonical court map; set up the court to project live coordinates" }),
+        ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", marginTop: "var(--sp-4)" } }, [ui.badge(mapped && shuttleState === "tracked" ? "candidate" : "UNKNOWN", mapped && shuttleState === "tracked" ? "info" : "unknown"), ui.el("span", { className: "bv-mono", style: { fontSize: "var(--fs-10)", color: "var(--text-faint)" } }, [mapNote])]),
         ui.el("div", { style: { marginTop: "var(--sp-3)" } }, [ui.confidence(null, { label: "geo", showWord: true })])
       ]);
+      panel.setAttribute("data-bso-court-map-state", mapState);
+      panel.setAttribute("data-bso-mapped-player-count", String(players.length));
+      panel.setAttribute("data-bso-mapped-trajectory-count", String(trajectory.length));
+      return panel;
     }
     function labelForEvent(eventId) {
       return (state.manualLabels || []).find(function (label) { return label && String(label.eventId) === String(eventId); }) || null;
@@ -8415,9 +8501,12 @@
         "data-bso-player-state": runtimeView.result && runtimeView.result.tracking && runtimeView.result.tracking.state || "unknown",
         "data-bso-shuttle-state": runtimeView.result && runtimeView.result.shuttle && runtimeView.result.shuttle.state || "unknown",
         "data-bso-court-state": courtDiagnosticState(),
+        "data-bso-court-map-state": courtConfigurationState(),
         "data-bso-density": state.density
       });
-      if (calibration && courtLinesVisible()) overlay.appendChild(calibrationDrawing());
+      if (courtMappingAvailable()) {
+        if (courtLinesVisible()) overlay.appendChild(calibrationDrawing());
+      }
       // Keep a canvas sibling anchored to the same video-local root. It is a
       // bounded frame-local rendering surface, while the vector layer below
       // preserves inspectable evidence and hit testing remains pass-through.
@@ -8851,8 +8940,11 @@
       updateDiagnosticsMarkers();
       root.replaceChildren();
       if (!state.enabled && !state.seeding && !state.labeling) return;
+      // Court setup is an optional mapping flow layered over the same live
+      // inference surface. Never replace raw pose/shuttle/racket evidence with
+      // the setup card just because calibration is missing or being changed.
+      if (state.enabled) root.appendChild(liveOverlay());
       if (state.seeding) root.appendChild(seedFlow());
-      else if (state.enabled) root.appendChild(liveOverlay());
       if (state.labeling && !state.seeding) root.appendChild(manualPanel());
       refreshPanelLayouts();
       installPanelInteractionsInRoot();
@@ -8867,9 +8959,17 @@
       }
       restoreReviewState();
       if (state.seeded && !state.calibration) {
-        state = window.BVState.resetVideoLocalState(state, key);
-        state.videoUrl = window.location && /^https?:/.test(window.location.href) ? window.location.href : null;
-        state.calibrationError = "This saved court has no fitted calibration. Please seed the four outer corners again.";
+        // A malformed old court record invalidates mapping only. Do not reset
+        // video-local labels, panel choices, or the independent inference
+        // session while presenting the first-use setup action in the map.
+        state = window.BVState.initialExtensionState(Object.assign({}, state, {
+          seeded: false,
+          seeding: false,
+          calibration: null,
+          seedPoints: [],
+          seedDraftPoints: [],
+          calibrationError: "This saved court has no fitted calibration. Set up the four outer corners to enable the court map."
+        }));
         restoreReviewState();
       }
       activeVideoKey = key;
@@ -8895,12 +8995,8 @@
       if (!message) return;
       if (message.type === "START_SEED") {
         bindVideoState();
-        state = window.BVState.reduceExtensionState(state, { type: "START_SEED" });
-        state.videoKey = activeVideoKey || currentVideoKey();
+        startCourtSetup();
         startRuntime();
-        seedPoints = [];
-        calibration = null;
-        persist(); render();
       }
       else if (message.type === "ENABLE" || message.type === "OPEN_OVERLAY") {
         bindVideoState();

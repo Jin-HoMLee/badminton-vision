@@ -91,13 +91,16 @@ page-console call:
    worktree's `dist/` directory, and confirm **Open**. If the card already
    points to that directory, use its **Reload** button instead.
 2. Keep the existing YouTube match tab open. Use the toolbar action to open
-   **Badminton Vision**, then click **Turn on — step 1 of 3**. Do not click the
+   **Badminton Vision**, then click **Turn on inference**. Confirm raw pose,
+   shuttle, and racket evidence can run before court setup. Do not click the
    YouTube play, seek, mute, rate, theater, or fullscreen controls as part of
    this smoke.
-3. In the overlay, click the four visible outer doubles corners in order:
+3. Open the court map and confirm its first-use **Set up court** action. If
+   testing mapped output, click the four visible outer doubles corners in order:
    near-left, near-right, far-right, far-left. Click **Lock court** only after
-   the homography preview is accepted. Use **Skip to manual** only when testing
-   the explicit manual-only path.
+   the homography preview is accepted; the map should then offer
+   **Recalibrate court**. Use **Skip to manual** only when testing the explicit
+   manual-only path.
 4. Confirm the overlay shows two-player/runtime status without requiring a
    playback action. If the local model cannot initialize, record the exact
    `inference=false`, analyzer, backend, and fallback markers; do not enable a
@@ -144,21 +147,24 @@ $AXI eval '() => ({ url: location.href, watch: /^https?:\\/\\/(www\\.)?youtube\\
 ```
 
 Use the normal Chrome toolbar action to open **Badminton Vision**, then click
-**Turn on — step 1 of 3**. The toolbar popup is native Chrome UI and is the
-manual step when it is not exposed as an accessibility reference by
+**Turn on inference**. The toolbar popup is native Chrome UI and is the manual
+step when it is not exposed as an accessibility reference by
 `chrome-devtools-axi`; do not invoke extension internals from the console.
 The popup's `<main>` exposes these sanitized markers for repeatable checks:
 `data-bso-youtube-detected`, `data-bso-enabled`, `data-bso-court-state`,
-`data-bso-runtime-phase`, `data-bso-runtime-analyzer`,
+`data-bso-court-map-state`, `data-bso-runtime-phase`,
+`data-bso-runtime-analyzer`,
 `data-bso-frame-transport`, and `data-bso-fallback`.
 
-## 3. Seed, observe runtime, and verify no playback mutation
+## 3. Optionally calibrate, observe runtime, and verify no playback mutation
 
-The content overlay has a stable host marker. Capture playback invariants, seed
-the four outer full-court corners in order (near-left, near-right, far-right,
-far-left), and locks the court before capturing them again. This evaluation dispatches
-clicks only to the extension's court-seed layer and its Lock court button; it
-does not touch YouTube controls or video properties.
+The content overlay has a stable host marker. Raw inference and its video
+overlay do not require calibration. To verify mapped output, capture playback
+invariants, open **Set up court**, seed the four outer full-court corners in
+order (near-left, near-right, far-right, far-left), and lock the court before
+capturing them again. This evaluation dispatches clicks only to the extension's
+court-seed layer and its Lock court button; it does not touch YouTube controls
+or video properties.
 
 ```sh
 $AXI eval '() => { const v = document.querySelector("video"); const h = document.querySelector("[data-badminton-vision]"); const before = v && { paused: v.paused, muted: v.muted, playbackRate: v.playbackRate, src: v.currentSrc || v.src }; const points = [[.22,.82],[.78,.82],[.63,.33],[.37,.33]]; for (const [x,y] of points) { const s = h && h.shadowRoot && h.shadowRoot.querySelector("[data-bso-court-seeding]"); const r = s && s.getBoundingClientRect(); if (!s || !r.width || !r.height) return { ok: false, reason: "seed layer/video unavailable", before, seedCount: h && h.getAttribute("data-bso-seed-count") }; s.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: r.left + r.width*x, clientY: r.top + r.height*y })); } const lock = [...h.shadowRoot.querySelectorAll("button")].find(button => button.textContent.includes("Lock court")); if (!lock || lock.disabled) return { ok: false, reason: "court fit did not become lockable", before, seedCount: h.getAttribute("data-bso-seed-count") }; lock.click(); return { ok: true, before, seedCount: h.getAttribute("data-bso-seed-count"), courtState: h.getAttribute("data-bso-court-state") }; }'
@@ -166,8 +172,11 @@ $AXI wait 1500
 $AXI eval '() => { const v = document.querySelector("video"); const h = document.querySelector("[data-badminton-vision]"); const s = h && h.shadowRoot; const after = v && { paused: v.paused, muted: v.muted, playbackRate: v.playbackRate, src: v.currentSrc || v.src }; return { host: Boolean(h), enabled: h && h.getAttribute("data-bso-enabled"), court: h && h.getAttribute("data-bso-court-state"), seedCount: h && h.getAttribute("data-bso-seed-count"), overlay: s && s.querySelector("[data-bso-overlay-state]")?.getAttribute("data-bso-overlay-state"), lines: s ? s.querySelectorAll("[data-court-line-id]").length : 0, runtimePhase: h && h.getAttribute("data-bso-runtime-phase"), analyzer: h && h.getAttribute("data-bso-runtime-analyzer"), frameTransport: h && h.getAttribute("data-bso-frame-transport"), analysisState: h && h.getAttribute("data-bso-analysis-state"), playerState: h && h.getAttribute("data-bso-player-state"), playerCount: h && h.getAttribute("data-bso-player-count"), shuttleState: h && h.getAttribute("data-bso-shuttle-state"), shuttleConfidence: h && h.getAttribute("data-bso-shuttle-confidence"), backend: h && h.getAttribute("data-bso-backend"), fallback: h && h.getAttribute("data-bso-fallback"), after }; }'
 ```
 
-Expected ready-path markers are `court=seeded`, `seedCount=4`, at least one
-court line, analyzer `lightweight-openpose-lite-256-v1`, frame transport
+Expected uncalibrated markers are `court=not-seeded`,
+`court-map=uncalibrated`, a live raw evidence layer, and no court-relative
+output. After the optional fit, ready-path markers are `court=seeded`,
+`court-map=calibrated`, `seedCount=4`, at least one court line, analyzer
+`lightweight-openpose-lite-256-v1`, frame transport
 `rgba-array-v1`, and a visible backend (`webgpu` or `wasm`). The production
 pose state may be `tracked`, `partial`, or `unknown` based on the match frame;
 the shuttle state may likewise be `tracked` or `unknown`. A tracked shuttle

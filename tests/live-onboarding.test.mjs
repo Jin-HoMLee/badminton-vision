@@ -345,9 +345,23 @@ test("Live Step 1 replays an early ENABLE after storage hydration instead of los
 
   session.flushStorage();
   assert.equal(host.getAttribute("data-bso-enabled"), "true");
-  assert.equal(host.getAttribute("data-bso-court-state"), "seeding");
-  assert.ok(session.overlayRoot().querySelector("[data-bso-court-seeding]"), "Step 1 renders the court setup surface");
+  assert.equal(host.getAttribute("data-bso-court-state"), "not-seeded");
+  assert.equal(host.getAttribute("data-bso-court-map-state"), "uncalibrated");
+  assert.equal(session.overlayRoot().querySelector("[data-bso-court-seeding]"), null, "enabling inference does not force court setup");
+  assert.ok(session.overlayRoot().querySelector(".bv-runtime-evidence"), "the raw evidence layer is available before calibration");
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12, includeRacketHands: true })));
+  const uncalibratedDrawing = session.overlayRoot().querySelector(".bv-runtime-evidence");
+  assert.equal(uncalibratedDrawing.querySelectorAll(".bv-pose-keypoint").length, 18, "uncalibrated raw pose evidence is rendered");
+  assert.equal(uncalibratedDrawing.querySelectorAll(".bv-shuttle-trajectory").length, 1, "uncalibrated shuttle evidence is rendered");
+  assert.equal(uncalibratedDrawing.querySelectorAll(".bv-racket-signal").length, 1, "uncalibrated racket evidence is rendered");
   assert.equal(session.runtimeStarts, 1);
+
+  // Court setup remains an explicit optional action and is layered over the
+  // running inference surface rather than replacing it.
+  session.onMessage({ type: "START_SEED", requestId: "optional-court-setup" });
+  assert.ok(session.overlayRoot().querySelector("[data-bso-court-seeding]"));
+  assert.ok(session.overlayRoot().querySelector(".bv-runtime-evidence"), "raw evidence remains mounted during setup");
+  assert.equal(session.runtimeStarts, 1, "starting court setup does not restart inference");
 
   // Disconfirming check: when storage is already hydrated (the normal manual
   // path), OPEN_LABELING still responds directly and remains playback-neutral.
@@ -473,6 +487,66 @@ test("minimal live overlay keeps only detection evidence and one on-demand acces
   assert.ok(root.querySelector('[data-bso-panel="stats"]'), "the access point opens a panel on demand");
   assert.equal(root.querySelector("[data-bso-overlay-access]").getAttribute("aria-expanded"), "false", "opening a panel closes the shortcut menu");
   assert.equal(live.storageWrites.at(-1).bvState.panelsByVideo["youtube:real-match"].stats, true, "the opened panel preference is saved for this video");
+});
+
+test("court map exposes optional first-use setup, calibrated mapping, and recalibration without stopping inference", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "SET_PANELS", panels: { map: true }, requestId: "court-map-open" });
+  let root = live.overlayRoot();
+  let map = root.querySelector('[data-bso-panel="map"]');
+  assert.equal(map.getAttribute("data-bso-court-map-state"), "uncalibrated");
+  assert.equal(map.getAttribute("data-bso-mapped-player-count"), "0");
+  assert.ok(buttonWithText(map, "Set up court"), "first use has a clear court setup action");
+  assert.match(textOf(map), /Set up the court to project live coordinates/);
+
+  // Setup is an explicit map action and is layered over the still-running raw
+  // evidence surface rather than gating or restarting inference.
+  buttonWithText(map, "Set up court").dispatchEvent({ type: "click", target: buttonWithText(map, "Set up court") });
+  root = live.overlayRoot();
+  assert.ok(root.querySelector("[data-bso-court-seeding]"));
+  assert.ok(root.querySelector(".bv-runtime-evidence"));
+  assert.equal(live.host().getAttribute("data-bso-court-map-state"), "setup");
+  assert.equal(live.runtimeStarts, 1);
+
+  const corners = [[64, 324], [576, 324], [576, 36], [64, 36]];
+  for (const [clientX, clientY] of corners) {
+    const layer = live.overlayRoot().querySelector("[data-bso-court-seeding]");
+    layer.dispatchEvent({ type: "click", target: layer, clientX, clientY, defaultPrevented: false });
+  }
+  root = live.overlayRoot();
+  buttonWithText(root, "Lock court").dispatchEvent({ type: "click", target: buttonWithText(root, "Lock court") });
+  root = live.overlayRoot();
+  map = root.querySelector('[data-bso-panel="map"]');
+  assert.equal(map.getAttribute("data-bso-court-map-state"), "calibrated");
+  assert.ok(buttonWithText(map, "Recalibrate court"), "an existing configuration exposes recalibration");
+  assert.equal(map.getAttribute("data-bso-mapped-player-count"), "0", "no detections means no mapped players");
+
+  live.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12 })));
+  map = live.overlayRoot().querySelector('[data-bso-panel="map"]');
+  assert.equal(map.getAttribute("data-bso-court-map-state"), "calibrated");
+  assert.equal(map.getAttribute("data-bso-mapped-player-count"), "1", "calibration enables map projection without changing inference");
+
+  // Starting recalibration immediately withdraws mapped output; the previous
+  // fit is not reused while the new draft is incomplete.
+  buttonWithText(map, "Recalibrate court").dispatchEvent({ type: "click", target: buttonWithText(map, "Recalibrate court") });
+  root = live.overlayRoot();
+  map = root.querySelector('[data-bso-panel="map"]');
+  assert.equal(map.getAttribute("data-bso-court-map-state"), "recalibrating");
+  assert.equal(map.getAttribute("data-bso-mapped-player-count"), "0");
+  assert.equal(root.querySelector(".bv-calibration-court"), null, "old projected lines are cleared during recalibration");
+  assert.ok(root.querySelector(".bv-runtime-evidence"), "raw detections remain visible during recalibration");
+
+  buttonWithText(root, "Reset court").dispatchEvent({ type: "click", target: buttonWithText(root, "Reset court") });
+  root = live.overlayRoot();
+  map = root.querySelector('[data-bso-panel="map"]');
+  assert.equal(map.getAttribute("data-bso-court-map-state"), "setup");
+  assert.equal(map.getAttribute("data-bso-mapped-player-count"), "0");
+  assert.equal(root.querySelector(".bv-calibration-court"), null);
+  buttonWithText(root, "Cancel").dispatchEvent({ type: "click", target: buttonWithText(root, "Cancel") });
+  assert.equal(live.host().getAttribute("data-bso-enabled"), "true", "cancelling optional setup leaves inference enabled");
+  assert.equal(live.host().getAttribute("data-bso-court-map-state"), "uncalibrated");
+  assert.ok(live.overlayRoot().querySelector(".bv-runtime-evidence"));
 });
 
 test("popup actions survive an in-flight storage read", async () => {
@@ -989,7 +1063,7 @@ test("CSV import restores exported labels with an identical round trip and de-du
   assert.equal(restored.storageWrites.at(-1).bvState.manualLabelsByVideo["youtube:real-match"].length, 2, "a rejected import leaves the store untouched");
 });
 
-function evidenceResult({ mediaTime = 12, keypointOffset = 0, includeRacket = true, includeBox = true, unknown = false } = {}) {
+function evidenceResult({ mediaTime = 12, keypointOffset = 0, includeRacket = true, includeRacketHands = false, includeBox = true, unknown = false } = {}) {
   const names = ["nose", "neck", "left_shoulder", "left_elbow", "left_wrist", "right_shoulder", "right_elbow", "right_wrist", "left_hip", "left_knee", "left_ankle", "right_hip", "right_knee", "right_ankle", "left_eye", "right_eye", "left_ear", "right_ear"];
   const keypoints = unknown ? [] : names.map((name, index) => ({
     name,
@@ -1016,7 +1090,9 @@ function evidenceResult({ mediaTime = 12, keypointOffset = 0, includeRacket = tr
   };
   if (includeRacket) result.racket = unknown
     ? { state: "unknown", confidence: null }
-    : { state: "tracked", confidence: 0.8, segment: { start: { x: 0.31, y: 0.33 }, end: { x: 0.39, y: 0.28 } } };
+    : includeRacketHands
+      ? { state: "partial", confidence: 0.8, hands: [{ side: "right", wrist: { x: 0.39, y: 0.28 }, elbow: { x: 0.31, y: 0.33 }, confidence: 0.8 }] }
+      : { state: "tracked", confidence: 0.8, segment: { start: { x: 0.31, y: 0.33 }, end: { x: 0.39, y: 0.28 } } };
   return result;
 }
 
@@ -1031,7 +1107,7 @@ function resultView(result) {
 async function createLiveEvidenceSession() {
   const session = await createSession();
   session.flushStorage();
-  session.onMessage({ type: "ENABLE", requestId: "live-evidence-enable" });
+  session.onMessage({ type: "START_SEED", requestId: "live-evidence-seed" });
   const corners = [[64, 324], [576, 324], [576, 36], [64, 36]];
   for (const [clientX, clientY] of corners) {
     const layer = session.overlayRoot().querySelector("[data-bso-court-seeding]");
