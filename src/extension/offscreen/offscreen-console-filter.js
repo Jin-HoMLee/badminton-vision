@@ -34,7 +34,7 @@
   ];
   // PR37's exact WebGPU registration filter is intentionally retained as its
   // own pattern. It must not become a blanket console.error suppression.
-  var webGpuRegistrationPattern = /^info:\s+\[accelerator_registry\.cc:54\]\s+RegisterAccelerator:\s+.*\bname=GPU WebGPU\s*$/i;
+  var webGpuRegistrationPattern = /^info:\s+\[accelerator_registry\.cc:54\]\s+RegisterAccelerator:\s+ptr=0x[0-9a-f]+,\s+name=GPU WebGPU\s*$/i;
   var errorPatterns = [webGpuRegistrationPattern].concat(stderrInfoPatterns);
   function filtered(args, patterns) {
     var text = '';
