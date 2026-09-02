@@ -153,6 +153,10 @@ test("default overlay preferences are evidence-only, video-local, and reversible
   assert.equal(restored.panels.stats, true);
   assert.equal(restored.trackerSettings.body, false);
 
+  const explicitVideoUpdate = state.reduceExtensionState(current, { type: "SET_PANEL_LAYOUT", videoKey: videoB, panel: "feed", layout: { x: 0.1, y: 0.1, width: 0.3, height: 0.3 } });
+  assert.equal(explicitVideoUpdate.videoKey, videoB);
+  assert.equal(explicitVideoUpdate.trackerSettings.body, true);
+
   current = state.reduceExtensionState(current, { type: "SET_DENSITY", value: "full" });
   assert.equal(current.panels.feed, true);
   assert.equal(current.panels.map, true);

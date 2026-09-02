@@ -624,7 +624,7 @@
       if (value.panelOverridesByVideo[panelVideoKey]) value.panelOverrides = copyPanelOverrides(value.panelOverridesByVideo[panelVideoKey]);
       if (value.panelsByVideo[panelVideoKey]) value.panels = Object.assign({}, defaults.panels, value.panelsByVideo[panelVideoKey]);
       if (value.trackerSettingsByVideo[panelVideoKey]) value.trackerSettings = Object.assign({}, defaults.trackerSettings, value.trackerSettingsByVideo[panelVideoKey]);
-      else value.trackerSettings = Object.assign({}, defaults.trackerSettings, raw.trackerSettings || {});
+      else value.trackerSettings = Object.assign({}, defaults.trackerSettings);
     } else {
       value.trackerSettings = Object.assign({}, defaults.trackerSettings, raw.trackerSettings || {});
     }
