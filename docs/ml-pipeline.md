@@ -18,19 +18,29 @@ The ML/AI inference pipeline provides production-ready real-time detection and a
 - **Frame Latency:** <250ms per frame end-to-end
 - **Memory Footprint:** <150MB total (models + runtime)
 
-## Integration Architecture (Designed For Extension Hook-up)
+## Browser Integration
 
-The pipeline is designed to integrate with the offscreen analyzer via `OnnxInferenceAdapter`, which implements the same interface contract as `LiteOpenPoseAdapter`. 
+`OnnxInferenceAnalyzer` implements the same `analyze(sample)` boundary as the
+existing offscreen analyzer. The build packages its runtime, adapters, and
+worker under `dist/ml-pipeline/`; the offscreen document loads those local
+scripts without adding a network dependency. The live flow is:
 
-**Intended Live Frame Processing Flow:**
-1. Content script captures video frames via `requestVideoFrameCallback`
-2. Frames sent to offscreen analyzer via message protocol (bso.runtime.v1)
-3. Offscreen analyzer routes to `OnnxInferenceAdapter.analyze(sample)` (future integration)
-4. Adapter runs inference pipeline (BlazePose + YOLOv8) via Web Workers
-5. Results processed through player tracker and returned to content
-6. UI overlays draw pose/shuttle detections on video
+1. Content captures one current video frame at a `requestVideoFrameCallback`.
+2. The MV3 protocol transports that frame to the offscreen document.
+3. The configured local analyzer routes pose and shuttle inference to workers.
+4. The result envelope returns model-neutral players, shuttle evidence, racket
+   wrist/elbow proxy evidence, and explicit temporal/event unknown states.
+5. UI synchronization displays only results at or before the current media time.
 
-**Note:** The adapter is implemented and tested independently. Extension hook-up is pending in the `ship-extension` task to wire the analyzer into the manifest and build pipeline.
+The ONNX path is opt-in because this repository does not contain uncleared
+ONNX weights or an ONNX Runtime Web distribution. Set
+`BSO_ONNX_INFERENCE_CONFIG` with local model paths and
+`BSO_ONNX_INFERENCE_ENABLED = true` before the offscreen analyzer is loaded,
+or use `BSOOffscreenAnalyzer.setAnalyzer()` in an extension-owned bootstrap.
+`runtimeScript`, when supplied, must also be a local packaged script. With no
+configuration the cleared LiteRT pose composition remains the production path;
+missing ONNX assets report an honest unavailable state rather than selecting a
+fixture or contacting a cloud service.
 
 ## Components
 

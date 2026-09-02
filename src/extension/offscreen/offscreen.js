@@ -1,4 +1,4 @@
-/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter, BSOLiteOpenPoseAdapter, BSOShuttleTrackingAdapter */
+/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter, BSOLiteOpenPoseAdapter, BSOShuttleTrackingAdapter, BSOOnnxInferenceAdapter */
 'use strict';
 
 const ANALYZER_FALLBACK = 'fixture-probe-v1';
@@ -84,9 +84,43 @@ const FixtureAnalyzer = globalThis.BSOFixtureAnalyzer && globalThis.BSOFixtureAn
 const ShuttleAdapter = globalThis.BSOShuttleTrackingAdapter &&
   (globalThis.BSOShuttleTrackingAdapter.LocalShuttleTrajectoryAdapter ||
     globalThis.BSOShuttleTrackingAdapter.ShuttleTrajectoryAdapter);
+const OnnxInferenceAnalyzer = globalThis.BSOOnnxInferenceAdapter &&
+  globalThis.BSOOnnxInferenceAdapter.OnnxInferenceAnalyzer;
+const onnxInferenceConfig = globalThis.BSO_ONNX_INFERENCE_CONFIG;
+const onnxInferenceEnabled = Boolean(OnnxInferenceAnalyzer && onnxInferenceConfig &&
+  (globalThis.BSO_ONNX_INFERENCE_ENABLED === true || onnxInferenceConfig.enabled === true));
 
 function unknownEvidence(reason) {
   return { state: 'unknown', confidence: null, reason };
+}
+
+function racketEvidence(players) {
+  const hands = [];
+  for (const player of Array.isArray(players) ? players : []) {
+    const keypoints = Array.isArray(player.keypoints) ? player.keypoints : [];
+    for (const side of ['left', 'right']) {
+      const wrist = keypoints.find((point) => point.name === `${side}_wrist` && point.confidence != null);
+      const elbow = keypoints.find((point) => point.name === `${side}_elbow` && point.confidence != null);
+      if (!wrist) continue;
+      const wristConfidence = Number(wrist.confidence) || 0;
+      const elbowConfidence = elbow ? Number(elbow.confidence) || 0 : wristConfidence;
+      hands.push({
+        trackId: player.trackId || null,
+        side,
+        wrist: { x: wrist.x, y: wrist.y },
+        elbow: elbow ? { x: elbow.x, y: elbow.y } : null,
+        confidence: Math.min(wristConfidence, elbowConfidence),
+        segmentation: 'deferred'
+      });
+    }
+  }
+  return {
+    state: hands.length ? 'partial' : 'unknown',
+    confidence: hands.length ? Math.max(...hands.map((hand) => hand.confidence)) : null,
+    hands,
+    segmentationAvailable: false,
+    reason: hands.length ? 'wrist-elbow-pose-proxy' : 'racket-evidence-unavailable'
+  };
 }
 
 /**
@@ -230,6 +264,12 @@ class LocalPoseShuttleAnalyzer {
       players,
       tracking,
       shuttle,
+      racket: poseResult.racket || racketEvidence(players),
+      temporal: {
+        state: Array.isArray(shuttle.trajectory) && shuttle.trajectory.length ? 'partial' : 'unknown',
+        trajectory: Array.isArray(shuttle.trajectory) ? shuttle.trajectory : [],
+        reason: 'tracknet-post-processing-not-run-in-live-cycle'
+      },
       // The current adapters do not classify hits or segment rallies. Keep
       // these fields explicit so downstream UI/export can edit them instead
       // of mistaking a candidate or pose box for a badminton event.
@@ -272,11 +312,13 @@ class LocalPoseShuttleAnalyzer {
 // is present; it is never silently substituted after a model or backend
 // failure, which keeps capability identity honest.
 const diagnosticFixture = globalThis.BSO_DIAGNOSTIC_FIXTURE === true;
-let activeAnalyzer = ProductionAnalyzer && ShuttleAdapter
-  ? new LocalPoseShuttleAnalyzer({ environment: globalThis, onStatus: analyzerStatus })
-  : ProductionAnalyzer
-    ? new ProductionAnalyzer({ environment: globalThis })
-    : diagnosticFixture && FixtureAnalyzer ? new FixtureAnalyzer() : new MockAnalyzer();
+let activeAnalyzer = onnxInferenceEnabled
+  ? new OnnxInferenceAnalyzer({ environment: globalThis, inferenceConfig: onnxInferenceConfig, onStatus: analyzerStatus })
+  : ProductionAnalyzer && ShuttleAdapter
+    ? new LocalPoseShuttleAnalyzer({ environment: globalThis, onStatus: analyzerStatus })
+    : ProductionAnalyzer
+      ? new ProductionAnalyzer({ environment: globalThis })
+      : diagnosticFixture && FixtureAnalyzer ? new FixtureAnalyzer() : new MockAnalyzer();
 const sessions = new Map();
 const sessionQueues = new Map();
 const frameStates = new Map();
@@ -361,6 +403,7 @@ globalThis.BSOOffscreenAnalyzer = Object.freeze({
   FixtureProbeAnalyzer: FixtureAnalyzer,
   MoveNetMultiPoseLightningAnalyzer: MoveNetAnalyzer,
   LiteOpenPoseAnalyzer: ProductionAnalyzer,
+  OnnxInferenceAnalyzer,
   LocalPoseShuttleAnalyzer,
   ShuttleTrajectoryAdapter: ShuttleAdapter,
   setAnalyzer,

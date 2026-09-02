@@ -12,18 +12,19 @@ npm install
 
 #### BlazePose Lite Model
 
-Download ONNX model or convert from TFLite:
+Provide a cleared, locally packaged ONNX export (the repository does not
+fetch or redistribute an unlicensed checkpoint):
 
 - Input: `images` [1, 3, 256, 256] float32
 - Output: keypoints [1, 17, 4] float32
 
 #### YOLOv8-Nano Badminton Model
 
-Fine-tune on Roboflow badminton dataset:
+Provide a cleared local ONNX export for the shuttlecock class. Training data,
+weights, and model downloads are intentionally outside this repository:
 
 - Input: [1, 3, 640, 640] float32
 - Output: detections (1 class: shuttlecock)
-- Target accuracy: 80-85% mAP@0.5
 
 #### TrackNetV3 Model (Optional)
 

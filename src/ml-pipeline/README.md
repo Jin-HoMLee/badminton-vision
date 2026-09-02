@@ -18,7 +18,7 @@ Production-ready real-time ML inference for badminton video analysis.
   
 - **`adapters/yolov8-shuttle-adapter.js`** - YOLOv8-Nano shuttle detection
   - 640x640 input with bilinear resampling
-  - Fine-tuned on badminton dataset via Roboflow
+  - Accepts a cleared local badminton shuttle checkpoint; no weights are fetched
   - Non-maximum suppression for overlapping detections
   - 1 class: shuttlecock
   
@@ -58,8 +58,15 @@ Production-ready real-time ML inference for badminton video analysis.
   - Designed for offline batch trajectory smoothing after detection
   - Optional enhancement for archived analysis
 
-### Integration Point (Designed For Future Hook-up)
-The pipeline is designed to integrate via `onnx-inference-adapter.js` as a drop-in replacement for LiteOpenPoseAdapter in the offscreen analyzer. The adapter implements the same bso.runtime.v1 message protocol and offscreen boundary contract, enabling live frame processing through the established content → offscreen → UI flow once wired into the extension manifest and build.
+### Browser Integration
+`onnx-inference-adapter.js` is a drop-in offscreen analyzer for the existing
+`bso.runtime.v1` content → offscreen → UI flow. The canonical build packages
+all pipeline scripts and the worker under `dist/ml-pipeline/`; the offscreen
+HTML loads them locally. The path is opt-in through a local model/runtime
+configuration because no uncleared ONNX weights or runtime distribution are
+committed here. Without that configuration, the cleared LiteRT composition
+remains active. Missing assets are reported as unavailable, never replaced by a
+fixture or a cloud request.
 
 ### Worker Pool Design
 - 2-4 parallel workers prevent main-thread blocking

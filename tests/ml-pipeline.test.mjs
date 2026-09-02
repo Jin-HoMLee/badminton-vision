@@ -496,3 +496,100 @@ test('Release settles in-flight worker requests instead of leaving live timers',
     FakeWorker.prototype.postMessage = originalPost;
   }
 });
+
+test('YOLOv8 decoder accepts raw channels-first output in input-pixel coordinates', () => {
+  const detector = new (require('../src/ml-pipeline/adapters/yolov8-shuttle-adapter.js').YOLOv8ShuttleDetector)({ environment: {} });
+  // [1, 5, 2]: x, y, width, height, one-class confidence, two candidates.
+  const data = new Float32Array([320, 100, 320, 100, 20, 20, 10, 10, 0.9, 0.2]);
+  const detections = detector._decodeOutput({ data, dims: [1, 5, 2] }, [1, 3, 640, 640], 0, 0, 640, 640, 640);
+
+  assert.strictEqual(detections.length, 1);
+  assert.ok(Math.abs(detections[0].bbox.x - 0.484375) < 0.00001);
+  assert.strictEqual(detections[0].class, 'shuttlecock');
+});
+
+test('BlazePose decoder reads the four-value MediaPipe export shape', () => {
+  const { BlazePoseAnalyzer } = BlazePoseAdapter;
+  const analyzer = new BlazePoseAnalyzer({ environment: {} });
+  const data = new Float32Array(2 * 17 * 4);
+  for (let pose = 0; pose < 2; pose += 1) {
+    for (let keypoint = 0; keypoint < 17; keypoint += 1) {
+      const base = (pose * 17 + keypoint) * 4;
+      data[base] = (pose + 1) * 64;
+      data[base + 1] = 128;
+      data[base + 3] = 0.8;
+    }
+  }
+  const poses = analyzer._decodeOutput({ data, dims: [1, 2, 17, 4] }, [1, 3, 256, 256]);
+
+  assert.strictEqual(poses.length, 2);
+  assert.strictEqual(poses[0].keypoints.length, 17);
+  assert.ok(Math.abs(poses[0].keypoints[0].confidence - 0.8) < 0.00001);
+  assert.strictEqual(poses[1].keypoints[0].x, 0.5);
+});
+
+test('TrackNet accepts rectangular tensor heatmaps and extracts their centroid', () => {
+  const processor = new TrackNetProcessor.TrackNetV3Processor({ environment: {} });
+  const heatmap = new Float32Array(3 * 5);
+  heatmap[1] = 0.9;
+  heatmap[2] = 0.9;
+  processor.addFrame({ data: heatmap, dims: [1, 3, 5] }, 1);
+  const point = processor.extractTrajectoryPoint({ data: heatmap, dims: [1, 3, 5] }, 0.5);
+
+  assert.ok(point);
+  assert.strictEqual(point.componentSize, 2);
+  assert.strictEqual(point.x, 0.3);
+  assert.strictEqual(point.y, 0);
+});
+
+test('ONNX model loading seam accepts local buffers and rejects remote URLs', async () => {
+  const ort = makeFakeOrt();
+  const manager = new OnnxRuntime.OnnxRuntimeManager({
+    environment: { ort, navigator: {} },
+    backendProbe: async (backend) => backend === 'wasm',
+    loadModel: async () => new ArrayBuffer(8)
+  });
+  const status = await manager.initialize();
+  assert.strictEqual(status.backend, 'wasm');
+  await manager.createSession('local-model', 'models/local.onnx');
+  await assert.rejects(manager.createSession('remote-model', 'https://example.invalid/model.onnx'), /local/);
+});
+
+class RespondingWorker extends FakeWorker {
+  postMessage(message) {
+    if (message.type === 'init') {
+      const success = this.index !== 0;
+      queueMicrotask(() => this._emit({
+        type: 'init-response',
+        success,
+        error: success ? undefined : 'model load failed',
+        runtime: { backend: 'wasm', fallbacks: [] }
+      }));
+      return;
+    }
+    if (message.type === 'infer') {
+      this.inferMessage = message;
+      queueMicrotask(() => this._emit({
+        type: 'infer-response',
+        id: message.id,
+        success: true,
+        result: { pose: { state: 'tracked' }, shuttle: { state: 'unknown' } }
+      }));
+    }
+  }
+}
+
+test('Worker pool maps successful workers to compact indexes after an init failure', async () => {
+  FakeWorker.instances = [];
+  const pipeline = new InferencePipelineModule.InferencePipeline({
+    environment: { Worker: RespondingWorker },
+    numWorkers: 2
+  });
+  const init = await pipeline.initialize();
+  assert.strictEqual(init.success, true);
+  const result = await pipeline.runInference({ data: new Uint8Array(4), width: 1, height: 1 }, { mediaTime: 1 });
+
+  assert.strictEqual(result.pose.state, 'tracked');
+  assert.ok(FakeWorker.instances[1].inferMessage, 'the successful second worker received the frame');
+  await pipeline.release();
+});
