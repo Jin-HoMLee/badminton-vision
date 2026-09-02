@@ -8321,7 +8321,7 @@
       // The whole header is the drag surface. It has no visible grip or drag
       // copy, keeping the four corner targets unobstructed while retaining an
       // explicit keyboard and native-tooltip affordance for assistive users.
-      var handle = ui.el("header", { className: "bv-seed-card-top bv-panel-header", tabindex: "0", role: "group", "aria-label": "Move court setup instructions", "aria-describedby": "bv-seed-card-help", "aria-grabbed": "false", "aria-keyshortcuts": "ArrowLeft ArrowRight ArrowUp ArrowDown Home", title: "Move court setup instructions. Use arrow keys to nudge. Home resets the position.", "data-bso-seed-card-handle": "true", "data-bso-panel-drag-handle": "true" }, [ui.stepDots(Math.min(seedPoints.length, 4), corners), ui.el("span", { className: "bv-seed-card-title" }, [title]), fitted ? ui.badge("homography ok", "in") : invalid ? ui.badge("not accepted", "warn") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Reset position", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); resetSeedCardPosition(); } }), ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); undoSeedPoint(); } }), ui.button("Reset court", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0 && !state.seeded, onClick: function (event) { event.stopPropagation(); resetSeed(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); openLabelingFromCourtSetup(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !fitted, onClick: function (event) { event.stopPropagation(); lockSeed(); } })])]);
+      var handle = ui.el("header", { className: "bv-seed-card-top bv-panel-header", tabindex: "0", role: "group", "aria-label": "Move court setup instructions", "aria-describedby": "bv-seed-card-help", "aria-grabbed": "false", "aria-keyshortcuts": "ArrowLeft ArrowRight ArrowUp ArrowDown Home", title: "Move court setup instructions. Use arrow keys to nudge. Home resets the position.", "data-bso-seed-card-handle": "true", "data-bso-panel-drag-handle": "true" }, [ui.stepDots(Math.min(seedPoints.length, 4), corners), ui.el("span", { className: "bv-seed-card-title" }, [title]), fitted ? ui.badge("homography ok", "in") : invalid ? ui.badge("not accepted", "warn") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Reset position", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); resetSeedCardPosition(); } }), ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); undoSeedPoint(); } }), ui.button("Reset court", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0 && !state.seeded, onClick: function (event) { event.stopPropagation(); resetSeed(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); openLabeling(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !fitted, onClick: function (event) { event.stopPropagation(); lockSeed(); } })])]);
       handle.appendChild(help);
       card.appendChild(handle);
       if (state.calibrationError) card.appendChild(ui.callout("warn", "Calibration not accepted", state.calibrationError));
@@ -8569,18 +8569,16 @@
       return overlay;
     }
   
-    function openLabeling(record, options) {
+    function openLabeling(record) {
+      var wasSeeding = state.seeding;
       state = window.BVState.reduceExtensionState(state, { type: "OPEN_LABELING" });
-      if (options && options.restoreCourt) restoreCalibrationState();
+      if (wasSeeding) restoreCalibrationState();
       // Opening a fresh draft must never inherit the id of a previously edited
       // row. Existing-label mode is entered only through an explicit record.
       editingEventId = record && record.eventId != null ? String(record.eventId) : null;
       draft = record ? newDraft(record) : newDraft();
       persist();
       render();
-    }
-    function openLabelingFromCourtSetup() {
-      openLabeling(null, { restoreCourt: true });
     }
     function commitReviewEvent(record, previousSuggestion, operation) {
       if (!record || !record.eventId || !window.BVReview) return null;

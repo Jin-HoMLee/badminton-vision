@@ -546,6 +546,16 @@ test("court map exposes optional first-use setup, calibrated mapping, and recali
   assert.equal(map.getAttribute("data-bso-mapped-player-count"), "1", "restored mapping remains available after manual labeling");
 
   buttonWithText(map, "Recalibrate court").dispatchEvent({ type: "click", target: buttonWithText(map, "Recalibrate court") });
+  live.onMessage({ type: "OPEN_LABELING", requestId: "recalibration-popup-manual" });
+  root = live.overlayRoot();
+  assert.ok(root.querySelector(".bv-label-panel"), "popup labeling also leaves recalibration safely");
+  root.querySelector('[aria-label="Close manual labeling"]').dispatchEvent({ type: "click", target: root.querySelector('[aria-label="Close manual labeling"]') });
+  root = live.overlayRoot();
+  map = root.querySelector('[data-bso-panel="map"]');
+  assert.equal(map.getAttribute("data-bso-court-map-state"), "calibrated", "all manual entry points restore the prior court mapping");
+  assert.equal(map.getAttribute("data-bso-mapped-player-count"), "1");
+
+  buttonWithText(map, "Recalibrate court").dispatchEvent({ type: "click", target: buttonWithText(map, "Recalibrate court") });
   root = live.overlayRoot();
   buttonWithText(root, "Reset court").dispatchEvent({ type: "click", target: buttonWithText(root, "Reset court") });
   root = live.overlayRoot();
