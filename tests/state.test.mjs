@@ -12,14 +12,24 @@ async function stateModule() {
 
 function validCalibration() {
   const seedPoints = [{ x: 0.1, y: 0.8 }, { x: 0.9, y: 0.8 }, { x: 0.9, y: 0.2 }, { x: 0.1, y: 0.2 }];
-  const identity = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  const imageToCourt = [[1.25, 0, -0.125], [0, -5 / 3, 4 / 3], [0, 0, 1]];
+  const courtToImage = [[0.8, 0, 0.1], [0, -0.6, 0.8], [0, 0, 1]];
   return {
     version: 1,
     coordinateSystem: "normalized-video-image",
     courtCoordinateSystem: "normalized-court",
     seedPoints,
-    homography: { imageToCourt: identity, courtToImage: identity }
+    homography: { imageToCourt, courtToImage }
   };
+}
+
+function identityRecord(seedPoints) {
+  const identity = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  return Object.assign(validCalibration(), { seedPoints, homography: { imageToCourt: identity, courtToImage: identity } });
+}
+
+function frameCorners() {
+  return [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
 }
 
 test("public setup journey keeps minimal density and exposes reversible states", async () => {
@@ -73,10 +83,19 @@ test("public setup journey keeps minimal density and exposes reversible states",
 
 test("malformed court records return to first-use setup without disabling inference", async () => {
   const state = await stateModule();
+  const quad = validCalibration().seedPoints;
   const malformed = [
     { version: 1 },
-    Object.assign(validCalibration(), { seedPoints: validCalibration().seedPoints.slice(0, 3) }),
-    Object.assign(validCalibration(), { homography: { imageToCourt: [[1, 0], [0, 1]], courtToImage: null } })
+    Object.assign(validCalibration(), { seedPoints: quad.slice(0, 3) }),
+    Object.assign(validCalibration(), { homography: { imageToCourt: [[1, 0], [0, 1]], courtToImage: null } }),
+    // Duplicate corners collapse the court quad even when the matrices are usable.
+    identityRecord([quad[0], quad[1], quad[2], quad[0]]),
+    // Three collinear corners cannot bound the court.
+    identityRecord([{ x: 0.1, y: 0.5 }, { x: 0.9, y: 0.5 }, { x: 0.9, y: 0.8 }, { x: 0.5, y: 0.5 }]),
+    // A self-intersecting click order is not a valid corner walk.
+    identityRecord([{ x: 0.1, y: 0.1 }, { x: 0.9, y: 0.9 }, { x: 0.1, y: 0.9 }, { x: 0.9, y: 0.1 }]),
+    // A singular matrix cannot project between image and court.
+    Object.assign(validCalibration(), { homography: { imageToCourt: [[1, 2, 3], [1, 2, 3], [0, 0, 1]], courtToImage: [[0.8, 0, 0.1], [0, -0.6, 0.8], [0, 0, 1]] } })
   ];
   malformed.forEach((calibration) => {
     const current = state.initialExtensionState({ enabled: true, seeded: true, calibration });
@@ -85,6 +104,29 @@ test("malformed court records return to first-use setup without disabling infere
     assert.equal(current.calibration, null);
     assert.equal(current.enabled, true);
   });
+});
+
+test("calibration validity requires seed-to-corner correspondence, not just invertible matrices", async () => {
+  const state = await stateModule();
+  // A consistent fit-equivalent record with non-canonical seeds stays calibrated.
+  const fitted = state.initialExtensionState({ seeded: true, calibration: validCalibration() });
+  assert.equal(state.courtConfigurationState(fitted), "calibrated");
+  assert.equal(fitted.seeded, true);
+  // A court occupying the entire frame maps through identity matrices.
+  const fullFrame = state.initialExtensionState({ seeded: true, calibration: identityRecord(frameCorners()) });
+  assert.equal(state.courtConfigurationState(fullFrame), "calibrated");
+  // Identity matrices that ignore where the seeds lie are not a calibration.
+  const ignored = identityRecord(validCalibration().seedPoints);
+  const rejected = state.initialExtensionState({ enabled: true, seeded: true, calibration: ignored });
+  assert.equal(state.courtConfigurationState(rejected), "uncalibrated");
+  assert.equal(rejected.seeded, false);
+  assert.equal(rejected.calibration, null);
+  assert.equal(rejected.enabled, true, "a rejected record never disables inference");
+  // Both stored matrices must invert each other against the same seeds.
+  const lopsided = state.initialExtensionState({ seeded: true, calibration: Object.assign(identityRecord(frameCorners()), { homography: { imageToCourt: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], courtToImage: [[0.8, 0, 0.1], [0, -0.6, 0.8], [0, 0, 1]] } }) });
+  assert.equal(state.courtConfigurationState(lopsided), "uncalibrated");
+  assert.equal(lopsided.seeded, false);
+  assert.equal(lopsided.calibration, null);
 });
 
 test("default overlay preferences are evidence-only, video-local, and reversible", async () => {
