@@ -63,6 +63,7 @@ class FakeNode {
   }
 
   dispatchEvent(event) {
+    if (this.disabled && event.type === "click") return;
     event = Object.assign({
       target: this,
       defaultPrevented: false,
@@ -133,7 +134,7 @@ class FakeDocument extends FakeNode {
   getElementById(id) { return this.querySelector(`[id="${id}"]`); }
 }
 
-async function createPopupSession() {
+async function createPopupSession({ runtimeStatus = null } = {}) {
   const documentRef = new FakeDocument();
   const app = new FakeNode("main");
   app.setAttribute("id", "app");
@@ -148,7 +149,7 @@ async function createPopupSession() {
       sendMessage: (tabId, message, callback) => { sent.push({ tabId, message }); callback?.(); }
     },
     storage: { local: {
-      get: (_keys, callback) => callback({ bvState: { videoKey: "youtube:real-match", enabled: false, seeded: false } }),
+      get: (_keys, callback) => callback({ bvState: { videoKey: "youtube:real-match", enabled: false, seeded: false }, bvRuntimeStatus: runtimeStatus }),
       set: (_value, callback) => callback?.()
     } }
   };
@@ -341,6 +342,16 @@ test("evidence disclosure owns the popup controls while content keeps one overla
   assert.ok(controls.querySelector('[data-bso-evidence-control="racket"]'));
   assert.ok(controls.querySelector('[data-bso-evidence-control="shuttle"]'));
   assert.ok(controls.querySelector("[data-bso-court-projection-toggle]"));
+
+  const fixturePopup = await createPopupSession({ runtimeStatus: { phase: "result", analyzer: "fixture-probe-v1", inference: true } });
+  fixturePopup.app.querySelector("[data-bso-evidence-disclosure-toggle]").dispatchEvent({ type: "click" });
+  const fixtureShuttle = fixturePopup.app.querySelector('[data-bso-evidence-control="shuttle"]');
+  const fixtureShuttleSwitch = fixtureShuttle.querySelector("button");
+  assert.equal(fixtureShuttle.getAttribute("data-bso-evidence-state"), "unavailable");
+  assert.equal(fixtureShuttleSwitch.disabled, true);
+  const fixtureMessageCount = fixturePopup.sent.length;
+  fixtureShuttleSwitch.dispatchEvent({ type: "click" });
+  assert.equal(fixturePopup.sent.length, fixtureMessageCount);
 
   const bodySwitch = controls.querySelector('[data-bso-evidence-control="body"]').querySelector("button");
   bodySwitch.dispatchEvent({ type: "click" });

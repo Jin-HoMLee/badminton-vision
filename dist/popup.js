@@ -229,9 +229,9 @@
       playerTracker.note = productionReady ? ((runtimeStatus.playerCount || 0) + " visible · " + (runtimeStatus.playerState || "unknown")) : fixtureReady ? "unknown · fixture probe" : "unknown · local runtime";
     }
     if (shuttleTracker) {
-      shuttleTracker.disabled = false;
-      shuttleTracker.health = productionReady && runtimeStatus.shuttleState === "tracked" ? "ok" : "degraded";
-      shuttleTracker.note = productionReady ? (runtimeStatus.shuttleState || "unknown") + " · bounded local candidate" : fixtureReady ? "unknown · fixture probe" : "unknown · awaiting local runtime";
+      shuttleTracker.disabled = fixtureReady;
+      shuttleTracker.health = fixtureReady ? "unavailable" : productionReady && runtimeStatus.shuttleState === "tracked" ? "ok" : "degraded";
+      shuttleTracker.note = fixtureReady ? "unavailable · fixture has no shuttle signal" : productionReady ? (runtimeStatus.shuttleState || "unknown") + " · bounded local candidate" : "unknown · awaiting local runtime";
     }
     if (racketTracker) {
       var racketSupported = Boolean(runtimeStatus && runtimeStatus.racketSupported);
