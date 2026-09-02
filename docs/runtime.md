@@ -148,12 +148,14 @@ compilation, weight-transfer, or long numeric tensor lines to the offscreen
 console. Those native diagnostics are not, by themselves, an inference failure:
 the authoritative signal is the capability/result envelope (`runtime.status`,
 `runtime.capabilities`, and `analysis.result`). The Emscripten bridge can send
-these records through `console.error` even when they are prefixed `INFO`; the
-offscreen entrypoint filters only the known LiteRT environment, CPU/GPU
-registry, compiled-model, and XNNPACK INFO records, including the exact healthy
-WebGPU registration record. Unrelated stderr INFO, warnings (including an
-unavailable optional NPU), and errors remain visible. A genuine initialization
-or inference failure emits a `fallback` phase with a reason and the popup shows
+these records through `console.error` even when they are prefixed `INFO`. The
+`console.log`/`console.info` filter remains bounded by LiteRT component
+prefixes and the XNNPACK delegate text; the `console.error` filter uses exact
+patterns for the known LiteRT environment, CPU/GPU registry, compiled-model,
+and XNNPACK records, plus the exact healthy WebGPU registration record.
+Unrelated stderr INFO, warnings (including an unavailable optional NPU), and
+errors remain visible. A genuine initialization or inference failure
+emits a `fallback` phase with a reason and the popup shows
 **Production inference unavailable** while leaving playback and manual labels
 available.
 
