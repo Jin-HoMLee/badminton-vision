@@ -266,3 +266,28 @@ test("panel collapse and court-line visibility persist per video like layout sta
   assert.equal(current.panels.evidence, undefined);
   assert.equal(current.panels.feed, false);
 });
+
+test("unscoped evidence preference set before the first video binds to that video", async () => {
+  const state = await stateModule();
+  const videoA = state.videoKeyForUrl("https://www.youtube.com/watch?v=alpha");
+  const videoB = state.videoKeyForUrl("https://www.youtube.com/watch?v=beta");
+  let current = state.initialExtensionState();
+  current = state.reduceExtensionState(current, { type: "SET_TRACKER", tracker: "body", value: false });
+  assert.equal(current.videoKey, null);
+  assert.equal(current.trackerSettings.body, false);
+  const persisted = JSON.parse(JSON.stringify(current));
+  assert.equal(Object.keys(persisted.trackerSettingsByVideo).length, 0);
+  const bound = state.stateForVideo(persisted, videoA);
+  assert.equal(bound.videoKey, videoA);
+  assert.equal(bound.trackerSettings.body, false, "unscoped preference is adopted by the first-bound video");
+  assert.equal(bound.trackerSettingsByVideo[videoA].body, false, "the first-bound video stores the unscoped preference");
+  const restored = state.stateForVideo(JSON.parse(JSON.stringify(bound)), videoA);
+  assert.equal(restored.trackerSettings.body, false, "the bound preference survives a storage round trip");
+  const otherVideo = state.stateForVideo(bound, videoB);
+  assert.equal(otherVideo.trackerSettings.body, true, "other videos keep their defaults");
+  const backToA = state.stateForVideo(JSON.parse(JSON.stringify(otherVideo)), videoA);
+  assert.equal(backToA.trackerSettings.body, false, "returning to the first video restores its preference");
+  const pristine = state.stateForVideo(state.initialExtensionState(), videoB);
+  assert.equal(pristine.trackerSettings.body, true);
+  assert.equal(Object.keys(pristine.trackerSettingsByVideo).length, 0, "no preference is fabricated for untouched videos");
+});

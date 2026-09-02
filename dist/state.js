@@ -567,6 +567,13 @@
       if (current.manualLabels.length && !mapKeys(current.manualLabelsByVideo).length) current.manualLabelsByVideo[key] = copyRecords(current.manualLabels);
       if (Object.keys(current.panelLayouts).length) current.panelLayoutsByVideo[key] = copyPanelLayouts(current.panelLayouts);
       if (Object.keys(current.collapsedPanels).length) current.collapsedPanelsByVideo[key] = copyPanelCollapseState(current.collapsedPanels);
+      if (!current.trackerSettingsByVideo[key]) {
+        var unscopedTrackerSettings = copyTrackerSettings(current.trackerSettings);
+        var storesUnscopedPreference = Object.keys(defaults.trackerSettings).some(function (trackerName) {
+          return unscopedTrackerSettings[trackerName] !== defaults.trackerSettings[trackerName];
+        });
+        if (storesUnscopedPreference) current.trackerSettingsByVideo[key] = unscopedTrackerSettings;
+      }
       current.videoKey = key;
     }
     if (!key || current.videoKey === key) {
