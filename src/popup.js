@@ -329,7 +329,7 @@
       ? "fixture result observed · not production CV"
       : productionReady ? "local pose + bounded shuttle candidate · " + (runtimeStatus.backend || "backend pending") : runtimeFallback ? "local analysis unavailable · playback unaffected" : "local runtime starting · nothing uploaded";
     var trackerSummary = ui.el("div", { className: "bv-tracker-summary" }, [ui.badge(degraded ? "some parts unsure" : "all working", degraded ? "warn" : "in"), ui.el("small", {}, [runtimeSummary])]);
-    var evidenceRows = expanded ? trackers.map(trackerRow).concat([ui.el("p", { className: "bv-helper bv-evidence-disclosure-help" }, ["Choose which live signals are drawn over the video. Automatic output remains local and unknown values are never guessed."]), courtProjectionToggle()]) : [];
+    var evidenceRows = expanded ? visibilityTrackers.map(trackerRow).concat([ui.el("p", { className: "bv-helper bv-evidence-disclosure-help" }, ["Choose which live signals are drawn over the video. Automatic output remains local and unknown values are never guessed."]), courtProjectionToggle()]) : [];
     var trackerBody = ui.el("div", { className: "bv-evidence-section-body" }, [trackerSummary, ui.el("div", { className: "bv-tracker-list bv-evidence-disclosure", id: "bv-evidence-visibility-controls", role: "region", "aria-label": "Evidence visibility controls", "data-bso-evidence-disclosure": "true", hidden: !expanded }, evidenceRows)]);
     var trackerSection = section(trackerHeader, trackerBody, trackerAside);
 

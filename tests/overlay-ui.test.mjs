@@ -337,6 +337,8 @@ test("evidence disclosure owns the popup controls while content keeps one overla
   assert.equal(disclosureToggle.getAttribute("aria-label"), "Collapse Evidence visibility controls");
   assert.equal(controls.getAttribute("hidden"), null);
   assert.equal(controls.parentNode.parentNode.className, "bv-section");
+  assert.equal(controls.querySelectorAll(".bv-tracker-row").length, 4);
+  assert.equal(controls.querySelector('[data-bso-evidence-control="score"]'), null);
   assert.equal(controls.querySelector('[data-bso-evidence-control="body"]').querySelector("button").focused, true);
   assert.ok(controls.querySelector('[data-bso-evidence-control="players"]'));
   assert.ok(controls.querySelector('[data-bso-evidence-control="racket"]'));
