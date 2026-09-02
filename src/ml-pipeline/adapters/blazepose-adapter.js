@@ -119,10 +119,10 @@
       // Maintain aspect ratio with padding
       if (aspectRatio > 1) {
         destHeight = Math.floor(inputSize / aspectRatio);
-        offsetY = (inputSize - destHeight) / 2;
+        offsetY = Math.round((inputSize - destHeight) / 2);
       } else {
         destWidth = Math.floor(inputSize * aspectRatio);
-        offsetX = (inputSize - destWidth) / 2;
+        offsetX = Math.round((inputSize - destWidth) / 2);
       }
 
       // Create normalized RGB tensor [1, 3, 256, 256]

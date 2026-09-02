@@ -121,8 +121,6 @@
           throw new Error('Analyzer not initialized: ' + init.reason);
         }
 
-        this.sessionId = sample.sessionId;
-
         // Prepare frame data
         const frameData = await this._readFramePixels(sample.frame);
         if (!frameData) {

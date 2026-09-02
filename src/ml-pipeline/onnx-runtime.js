@@ -108,16 +108,20 @@
 
       // Test WebGL provider by checking if canvas supports WebGL context
       try {
-        const Canvas = globalThis.OffscreenCanvas || (globalThis.document?.createElement ? () => globalThis.document.createElement('canvas') : null);
+        const OffscreenCanvas = globalThis.OffscreenCanvas;
+        const isOffscreenCanvas = OffscreenCanvas && typeof OffscreenCanvas === 'function';
+        const Canvas = isOffscreenCanvas ? OffscreenCanvas : (globalThis.document?.createElement ? () => globalThis.document.createElement('canvas') : null);
         if (!Canvas) {
           throw new Error('Canvas not available for WebGL test');
         }
 
         let canvas;
-        if (typeof Canvas === 'function') {
+        if (isOffscreenCanvas) {
+          // OffscreenCanvas is constructible
           canvas = new Canvas(1, 1);
         } else {
-          canvas = Canvas(1, 1);
+          // Document.createElement factory is not constructible
+          canvas = Canvas();
         }
 
         const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');

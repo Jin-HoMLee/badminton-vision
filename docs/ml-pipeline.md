@@ -18,19 +18,19 @@ The ML/AI inference pipeline provides production-ready real-time detection and a
 - **Frame Latency:** <250ms per frame end-to-end
 - **Memory Footprint:** <150MB total (models + runtime)
 
-## Live Integration Architecture
+## Integration Architecture (Designed For Extension Hook-up)
 
-The pipeline integrates with the offscreen analyzer via `OnnxInferenceAdapter` which replaces `LiteOpenPoseAdapter`. 
+The pipeline is designed to integrate with the offscreen analyzer via `OnnxInferenceAdapter`, which implements the same interface contract as `LiteOpenPoseAdapter`. 
 
-**Live Frame Processing Flow:**
+**Intended Live Frame Processing Flow:**
 1. Content script captures video frames via `requestVideoFrameCallback`
 2. Frames sent to offscreen analyzer via message protocol (bso.runtime.v1)
-3. Offscreen analyzer routes to `OnnxInferenceAdapter.analyze(sample)`
+3. Offscreen analyzer routes to `OnnxInferenceAdapter.analyze(sample)` (future integration)
 4. Adapter runs inference pipeline (BlazePose + YOLOv8) via Web Workers
 5. Results processed through player tracker and returned to content
 6. UI overlays draw pose/shuttle detections on video
 
-This maintains the existing offscreen boundary and message contract, enabling drop-in replacement of the pose/shuttle detection backend.
+**Note:** The adapter is implemented and tested independently. Extension hook-up is pending in the `ship-extension` task to wire the analyzer into the manifest and build pipeline.
 
 ## Components
 

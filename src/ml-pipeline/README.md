@@ -66,8 +66,8 @@ npm run check
   - Designed for offline batch trajectory smoothing after detection
   - Optional enhancement for archived analysis
 
-### Integration Point
-The pipeline integrates via `onnx-inference-adapter.js` as a drop-in replacement for LiteOpenPoseAdapter in the offscreen analyzer. This maintains the existing bso.runtime.v1 message protocol and offscreen boundary, enabling live frame processing through the established content → offscreen → UI flow.
+### Integration Point (Designed For Future Hook-up)
+The pipeline is designed to integrate via `onnx-inference-adapter.js` as a drop-in replacement for LiteOpenPoseAdapter in the offscreen analyzer. The adapter implements the same bso.runtime.v1 message protocol and offscreen boundary contract, enabling live frame processing through the established content → offscreen → UI flow once wired into the extension manifest and build.
 
 ### Worker Pool Design
 - 2-4 parallel workers prevent main-thread blocking
@@ -86,7 +86,7 @@ Unit tests cover preprocessing, NMS, tensor validation, and metrics.
 ```bash
 npm run runtime-smoke
 ```
-Smoke tests exercise the pipeline in browser context with ONNX Runtime and LiteRT fallback.
+Smoke tests exercise the pipeline components (BlazePose, YOLOv8, adapters) in browser context with ONNX Runtime Web backend and LiteRT WASM fallback.
 
 ### Full Validation
 ```bash

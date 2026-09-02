@@ -152,6 +152,10 @@
           this.workerQueue.push(i);
         } catch (error) {
           console.warn(`Failed to initialize worker ${i}:`, error);
+          // Terminate the failed worker to clean up resources
+          if (worker && typeof worker.terminate === 'function') {
+            worker.terminate();
+          }
         }
       }
 
@@ -229,12 +233,12 @@
             request.reject(new Error(error || 'Inference failed'));
           }
           this.pendingRequests.delete(id);
-        }
 
-        // Return worker to queue
-        this.workers[workerIdx].busy = false;
-        this.workers[workerIdx].inferenceCount++;
-        this.workerQueue.push(workerIdx);
+          // Return worker to queue only if request was processed (not timed out)
+          this.workers[workerIdx].busy = false;
+          this.workers[workerIdx].inferenceCount++;
+          this.workerQueue.push(workerIdx);
+        }
       }
     }
 
