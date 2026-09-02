@@ -166,6 +166,7 @@
       seedPoints = [];
       clearPanelGesture();
       persist();
+      if (!state.labeling) render();
     }
     restoreReviewState();
     var strokesChanged = previousStrokesKey !== runtimeStrokesKey(strokes);
@@ -458,10 +459,7 @@
       var availability = evidenceAvailability(name);
       row.setAttribute("data-bso-evidence-state", availability.state);
       var button = row.querySelector("button");
-      if (button) {
-        button.disabled = Boolean(availability.disabled);
-        if (availability.disabled) button.setAttribute("aria-checked", "false");
-      }
+      if (button) button.disabled = Boolean(availability.disabled);
       var description = row.querySelector(".bv-toggle-copy span");
       if (description) description.textContent = availability.state + " · " + availability.detail;
       var classNames = String(row.className || "").split(/\s+/).filter(Boolean).filter(function (value) { return value !== "disabled"; });

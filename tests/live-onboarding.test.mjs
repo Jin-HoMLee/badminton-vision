@@ -673,6 +673,30 @@ test("runtime results do not replace the active court setup while seeding", asyn
   assert.equal(session.host().getAttribute("data-bso-seed-count"), "1", "corner input remains available after a runtime result");
 });
 
+test("a runtime camera cut during playback swaps the overlay into court setup once", async () => {
+  const session = await createLiveEvidenceSession();
+  const root = session.overlayRoot();
+  assert.ok(root.querySelector(".bv-calibration-court"), "the seeded session projects the fitted court before the cut");
+  let structuralRenders = 0;
+  const replaceChildren = root.replaceChildren.bind(root);
+  root.replaceChildren = (...children) => { structuralRenders += 1; return replaceChildren(...children); };
+  session.publishRuntimeView(resultView(Object.assign(evidenceResult({ mediaTime: 12.1 }), { cameraCut: true })));
+  assert.equal(structuralRenders, 1, "the camera-cut view renders the reseed flow once");
+  const layer = session.overlayRoot().querySelector("[data-bso-court-seeding]");
+  assert.ok(layer, "a playing camera cut enters the court-setup flow");
+  assert.equal(session.overlayRoot().querySelector(".bv-calibration-court"), null, "the pre-cut court projection is not carried onto the new camera angle");
+  assert.equal(session.overlayRoot().querySelector(".bv-runtime-evidence"), null, "the pre-cut evidence layer is not left frozen over the new angle");
+  assert.equal(session.host().getAttribute("data-bso-court-state"), "seeding");
+  const saved = session.storageWrites.slice().reverse().find((write) => write.bvState).bvState;
+  assert.equal(saved.cameraCut, true, "the cut is persisted as a camera-cut state");
+  assert.equal(saved.seeding, true, "the cut pauses analysis until the court is reseeded");
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.2, keypointOffset: 0.005 })));
+  assert.equal(structuralRenders, 1, "later playing results leave the reseed layer intact");
+  assert.equal(session.overlayRoot().querySelector("[data-bso-court-seeding]"), layer);
+  layer.dispatchEvent({ type: "click", target: layer, clientX: 80, clientY: 280 });
+  assert.equal(session.host().getAttribute("data-bso-seed-count"), "1", "corner input resumes while later results keep arriving");
+});
+
 test("content runtime initialization failures remain visible and keep manual UI available", async () => {
   const live = await createSession({
     bundle: true,
@@ -1326,6 +1350,38 @@ test("live evidence visibility switches are independent, persistent across resul
   assert.equal(session.overlayRoot().children.length, 0, "disable removes all live evidence and controls");
   session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.3 })));
   assert.equal(session.overlayRoot().children.length, 0, "a late result cannot resurrect disabled evidence");
+});
+
+test("evidence toggles keep their checked state while availability disables the row", async () => {
+  const session = await createLiveEvidenceSession();
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12 })));
+  let root = session.overlayRoot();
+  root.querySelector("[data-bso-overlay-access]").dispatchEvent({ type: "click" });
+  root = session.overlayRoot();
+  root.querySelector('[data-bso-overlay-shortcut="evidence"]').dispatchEvent({ type: "click" });
+  const toggle = (name) => session.overlayRoot().querySelector(`[data-bso-evidence-control="${name}"]`).querySelector("button");
+  const bodyRow = () => session.overlayRoot().querySelector('[data-bso-evidence-control="body"]');
+  assert.equal(toggle("body").getAttribute("aria-checked"), "true", "pose evidence starts on");
+  const fallback = {
+    phase: "fallback", message: "Local analyzer result received", reason: "pose-model-unavailable",
+    analyzer: "lightweight-openpose-lite-256-v1", inference: false, fallbacks: ["pose-model-unavailable"],
+    capabilities: { inference: false, analyzer: "lightweight-openpose-lite-256-v1", backend: "wasm" },
+    result: evidenceResult({ mediaTime: 12.1, includeRacket: false, unknown: true }),
+    currentMediaTime: 12.1, ageSeconds: 0, stale: false
+  };
+  session.publishRuntimeView(fallback);
+  assert.equal(bodyRow().getAttribute("data-bso-evidence-state"), "unavailable");
+  assert.equal(toggle("body").disabled, true, "pose evidence is disabled while the analyzer output is unavailable");
+  assert.equal(toggle("body").getAttribute("aria-checked"), "true", "an on setting stays on while its row is disabled");
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12.2, keypointOffset: 0.01 })));
+  assert.equal(toggle("body").disabled, false, "pose evidence re-enables when keypoints return");
+  assert.equal(toggle("body").getAttribute("aria-checked"), "true", "recovery does not flip the remembered on setting");
+  assert.ok(session.overlayRoot().querySelector(".bv-runtime-evidence").querySelector(".bv-pose-keypoint"), "the drawn skeleton matches the on setting");
+  toggle("body").dispatchEvent({ type: "click" });
+  assert.equal(toggle("body").getAttribute("aria-checked"), "false", "one click turns the on setting off");
+  const saved = session.storageWrites.slice().reverse().find((write) => write.bvState).bvState;
+  assert.equal(saved.trackerSettings.body, false, "the click persists the off choice");
+  assert.equal(session.overlayRoot().querySelector(".bv-runtime-evidence").querySelector(".bv-pose-keypoint"), null, "the skeleton follows the persisted off setting");
 });
 
 test("live overlay panels keep the native player control strip clear and stay movable", async () => {

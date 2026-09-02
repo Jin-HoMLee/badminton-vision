@@ -90,6 +90,17 @@ seeding, panel-presentation, feed-reconciliation, pointer-capture, direct-video,
 and geometry tests in `tests/live-onboarding.test.mjs`; the headed procedure
 and playback invariants remain in [`docs/e2e-smoke.md`](e2e-smoke.md).
 
+Runtime views stay structural only when they actually change structure. A
+`cameraCut: true` result re-enters the court-setup flow once (`CAMERA_CUT` flips
+`seeding`, which would otherwise look like a user-driven setup and suppress the
+swap); later playing results leave that reseed layer intact, so corner input
+resumes immediately and no stale pre-cut projection or evidence layer is left
+frozen over the new camera angle. The evidence-visibility rows sync only
+disabled/availability while a runtime result refreshes; the switch keeps the
+persisted `trackerSettings` value (and the live drawing honors it), so an ON
+group that is temporarily unavailable renders ON+disabled and one click turns
+it off when availability returns.
+
 ## Native player controls stay interactive
 
 YouTube draws its bottom control strip (progress bar, play/pause, volume,
