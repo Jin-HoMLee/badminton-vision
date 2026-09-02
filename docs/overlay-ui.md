@@ -95,7 +95,10 @@ Runtime views stay structural only when they actually change structure. A
 `seeding`, which would otherwise look like a user-driven setup and suppress the
 swap); later playing results leave that reseed layer intact, so corner input
 resumes immediately and no stale pre-cut projection or evidence layer is left
-frozen over the new camera angle. The evidence-visibility rows sync only
+frozen over the new camera angle. If the manual-labeling form is open when
+the cut arrives, that swap is deferred so the in-flight form is never
+replaced; closing the form renders the reseed flow, so the reseed is only
+delayed, never dropped. The evidence-visibility rows sync only
 disabled/availability while a runtime result refreshes; the switch keeps the
 persisted `trackerSettings` value (and the live drawing honors it), so an ON
 group that is temporarily unavailable renders ON+disabled and one click turns
