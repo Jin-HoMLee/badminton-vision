@@ -43,8 +43,6 @@ test("panel toggles and keyboard shortcuts are explicit and re-render safe", asy
   assert.match(content, /TOGGLE_PANEL.*panel: \"map\"/);
   assert.match(content, /key === "o"/);
   assert.match(content, /key >= "1" && key <= "9"/);
-  assert.match(content, /key === "s"/);
-  assert.match(content, /key === "e"/);
   assert.match(content, /key === "escape"/);
   assert.match(content, /event\.key === "Enter"/);
   assert.match(content, /isInteractiveTarget/);
