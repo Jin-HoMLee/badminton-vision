@@ -147,16 +147,15 @@ LiteRT's vendored WASM/WebGPU layers may print accelerator registration,
 compilation, weight-transfer, or long numeric tensor lines to the offscreen
 console. Those native diagnostics are not, by themselves, an inference failure:
 the authoritative signal is the capability/result envelope (`runtime.status`,
-`runtime.capabilities`, and `analysis.result`). The Emscripten bridge binds
-stdout to `console.log` and stderr to `console.error`; this LiteRT build emits
-the healthy WebGPU registration record as stderr even though it is prefixed
-`INFO`. `offscreen-console-filter.js`, loaded before the LiteRT loader, suppresses
-only the exact `accelerator_registry.cc:54` `RegisterAccelerator` record whose
-accelerator name is `GPU WebGPU`. Other stderr INFO records, warnings, errors,
-initialization failures, fallback diagnostics, and inference failures remain
-visible. A genuine initialization or inference failure emits a `fallback` phase
-with a reason and the popup shows **Production inference unavailable** while
-leaving playback and manual labels available.
+`runtime.capabilities`, and `analysis.result`). The Emscripten bridge can send
+these records through `console.error` even when they are prefixed `INFO`; the
+offscreen entrypoint filters only the known LiteRT environment, CPU/GPU
+registry, compiled-model, and XNNPACK INFO records, including the exact healthy
+WebGPU registration record. Unrelated stderr INFO, warnings (including an
+unavailable optional NPU), and errors remain visible. A genuine initialization
+or inference failure emits a `fallback` phase with a reason and the popup shows
+**Production inference unavailable** while leaving playback and manual labels
+available.
 
 ## MoveNet artifact release gate
 

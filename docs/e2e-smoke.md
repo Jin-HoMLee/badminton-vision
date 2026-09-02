@@ -103,13 +103,17 @@ page-console call:
    `inference=false`, analyzer, backend, and fallback markers; do not enable a
    fixture result or turn unknown evidence into a detection.
 5. Drag each visible panel from its header and resize at least one panel from
-   its corner. Confirm the header action buttons, court-layer corner clicks,
-   video playback, and evidence drawing are unaffected; resize must remain
-   inside the video. Re-render with a density change and confirm the saved
-   panel placement remains. Confirm the native player controls (pause, seek,
-   time bar, settings) stay clickable with the overlay active — including
-   while the four-corner setup surface is on screen — and that a panel
-   dragged or resized toward the bottom still clamps above the control strip.
+   its corner. Use the dedicated browser's real mouse/pointer action for these
+   gestures; do not synthesize a `pointerdown` with `dispatchEvent`, because
+   `setPointerCapture` requires an active pointer and that synthetic action
+   creates a false `NotFoundError`. Confirm the header action buttons,
+   court-layer corner clicks, video playback, and evidence drawing are
+   unaffected; resize must remain inside the video. Re-render with a density
+   change and confirm the saved panel placement remains. Confirm the native
+   player controls (pause, seek, time bar, settings) stay clickable with the
+   overlay active — including while the four-corner setup surface is on screen
+   — and that a panel dragged or resized toward the bottom still clamps above
+   the control strip.
 6. Open manual labeling with the pencil action (or `O`), mark Start/End while
    playback continues, choose a shot and optional player/dimensions, then click
    **Save label**. Re-open the saved row, change its label, and save the

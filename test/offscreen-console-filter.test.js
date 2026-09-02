@@ -31,14 +31,38 @@ test('offscreen filter suppresses only the LiteRT WebGPU registration on the std
 
   context.console.error('WARNING: [npu_registry.cc:34] NPU accelerator could not be loaded and registered');
   context.console.error('ERROR: LiteRT model initialization failed');
-  context.console.error('INFO: [environment.cc:36] Creating LiteRT environment with options');
+  context.console.error('INFO: [unrelated_backend.cc:36] A diagnostic from an unknown backend');
+  context.console.error('INFO: [compiled_model.cc:812] Failed to invoke the compiled model');
+  context.console.error('INFO: [accelerator_registry.cc:54] RegisterAccelerator: ptr=0xc5fd8, name=GPU Vulkan');
+  context.console.error("NotFoundError: Failed to execute 'setPointerCapture' on 'HTMLDivElement'");
+  context.console.warn('NPU accelerator could not be loaded and registered');
   context.console.warn('WebGPU device lost');
   assert.deepEqual(calls.map(({ method, args }) => [method, args[0]]), [
     ['error', 'WARNING: [npu_registry.cc:34] NPU accelerator could not be loaded and registered'],
     ['error', 'ERROR: LiteRT model initialization failed'],
-    ['error', 'INFO: [environment.cc:36] Creating LiteRT environment with options'],
+    ['error', 'INFO: [unrelated_backend.cc:36] A diagnostic from an unknown backend'],
+    ['error', 'INFO: [compiled_model.cc:812] Failed to invoke the compiled model'],
+    ['error', 'INFO: [accelerator_registry.cc:54] RegisterAccelerator: ptr=0xc5fd8, name=GPU Vulkan'],
+    ['error', "NotFoundError: Failed to execute 'setPointerCapture' on 'HTMLDivElement'"],
+    ['warn', 'NPU accelerator could not be loaded and registered'],
     ['warn', 'WebGPU device lost']
   ]);
+});
+
+test('offscreen filter classifies known LiteRT INFO diagnostics on the stderr bridge', () => {
+  const { context, calls } = loadFilter();
+  const benignDiagnostics = [
+    'INFO: [environment.cc:36] Creating LiteRT environment with options',
+    'INFO: [accelerator_registry.cc:54] RegisterAccelerator: ptr=0xc61a0, name=CpuAccelerator',
+    'INFO: [gpu_registry.cc:87] Statically linked GPU accelerator registered.',
+    'INFO: [cpu_registry.cc:75] XNNPACK CPU accelerator registered.',
+    'INFO: [compiled_model.cc:812] Flatbuffer model initialized directly from incoming litert model.',
+    'INFO: Created TensorFlow Lite XNNPACK delegate for CPU.'
+  ];
+
+  benignDiagnostics.forEach((message) => context.console.error(message));
+
+  assert.deepEqual(calls, []);
 });
 
 test('filter loads before LiteRT and the vendored bridge binds stderr to console.error', () => {
