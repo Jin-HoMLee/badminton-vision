@@ -1,0 +1,5 @@
+# Repository-level no-mistakes configuration.
+# This repository currently has no CI workflows, so an empty PR check list is
+# declared green. Real GitHub Actions CI is planned next; once a workflow is
+# merged on the default branch, remove this declaration so checks are enforced.
+no_ci: true
