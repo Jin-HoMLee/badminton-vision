@@ -76,6 +76,7 @@
   var shadow = null;
   var root = null;
   var video = null;
+  var overlayCanvas = null;
   var domObserver = null;
   var navigationListeners = [];
   var mediaTimeListener = null;
@@ -130,6 +131,10 @@
       ? fallbacks.concat(runtimeView.reason || [])
       : [];
     host.setAttribute("data-bso-enabled", String(Boolean(state.enabled)));
+    host.setAttribute("data-bso-youtube-detected", String(Boolean(window.BSOVideoDiscovery && window.BSOVideoDiscovery.isYouTubeWatchUrl && window.BSOVideoDiscovery.isYouTubeWatchUrl(window.location && window.location.href))));
+    var info = currentVideoInfo();
+    host.setAttribute("data-bso-badminton-detected", info ? (info.badmintonDetected ? "true" : "false") : "unknown");
+    host.setAttribute("data-bso-badminton-detection", info && info.badmintonDetectionState || "unknown");
     host.setAttribute("data-bso-court-state", courtDiagnosticState());
     host.setAttribute("data-bso-seed-count", String(state.seeding ? seedPoints.length : (state.seedPoints || []).length));
     host.setAttribute("data-bso-runtime-phase", runtimeView.phase || "unknown");
@@ -348,6 +353,12 @@
   var publishedVideoInfoKey = null;
   function currentVideoInfo() {
     if (!video) return null;
+    var extracted = window.BSOVideoDiscovery && typeof window.BSOVideoDiscovery.extractVideoMetadata === "function"
+      ? window.BSOVideoDiscovery.extractVideoMetadata(document, video, window)
+      : null;
+    if (extracted) {
+      return Object.assign({}, extracted, { duration: formatDuration(extracted.duration) });
+    }
     var title = document && document.title ? String(document.title).replace(/\s*-\s*YouTube\s*$/, "").trim() : null;
     var channelNode = document && document.querySelector ? document.querySelector('meta[itemprop="channelName"], meta[name="channelName"]') : null;
     var channel = channelNode && channelNode.getAttribute && channelNode.getAttribute("content") ? channelNode.getAttribute("content").trim() : null;
@@ -355,7 +366,11 @@
       url: window.location && /^https?:/.test(window.location.href) ? window.location.href : null,
       title: title || null,
       channel: channel || null,
-      duration: formatDuration(video.duration)
+      duration: formatDuration(video.duration),
+      badmintonDetected: false,
+      badmintonDetectionState: "unconfirmed",
+      badmintonConfidence: 0,
+      badmintonSignals: []
     };
   }
   function publishVideoInfo() {
@@ -435,6 +450,35 @@
     }
   }
 
+  function resizeOverlayCanvas(width, height) {
+    if (!overlayCanvas) return;
+    var cssWidth = Math.max(0, Number(width) || 0);
+    var cssHeight = Math.max(0, Number(height) || 0);
+    var dpr = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+    var pixelWidth = Math.max(1, Math.round(cssWidth * dpr));
+    var pixelHeight = Math.max(1, Math.round(cssHeight * dpr));
+    if (overlayCanvas.width !== pixelWidth) overlayCanvas.width = pixelWidth;
+    if (overlayCanvas.height !== pixelHeight) overlayCanvas.height = pixelHeight;
+    overlayCanvas.style.width = cssWidth + "px";
+    overlayCanvas.style.height = cssHeight + "px";
+    var context = typeof overlayCanvas.getContext === "function" ? overlayCanvas.getContext("2d") : null;
+    if (!context || !cssWidth || !cssHeight) return;
+    if (typeof context.setTransform === "function") context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (typeof context.clearRect !== "function") return;
+    context.clearRect(0, 0, cssWidth, cssHeight);
+    // Keep a real canvas rendering surface in the sibling layer. The SVG
+    // evidence remains the accessible/vector surface; this canvas is reserved
+    // for bounded frame-local marks and is deliberately never interactive.
+    var shuttle = runtimeShuttle();
+    if (shuttle && shuttle.state === "tracked" && shuttle.candidate && shuttle.candidate.accepted === true && normalizedPoint(shuttle.candidate) && typeof context.beginPath === "function" && typeof context.arc === "function" && typeof context.stroke === "function") {
+      context.beginPath();
+      context.arc(shuttle.candidate.x * cssWidth, shuttle.candidate.y * cssHeight, Math.max(3, Math.min(cssWidth, cssHeight) * .009), 0, Math.PI * 2);
+      context.strokeStyle = "rgba(200, 240, 74, .75)";
+      context.lineWidth = 1.5;
+      context.stroke();
+    }
+  }
+
   function positionToVideo() {
     if (!host || !video || typeof video.getBoundingClientRect !== "function") return;
     var rect = window.BVRuntime && typeof window.BVRuntime.videoContentRect === "function"
@@ -451,6 +495,7 @@
       ? "inset(" + rect.clipInsets.top + "px " + rect.clipInsets.right + "px " + rect.clipInsets.bottom + "px " + rect.clipInsets.left + "px)"
       : "none";
     host.setAttribute("data-bso-video-geometry", "rendered-content-box");
+    resizeOverlayCanvas(rect.width, rect.height);
     refreshPanelLayouts();
   }
   function resetVideoResizeObserver() {
@@ -464,7 +509,7 @@
   }
   function attachVideo() {
     var next = document.querySelector("video");
-    if (next === video) { positionToVideo(); return; }
+    if (next === video) { positionToVideo(); publishVideoInfo(); return; }
     if (video && next !== video) {
       if (mediaTimeListener) video.removeEventListener("timeupdate", mediaTimeListener);
       if (videoGeometryListener) {
@@ -491,7 +536,7 @@
         // Duration becomes known once metadata loads; publish only on change.
         publishVideoInfo();
       };
-      videoGeometryListener = positionToVideo;
+      videoGeometryListener = function () { positionToVideo(); publishVideoInfo(); };
       video.addEventListener("timeupdate", mediaTimeListener);
       video.addEventListener("loadedmetadata", videoGeometryListener);
       video.addEventListener("resize", videoGeometryListener);
@@ -1197,6 +1242,13 @@
       "data-bso-density": state.density
     });
     if (calibration && courtLinesVisible()) overlay.appendChild(calibrationDrawing());
+    // Keep a canvas sibling anchored to the same video-local root. It is a
+    // bounded frame-local rendering surface, while the vector layer below
+    // preserves inspectable evidence and hit testing remains pass-through.
+    if (overlayCanvas) {
+      overlayCanvas.setAttribute("data-bso-overlay-canvas", "true");
+      overlay.appendChild(overlayCanvas);
+    }
     // Evidence is drawn in normalized video coordinates and never intercepts
     // pointer input, so player/shuttle rendering cannot block playback or seed clicks.
     overlay.appendChild(runtimeEvidenceDrawing());
@@ -1746,6 +1798,11 @@
     singleton.host = host;
     host.style.position = "fixed"; host.style.zIndex = "2147483640"; host.style.pointerEvents = "none";
     shadow = host.attachShadow({ mode: "open" });
+    overlayCanvas = document.createElement("canvas");
+    overlayCanvas.className = "bv-overlay-canvas";
+    overlayCanvas.setAttribute("aria-hidden", "true");
+    overlayCanvas.setAttribute("data-bso-overlay-canvas", "true");
+    overlayCanvas.style.pointerEvents = "none";
     var link = document.createElement("link"); link.rel = "stylesheet"; link.href = hasChrome() && chrome.runtime ? chrome.runtime.getURL("styles.css") : "styles.css"; shadow.appendChild(link);
     // The stylesheet loads asynchronously; a panel measured before it applies
     // has block-layout geometry. Re-anchor and re-clamp once it is live so a

@@ -15,6 +15,7 @@
   var tabTitle = null;
   var videoInfo = null;
   var activeTabUrl = null;
+  var badmintonDetection = null;
   function tabUrlForInfo() { return activeTabUrl; }
   var trackers = [
     { id: "court", label: "Court", health: "degraded", note: "not seeded", on: true, noSwitch: true },
@@ -123,7 +124,7 @@
     } else finish();
   }
   function closePopup() { if (window.close) window.close(); }
-  function isWatchPage(url) { return /^https?:\/\/(www\.)?youtube\.com\/watch(?:\?|$)/.test(url || ""); }
+  function isWatchPage(url) { return /^https?:\/\/(?:www\.|m\.)?youtube\.com\/watch(?:[?#]|$)/i.test(url || ""); }
   function replayPendingDispatches() {
     var queued = pendingDispatches;
     pendingDispatches = [];
@@ -200,6 +201,7 @@
     var courtSeeded = Boolean(state.seeded && state.calibration && state.seedPoints && state.seedPoints.length === 4);
     root.setAttribute("data-bso-popup", "true");
     root.setAttribute("data-bso-youtube-detected", String(Boolean(detected)));
+    root.setAttribute("data-bso-badminton-detected", badmintonDetection == null ? "unknown" : String(Boolean(badmintonDetection)));
     root.setAttribute("data-bso-enabled", String(Boolean(state.enabled)));
     root.setAttribute("data-bso-court-state", courtSeeded ? "seeded" : state.seeding ? "seeding" : "not-seeded");
     root.setAttribute("data-bso-runtime-phase", runtimeStatus && runtimeStatus.phase || (state.enabled ? "starting" : "idle"));
@@ -224,6 +226,8 @@
     var detectedDetail = detected ? (realDetail || "reading video metadata…") : fixture.video.channel + " · " + fixture.video.duration;
     var detectedChildren = [ui.el("strong", {}, [detectedTitle])];
     if (!detected) detectedChildren.push(ui.badge("fixture preview", "neutral", false));
+    if (detected && badmintonDetection === true) detectedChildren.push(ui.badge("badminton detected", "in", false));
+    if (detected && badmintonDetection === false) detectedChildren.push(ui.badge("sport unconfirmed", "neutral", false));
     detectedChildren.push(ui.el("span", {}, [detectedDetail]));
     var header = ui.el("header", { className: "bv-popup-header" }, [ui.el("span", { className: "bv-logo" }, [ui.el("img", { src: "design-system/assets/logo-mark.svg", alt: "" }), ui.el("strong", { className: "bv-logo-name" }, ["Badminton Vision"])]), ui.el("span", { className: "bv-popup-head-actions" }, [ui.iconButton("settings", "Settings unavailable in local demo", { size: "sm", disabled: true }), ui.iconButton("x", "Close", { size: "sm", onClick: closePopup })])]);
     var statusState = state.enabled ? (runtimeFallback || runtimeStale ? "stale" : "live") : "ready";
@@ -289,6 +293,7 @@
       activeTabUrl = tabUrl || null;
       tabTitle = tabs && tabs[0] && tabs[0].title ? tabs[0].title : null;
       detected = isWatchPage(tabUrl);
+      badmintonDetection = null;
       var activeVideoKey = window.BVState.videoKeyForUrl(tabUrl);
       // Expose the detected page before storage hydration completes. Any
       // action in this small window is queued and replayed against the stored
@@ -306,7 +311,10 @@
           state = window.BVState.stateForVideo(state, activeVideoKey);
         }
         if (result && result.bvRuntimeStatus) runtimeStatus = result.bvRuntimeStatus;
-        if (result && result.bvVideoInfo) videoInfo = result.bvVideoInfo;
+        if (result && result.bvVideoInfo) {
+          videoInfo = result.bvVideoInfo;
+          badmintonDetection = typeof videoInfo.badmintonDetected === "boolean" ? videoInfo.badmintonDetected : null;
+        }
         stateHydrated = true;
         persist();
         render();

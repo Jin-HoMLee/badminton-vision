@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "minimum_chrome_version": "148",
   "permissions": ["storage", "tabs", "offscreen", "scripting"],
-  "host_permissions": ["*://www.youtube.com/*", "*://youtube.com/*"],
+  "host_permissions": ["*://www.youtube.com/*", "*://youtube.com/*", "*://m.youtube.com/*"],
   "action": {
     "default_title": "Badminton Vision",
     "default_popup": "popup.html",
@@ -27,7 +27,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://www.youtube.com/watch*", "*://youtube.com/watch*"],
+      "matches": ["*://www.youtube.com/watch*", "*://youtube.com/watch*", "*://m.youtube.com/watch*"],
       "js": ["content.bundle.js"],
       "run_at": "document_start",
       "all_frames": false
@@ -36,7 +36,7 @@
   "web_accessible_resources": [
     {
       "resources": ["styles.css", "design-system/tokens/*", "design-system/assets/*"],
-      "matches": ["*://www.youtube.com/*", "*://youtube.com/*"]
+      "matches": ["*://www.youtube.com/*", "*://youtube.com/*", "*://m.youtube.com/*"]
     }
   ],
   "content_security_policy": {

@@ -127,14 +127,26 @@ manual labels alike — inside a bounded, scrollable body (`max-height: 212px;
 overflow-y: auto`); the saved-label list in the manual panel uses the same
 scrollable feed contract at 160px. No row is ever clipped silently.
 
-## Popup video identity
+## Popup video identity and local detection
 
 The popup's detected-video block shows the **real** current tab: the content
 script publishes page-visible metadata (`bvVideoInfo`: tab title minus the
-`- YouTube` suffix, media duration, channel meta tag) and the popup renders
-title, channel, and duration for a detected watch page, falling back to the
-tab title while metadata is still being read. The demo fixture appears only
-outside a watch page, clearly labeled `fixture preview`.
+`- YouTube` suffix, media duration, channel/description/category metadata)
+and the popup renders title, channel, and duration for a detected watch page,
+failing open to the tab title while metadata is still being read. The local
+`BSOVideoDiscovery.detectBadmintonVideo` heuristic uses those page metadata
+fields only; a positive signal is labeled `badminton detected`, while a page
+without a signal remains `sport unconfirmed` rather than being silently
+misclassified. The demo fixture appears only outside a watch page, clearly
+labeled `fixture preview`. Desktop and mobile YouTube watch URLs are covered by
+the MV3 match patterns.
+
+The live root also owns one `.bv-overlay-canvas` sized from the rendered video
+content rectangle and capped to device-pixel-ratio 2. It is an evidence drawing
+surface with `pointer-events: none`; the accessible SVG evidence layer remains
+alongside it. `positionToVideo` resizes both surfaces through the same
+`ResizeObserver`/layout path, so neither surface changes playback or drifts
+through theater/fullscreen transitions.
 
 The regression gates for all three contracts are in
 `tests/panel-layout.test.mjs`, `tests/live-onboarding.test.mjs`,
