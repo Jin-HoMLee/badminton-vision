@@ -119,9 +119,10 @@ withholds the previous mapped output until the replacement is locked; cancelling
 restores the prior fit. Clearing or camera-cut invalidation returns to setup
 without stopping raw evidence.
 
-The calibrated court polygon drawn over the video during and after setup uses
-bright highlight tokens (`--court-setup-line: var(--lime-400)`,
-`--court-setup-net: var(--lime-300)`) instead of the muted diagram tokens.
+Court line rendering uses the bright highlight tokens
+(`--court-setup-line: var(--lime-400)`, `--court-setup-net: var(--lime-300)`)
+instead of the muted diagram tokens — both for the live setup draft on the
+seed surface and for the calibrated projection rendered after lock.
 There is exactly **one** toggle for it — **Court projection** in the Evidence
 visibility panel (`data-bso-court-projection-toggle`), backed by the per-video
 `courtLinesByVideo` store (`SET_COURT_LINES`). The toggle is unavailable until

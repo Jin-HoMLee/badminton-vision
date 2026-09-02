@@ -202,14 +202,25 @@ video-local court lifecycle is `uncalibrated` → `setup` → `calibrated`; star
 setup with an existing fit is `recalibrating`. The map exposes **Set up court**
 in the first-use states and **Recalibrate court** once a committed fit exists.
 
+Persisted calibration is validated again at the shared `BVState` boundary in
+`src/state.js` (`isCourtCalibration`, also used by the popup, which loads no
+calibration primitives): the record version/coordinate systems, four in-bounds
+seed points forming a distinct, ordered convex quadrilateral, finite
+invertible matrices, and two-way seed-to-canonical-corner correspondence. A
+malformed or legacy record coerces to the first-use `uncalibrated` state
+(`seeded: false`, no calibration) and is repaired without disabling inference
+or clearing unrelated video-local state; the focused gate is
+`tests/state.test.mjs`.
+
 A locked result stores `videoKey`, normalized committed `seedPoints`, and the
 serializable calibration matrices in the existing `bvState` local-storage
 record. The content UI refits from stored seeds rather than trusting stored
 matrices. Navigation, video replacement, and `CAMERA_CUT` clear this
 video-local result. During setup, reset, camera-cut invalidation, or a changed
 draft, map-relative player/shuttle output and projected lines are withheld
-until the new four-click fit is locked; cancelling a recalibration restores the
-prior fit. Raw video evidence remains mounted throughout. Normalized
+until the new four-click fit is locked; cancelling a recalibration — or
+leaving setup through the Skip to manual handoff — restores the prior fit.
+Raw video evidence remains mounted throughout. Normalized
 coordinates are rendered through the existing video client-rect anchor, so
 resize, theater, and fullscreen do not alter the physical court or touch
 playback.

@@ -1007,11 +1007,11 @@
       return toggle;
     });
     // The calibrated court polygon over the video is one thing with one
-    // toggle: a per-video show/hide preference. During the four-corner setup
-    // Draft setup lines are feedback on the seed surface, not court-map
-    // output. The projection preference is therefore disabled until a
-    // committed calibration exists, while the raw evidence controls above
-    // remain independent and usable throughout setup.
+    // toggle: a per-video show/hide preference. Draft setup lines are
+    // feedback on the seed surface, not court-map output, so the projection
+    // toggle stays disabled until a committed calibration exists. The raw
+    // evidence controls above remain independent and usable throughout
+    // setup.
     var projectionAvailable = courtMappingAvailable();
     var projectionVisible = projectionAvailable && courtLinesVisible();
     var projectionDescription = projectionAvailable
