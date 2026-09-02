@@ -46,6 +46,50 @@ native tooltip, but no visible drag copy or grip button. The focused geometry,
 default-layer, and DOM regressions are in `tests/panel-layout.test.mjs` and
 `tests/live-onboarding.test.mjs`.
 
+## Playback-time interaction freeze diagnosis
+
+The initiating trigger is an enabled live session receiving synchronized runtime
+updates while a YouTube video is playing. `requestVideoFrameCallback` advances
+the media synchronizer on every decoded frame; before this fix,
+`publishRuntimeView` used the 250 ms age cadence (and every new result) to call
+`render()`. `render()` called `root.replaceChildren()`, explicitly cleared
+`panelGesture`, and recreated each feed/scroll/focus node. A drag therefore lost
+its gesture between pointerdown and pointerup, a click could land on a retired
+button, and a feed scroll/focus could reset. Pausing is only the masking
+condition: no frame callbacks arrive, so the destructive periodic render stops.
+
+Pointer hit testing was not the initiating fault. In the headed dedicated Chrome
+check, the disabled playing and paused paths both reported the overlay anchor as
+`pointer-events: none`; a center hit test reached YouTube's `VIDEO`. The
+existing high z-index is therefore intentional and does not block the video.
+Disabling inference alone is not a sufficient counterfactual: synchronized
+clock ticks still reached the 250 ms age-render branch even with no result.
+Separately, the old document-wide `MutationObserver` treated unrelated
+YouTube child-list/class/style churn as a geometry change and repeatedly read
+and wrote panel layout while playback was active. That was additional main
+thread/render work, not stale pointer capture or a frame-transport playback
+mutation; capture remains one-in-flight and the video invariants are
+read-only.
+
+The fix keeps runtime updates non-destructive. `src/content.js` patches runtime
+attributes, timestamps, evidence SVG, evidence availability, and newly arrived
+feed rows in place; it preserves panel headers, controls, scroll surfaces, and
+pointer capture. Structural changes explicitly release capture before retiring
+a surface, so no stale gesture can block the next interaction. Stats bodies are
+replaced only when the evidence list changes and their scroll offset is restored. Geometry observation now ignores overlay
+churn and unrelated DOM mutations, schedules relevant video-ancestor geometry
+work once per frame, and still reacts to video replacement and geometry
+changes. Inference, frame transport, playback, panel layout, and calibration
+are unchanged. The intentional load-shedding is measured by those regressions: a playing
+runtime result causes zero structural root renders, preserves the same header
+and feed/scroll nodes through a drag, and an unrelated DOM mutation causes zero
+video geometry reads while a video attribute mutation causes one. The playing-
+path regression is covered by the `playing runtime updates preserve panel
+surfaces, focus, and scroll state` and `content geometry ignores unrelated DOM
+churn while retaining video ancestor updates` tests in
+`tests/live-onboarding.test.mjs`; the headed procedure and playback invariants
+remain in [`docs/e2e-smoke.md`](e2e-smoke.md).
+
 ## Native player controls stay interactive
 
 YouTube draws its bottom control strip (progress bar, play/pause, volume,

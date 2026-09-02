@@ -7267,6 +7267,7 @@
     };
     var publishedRuntimeKey = null;
     var lastRuntimeRenderAt = 0;
+    var positionFrameHandle = null;
     var panelGesture = null;
     // The live video keeps one compact access point visible. Its on-demand menu
     // is intentionally transient; durable panel/evidence choices live in the
@@ -7328,16 +7329,18 @@
     }
     function publishRuntimeView(view) {
       var previousResult = runtimeView && runtimeView.result;
+      var previousStrokesKey = runtimeStrokesKey(strokes);
       runtimeView = view;
       var resultChanged = Boolean(view && view.result !== previousResult);
       if (view && view.result && view.result.cameraCut && !state.cameraCut && (state.seeded || calibration)) {
         state = window.BVState.reduceExtensionState(state, { type: "CAMERA_CUT" });
         calibration = null;
         seedPoints = [];
-        panelGesture = null;
+        clearPanelGesture();
         persist();
       }
       restoreReviewState();
+      var strokesChanged = previousStrokesKey !== runtimeStrokesKey(strokes);
       updateDiagnosticsMarkers();
       var result = view.result;
       var playerCount = result ? runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length : null;
@@ -7398,7 +7401,7 @@
         // controls read the latest clock when invoked and only need the visible
         // timestamp patched in place.
         if (state.labeling) refreshLabelingClock();
-        else render();
+        else if (!refreshRuntimePresentation({ resultChanged: resultChanged, strokesChanged: strokesChanged })) render();
       }
     }
     function runtimeIsStale() { return Boolean(state.stale || runtimeView.stale); }
@@ -7574,6 +7577,131 @@
       suggestion = isFixtureRuntime() && data.suggestion ? Object.assign({}, data.suggestion) : null;
       if (suggestion && strokes.some(function (stroke) { return String(stroke.eventId) === String(suggestion.eventId); })) suggestion = null;
     }
+    function runtimeStrokesKey(items) {
+      return (Array.isArray(items) ? items : []).map(function (stroke) {
+        return [stroke && stroke.eventId, stroke && stroke.shot, stroke && stroke.time, stroke && stroke.status, stroke && stroke.source].join("\u001f");
+      }).join("\u001e");
+    }
+    function replaceRuntimeNode(current, next) {
+      if (!current || !next || !current.parentNode) return false;
+      if (typeof current.replaceWith === "function") {
+        current.replaceWith(next);
+        return true;
+      }
+      var parent = current.parentNode;
+      if (typeof parent.replaceChild === "function") {
+        parent.replaceChild(next, current);
+        return true;
+      }
+      var children = parent.children;
+      var index = children && typeof children.indexOf === "function" ? children.indexOf(current) : -1;
+      if (index < 0) return false;
+      children[index] = next;
+      next.parentNode = parent;
+      current.parentNode = null;
+      return true;
+    }
+    function replaceRuntimePanelBody(panel, createPanel) {
+      if (!panel || typeof createPanel !== "function") return false;
+      var body = panel.querySelector && panel.querySelector(".bv-panel-body");
+      if (!body) return false;
+      var replacement = createPanel();
+      var nextBody = replacement && replacement.querySelector && replacement.querySelector(".bv-panel-body");
+      if (!nextBody) return false;
+      var scrollTop = Number(body.scrollTop) || 0;
+      if (!replaceRuntimeNode(body, nextBody)) return false;
+      nextBody.scrollTop = scrollTop;
+      return true;
+    }
+    function refreshEvidenceControls(panel) {
+      if (!panel || !panel.querySelector) return false;
+      ["body", "players", "racket", "shuttle"].forEach(function (name) {
+        var row = panel.querySelector('[data-bso-evidence-control="' + name + '"]');
+        if (!row) return;
+        var availability = evidenceAvailability(name);
+        row.setAttribute("data-bso-evidence-state", availability.state);
+        var button = row.querySelector("button");
+        if (button) {
+          button.disabled = Boolean(availability.disabled);
+          if (availability.disabled) button.setAttribute("aria-checked", "false");
+        }
+        var description = row.querySelector(".bv-toggle-copy span");
+        if (description) description.textContent = availability.state + " · " + availability.detail;
+        var classNames = String(row.className || "").split(/\s+/).filter(Boolean).filter(function (value) { return value !== "disabled"; });
+        if (availability.disabled) classNames.push("disabled");
+        row.className = classNames.join(" ");
+      });
+      return true;
+    }
+    function refreshRuntimeFeed(panel) {
+      if (!panel || !panel.querySelector) return false;
+      var feed = panel.querySelector(".bv-feed");
+      if (!feed) return false;
+      var rows = feed.querySelectorAll ? feed.querySelectorAll("[data-bso-event-id]") : [];
+      var byId = Object.create(null);
+      Array.prototype.forEach.call(rows, function (row) { byId[row.getAttribute("data-bso-event-id")] = row; });
+      var empty = panel.querySelector(".bv-empty");
+      if (strokes.length && empty && typeof empty.remove === "function") empty.remove();
+      strokes.forEach(function (stroke) {
+        var id = String(stroke.eventId);
+        if (byId[id]) return;
+        feed.appendChild(ui.strokeFeedItem(stroke, function () { openExistingLabel(stroke); }));
+      });
+      return true;
+    }
+    function refreshRuntimePresentation(options) {
+      options = options || {};
+      // A synchronized frame is not a structural UI change. Rebuilding the
+      // overlay root here used to retire the node that owned a drag, scroll, or
+      // focused control every ~250 ms while playback was running. Keep those
+      // surfaces alive and patch only frame evidence and runtime-owned text.
+      if (!root || !root.querySelector || !state.enabled || state.seeding || state.labeling) return false;
+      var overlay = root;
+      var evidence = overlay.querySelector(".bv-runtime-evidence");
+      if (options.resultChanged) {
+        if (!evidence || !replaceRuntimeNode(evidence, runtimeEvidenceDrawing())) return false;
+        if (host && typeof host.getBoundingClientRect === "function") {
+          var rect = host.getBoundingClientRect();
+          resizeOverlayCanvas(rect.width, rect.height);
+        }
+      }
+      overlay.setAttribute("data-bso-overlay-state", runtimeView.phase === "fallback" ? "fallback" : runtimeIsStale() ? "stale" : "live");
+      overlay.setAttribute("data-bso-runtime-phase", runtimeView.phase || "unknown");
+      overlay.setAttribute("data-bso-analysis-state", runtimeView.result && runtimeView.result.state || "unknown");
+      overlay.setAttribute("data-bso-player-state", runtimeView.result && runtimeView.result.tracking && runtimeView.result.tracking.state || "unknown");
+      overlay.setAttribute("data-bso-shuttle-state", runtimeView.result && runtimeView.result.shuttle && runtimeView.result.shuttle.state || "unknown");
+      overlay.setAttribute("data-bso-court-state", courtDiagnosticState());
+      overlay.setAttribute("data-bso-density", state.density);
+      var displayTime = state.time;
+      if (!displayTime && Number.isFinite(runtimeView.currentMediaTime)) displayTime = formatMediaTime(runtimeView.currentMediaTime);
+      overlay.querySelectorAll(".bv-panel-time").forEach(function (node) {
+        var suffix = runtimeIsStale() ? " · stale" : "";
+        node.textContent = (displayTime || "") + suffix;
+        var classes = String(node.className || "").split(/\s+/).filter(Boolean).filter(function (name) { return name !== "stale"; });
+        if (runtimeIsStale()) classes.push("stale");
+        node.className = classes.join(" ");
+      });
+      var note = overlay.querySelector(".bv-runtime-note");
+      var noteChildren = note && (note.childNodes || note.children);
+      if (noteChildren && noteChildren.length) {
+        var noteText = Array.prototype.slice.call(noteChildren).find(function (child) { return child.nodeType === 3; });
+        if (noteText) noteText.textContent = runtimeCaption();
+      }
+      var evidencePanel = overlay.querySelector('[data-bso-panel="evidence"]');
+      refreshEvidenceControls(evidencePanel);
+      if (options.strokesChanged) {
+        var feedPanel = overlay.querySelector('[data-bso-panel="feed"]');
+        refreshRuntimeFeed(feedPanel);
+      }
+      // Stats and map have no controls in their bodies. Rebuild only when the
+      // evidence list changes, preserving their scroll offsets; pose/shuttle
+      // marks above remain current on every accepted runtime result.
+      if (options.strokesChanged) {
+        var statsPanelNode = overlay.querySelector('[data-bso-panel="stats"]');
+        if (statsPanelNode) replaceRuntimePanelBody(statsPanelNode, statsPanel);
+      }
+      return true;
+    }
     function resetVideoLocalState(reason) {
       persist();
       activeVideoKey = currentVideoKey();
@@ -7581,7 +7709,7 @@
       state.videoUrl = window.location && /^https?:/.test(window.location.href) ? window.location.href : null;
       calibration = null;
       seedPoints = [];
-      panelGesture = null;
+      clearPanelGesture();
       overlayMenuOpen = false;
       editingEventId = null;
       strokes = [];
@@ -7656,6 +7784,7 @@
     }
   
     function positionToVideo() {
+      positionFrameHandle = null;
       if (!host || !video || typeof video.getBoundingClientRect !== "function") return;
       var rect = window.BVRuntime && typeof window.BVRuntime.videoContentRect === "function"
         ? window.BVRuntime.videoContentRect(video, window)
@@ -7673,6 +7802,13 @@
       host.setAttribute("data-bso-video-geometry", "rendered-content-box");
       resizeOverlayCanvas(rect.width, rect.height);
       refreshPanelLayouts();
+    }
+    function scheduleVideoPosition() {
+      if (positionFrameHandle !== null) return;
+      var schedule = window && typeof window.requestAnimationFrame === "function"
+        ? window.requestAnimationFrame.bind(window)
+        : function (callback) { return setTimeout(callback, 0); };
+      positionFrameHandle = schedule(function () { positionToVideo(); });
     }
     function resetVideoResizeObserver() {
       if (videoResizeObserver) videoResizeObserver.disconnect();
@@ -7880,6 +8016,15 @@
       if (gesture.surface && gesture.surface.setAttribute) gesture.surface.setAttribute("aria-grabbed", active ? "true" : "false");
       if (gesture.panel && gesture.panel.classList) gesture.panel.classList.toggle("is-dragging", active);
     }
+    function clearPanelGesture() {
+      var gesture = panelGesture;
+      if (!gesture) return;
+      try {
+        if (gesture.surface && gesture.surface.releasePointerCapture && gesture.surface.hasPointerCapture && gesture.surface.hasPointerCapture(gesture.pointerId)) gesture.surface.releasePointerCapture(gesture.pointerId);
+      } catch (_) {}
+      setPanelGestureState(gesture, false);
+      panelGesture = null;
+    }
     function panelPointerMove(event) {
       var gesture = panelGesture;
       if (!gesture || panelEventId(event) !== gesture.pointerId || !panelLayoutApi) return;
@@ -7897,8 +8042,7 @@
       if (!gesture || panelEventId(event) !== gesture.pointerId) return;
       if (event.preventDefault) event.preventDefault();
       if (event.stopPropagation) event.stopPropagation();
-      if (gesture.surface && gesture.surface.releasePointerCapture && gesture.surface.hasPointerCapture && gesture.surface.hasPointerCapture(gesture.pointerId)) gesture.surface.releasePointerCapture(gesture.pointerId);
-      setPanelGestureState(gesture, false); panelGesture = null;
+      clearPanelGesture();
       if (!cancelled && gesture.current) storePanelLayout(gesture.panelId, gesture.current);
     }
     function beginPanelGesture(event, container, panel, panelId, surface, kind) {
@@ -8845,9 +8989,9 @@
   
     function render() {
       if (!root) return;
-      // Runtime/status updates replace the panel DOM. Never leave a pointer
+      // Structural state updates replace the panel DOM. Never leave a pointer
       // gesture attached to a retired node or let it write stale geometry.
-      if (panelGesture) { setPanelGestureState(panelGesture, false); panelGesture = null; }
+      clearPanelGesture();
       updateDiagnosticsMarkers();
       root.replaceChildren();
       if (!state.enabled && !state.seeding && !state.labeling) return;
@@ -8928,7 +9072,7 @@
         state = window.BVState.reduceExtensionState(state, { type: "CAMERA_CUT" });
         state.videoKey = activeVideoKey || currentVideoKey();
         calibration = null;
-        panelGesture = null;
+        clearPanelGesture();
         seedPoints = [];
         persist(); render();
       }
@@ -9012,7 +9156,28 @@
       // YouTube toggles theater/fullscreen mostly through ancestor class/style
       // mutations. Pair those signals with ResizeObserver so the final measured
       // rendered video content box wins after layout settles.
-      domObserver = new MutationObserver(attachVideo); domObserver.observe(document.documentElement, { childList: true, attributes: true, attributeFilter: ["class", "style"], subtree: true }); attachVideo();
+      domObserver = new MutationObserver(function (records) {
+        var needsAttach = false;
+        var needsPosition = false;
+        (records || []).forEach(function (record) {
+          var target = record && record.target;
+          // Ignore this host's own positioning writes. The old broad callback
+          // remeasured every panel after unrelated YouTube DOM churn, competing
+          // with active gestures during playback.
+          if (host && (target === host || host.contains && host.contains(target))) return;
+          if (record.type === "attributes") {
+            if (!video || target === video || target && target.contains && target.contains(video)) needsPosition = true;
+            return;
+          }
+          var nodes = [];
+          if (record.addedNodes) nodes = nodes.concat(Array.prototype.slice.call(record.addedNodes));
+          if (record.removedNodes) nodes = nodes.concat(Array.prototype.slice.call(record.removedNodes));
+          if (nodes.some(function (node) { return node === video || node && node.querySelector && node.querySelector("video") || node && node.contains && video && node.contains(video); })) needsAttach = true;
+        });
+        if (needsAttach) attachVideo();
+        else if (needsPosition) scheduleVideoPosition();
+      });
+      domObserver.observe(document.documentElement, { childList: true, attributes: true, attributeFilter: ["class", "style"], subtree: true }); attachVideo();
       // Manual/offline labeling intentionally does not start the runtime. It
       // reads the media clock only; live inference begins on ENABLE/OPEN_OVERLAY.
       if (hasChrome() && chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(handleMessage);
