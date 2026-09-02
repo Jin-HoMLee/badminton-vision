@@ -64,6 +64,9 @@
       this.nextRequestId = 0;
 
       this.mainThreadAnalyzers = null;
+      this.mainThreadOnnxManager = null;
+      this.runtimeBackend = null;
+      this.runtimeFallbacks = [];
       this.initializationState = 'uninitialized';
       this.performanceMetrics = {
         totalInferences: 0,
@@ -110,8 +113,9 @@
       const workerScript = this.modelConfig.workerPath || '/src/ml-pipeline/workers/inference-worker.js';
 
       for (let i = 0; i < this.numWorkers; i++) {
+        let worker = null;
         try {
-          const worker = new this.environment.Worker(workerScript);
+          worker = new this.environment.Worker(workerScript);
           let workerReady = false;
 
           // Initialize worker
@@ -140,7 +144,11 @@
             });
           });
 
-          await initPromise;
+          const initData = await initPromise;
+          if (initData && initData.runtime) {
+            this.runtimeBackend = initData.runtime.backend || this.runtimeBackend;
+            this.runtimeFallbacks = initData.runtime.fallbacks || this.runtimeFallbacks;
+          }
 
           this.workers.push({
             instance: worker,
@@ -178,12 +186,16 @@
     async _initializeMainThread() {
       this.mainThreadAnalyzers = {};
 
-      const onnxManager = new OnnxRuntime.OnnxRuntimeManager();
+      const onnxManager = new OnnxRuntime.OnnxRuntimeManager({ environment: this.environment });
+      this.mainThreadOnnxManager = onnxManager;
       const runtimeStatus = await onnxManager.initialize();
 
       if (!runtimeStatus.available) {
         throw new Error('ONNX Runtime initialization failed: ' + runtimeStatus.reason);
       }
+
+      this.runtimeBackend = runtimeStatus.backend || null;
+      this.runtimeFallbacks = runtimeStatus.fallbacks || [];
 
       // Initialize pose analyzer
       if (BlazePoseAdapter) {
@@ -423,6 +435,8 @@
         state: this.initializationState,
         workers: this.workers.length,
         pendingRequests: this.pendingRequests.size,
+        backend: this.runtimeBackend,
+        fallbacks: [...this.runtimeFallbacks],
         metrics: { ...this.performanceMetrics }
       };
     }
@@ -439,14 +453,40 @@
       this.workers = [];
       this.workerQueue = [];
 
+      // Settle in-flight requests so their timers cannot requeue cleared workers
+      for (const request of this.pendingRequests.values()) {
+        try {
+          request.reject(new Error('Pipeline released'));
+        } catch (e) {
+          console.warn('Failed to reject pending inference request:', e);
+        }
+      }
+      this.pendingRequests.clear();
+
       // Release main thread analyzers
       if (this.mainThreadAnalyzers) {
         for (const analyzer of Object.values(this.mainThreadAnalyzers)) {
-          analyzer.release?.();
+          try {
+            analyzer.release?.();
+          } catch (e) {
+            console.warn('Failed to release analyzer:', e);
+          }
         }
         this.mainThreadAnalyzers = null;
       }
 
+      // The pipeline owns the shared runtime manager it created
+      if (this.mainThreadOnnxManager) {
+        try {
+          this.mainThreadOnnxManager.releaseAll?.();
+        } catch (e) {
+          console.warn('Failed to release ONNX runtime sessions:', e);
+        }
+        this.mainThreadOnnxManager = null;
+      }
+
+      this.runtimeBackend = null;
+      this.runtimeFallbacks = [];
       this.initializationState = 'released';
     }
   }

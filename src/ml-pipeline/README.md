@@ -49,14 +49,6 @@ Production-ready real-time ML inference for badminton video analysis.
 - **Latency:** <250ms per frame end-to-end
 - **Memory:** <150MB total (models + runtime)
 
-## Testing
-
-```bash
-npm run test -- tests/ml-pipeline.test.mjs
-npm run runtime-smoke
-npm run check
-```
-
 ## Architecture & Design Decisions
 
 ### Live vs. Post-Processing
@@ -78,20 +70,15 @@ The pipeline is designed to integrate via `onnx-inference-adapter.js` as a drop-
 
 ### Unit Tests
 ```bash
-npm run test -- tests/ml-pipeline.test.mjs
+node --test tests/ml-pipeline.test.mjs
 ```
-Unit tests cover preprocessing, NMS, tensor validation, and metrics.
+This is the only check that covers this module. It exercises preprocessing,
+NMS, tensor validation, heatmap trajectory extraction, backend probing, and
+pipeline status reporting.
 
-### Integration Tests
-```bash
-npm run runtime-smoke
-```
-Smoke tests exercise the pipeline components (BlazePose, YOLOv8, adapters) in browser context with ONNX Runtime Web backend and LiteRT WASM fallback.
-
-### Full Validation
-```bash
-npm run check  # build + test
-```
+`npm run runtime-smoke` covers the shipped MV3 offscreen runtime slice
+(`test/runtime-integration.test.js`, `test/capture-backpressure.test.js`); it
+does not load or exercise any `src/ml-pipeline` component.
 
 The authoritative architecture and component contracts are in
 [`docs/ml-pipeline.md`](../../docs/ml-pipeline.md). Model preparation, focused

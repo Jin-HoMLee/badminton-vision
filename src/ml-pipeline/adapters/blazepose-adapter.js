@@ -34,6 +34,7 @@
       this.environment = environment;
       this.modelPath = modelPath || 'models/blazepose-lite-256.onnx';
       this.onnxManager = onnxManager || (OnnxRuntime ? new OnnxRuntime.OnnxRuntimeManager({ environment }) : null);
+      this.ownsOnnxManager = !onnxManager;
       this.session = null;
       this.sessionReady = null;
       this.sessionId = `pose-session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -338,6 +339,23 @@
       };
     }
 
+    /**
+     * Create a canvas sized to the frame, in worker or DOM contexts.
+     */
+    _createCanvas(width, height) {
+      const OffscreenCanvasCtor = this.environment?.OffscreenCanvas;
+      if (typeof OffscreenCanvasCtor === 'function') {
+        return new OffscreenCanvasCtor(width, height);
+      }
+
+      const canvas = this.environment?.document?.createElement?.('canvas');
+      if (!canvas) return null;
+
+      canvas.width = width;
+      canvas.height = height;
+      return canvas;
+    }
+
     async _readFramePixels(frame) {
       if (!frame) return null;
 
@@ -360,10 +378,7 @@
 
       // Handle ImageBitmap or OffscreenCanvas
       if (frame.width && frame.height) {
-        const Canvas = this.environment?.OffscreenCanvas || this.environment?.document?.createElement('canvas');
-        if (!Canvas) return null;
-
-        let canvas = Canvas instanceof Function ? new Canvas(frame.width, frame.height) : Canvas;
+        const canvas = this._createCanvas(frame.width, frame.height);
         if (!canvas) return null;
 
         const ctx = canvas.getContext?.('2d');
@@ -388,8 +403,12 @@
     }
 
     release() {
-      this.session?.release?.();
-      this.onnxManager?.releaseAll();
+      // Only the owner of the runtime manager may dispose its shared session cache
+      if (this.ownsOnnxManager) {
+        this.onnxManager?.releaseAll();
+      }
+      this.session = null;
+      this.sessionReady = null;
     }
   }
 

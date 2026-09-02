@@ -40,7 +40,7 @@
         this.ort = ort;
 
         // Try WebGPU first
-        if (this.environment.navigator && typeof navigator.gpu !== 'undefined') {
+        if (this.environment.navigator && typeof this.environment.navigator.gpu !== 'undefined') {
           try {
             await this._tryWebGPU();
             this.activeBackend = 'webgpu';
@@ -86,13 +86,14 @@
       if (!ort) throw new Error('ONNX Runtime not available');
 
       // Check if WebGPU API is available
-      if (!globalThis.navigator?.gpu) {
+      const gpu = this.environment.navigator?.gpu;
+      if (!gpu) {
         throw new Error('WebGPU API not available');
       }
 
       // Attempt to initialize a WebGPU adapter (without creating session on about:blank)
       try {
-        const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+        const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
         if (!adapter) {
           throw new Error('No WebGPU adapter available');
         }
@@ -108,9 +109,10 @@
 
       // Test WebGL provider by checking if canvas supports WebGL context
       try {
-        const OffscreenCanvas = globalThis.OffscreenCanvas;
+        const OffscreenCanvas = this.environment.OffscreenCanvas;
         const isOffscreenCanvas = OffscreenCanvas && typeof OffscreenCanvas === 'function';
-        const Canvas = isOffscreenCanvas ? OffscreenCanvas : (globalThis.document?.createElement ? () => globalThis.document.createElement('canvas') : null);
+        const documentRef = this.environment.document;
+        const Canvas = isOffscreenCanvas ? OffscreenCanvas : (documentRef?.createElement ? () => documentRef.createElement('canvas') : null);
         if (!Canvas) {
           throw new Error('Canvas not available for WebGL test');
         }
@@ -141,8 +143,9 @@
       // WASM is always available as fallback - just configure it
       try {
         ort.env.wasm.wasmPaths = undefined; // Use default paths
-        if (globalThis.navigator?.hardwareConcurrency) {
-          ort.env.wasm.numThreads = Math.min(globalThis.navigator.hardwareConcurrency, 4);
+        const hardwareConcurrency = this.environment.navigator?.hardwareConcurrency;
+        if (hardwareConcurrency) {
+          ort.env.wasm.numThreads = Math.min(hardwareConcurrency, 4);
         }
       } catch (e) {
         throw new Error('WASM configuration failed: ' + e.message);

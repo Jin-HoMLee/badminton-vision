@@ -290,6 +290,23 @@
     /**
      * Read frame pixels from various formats.
      */
+    /**
+     * Create a canvas sized to the frame, in worker or DOM contexts.
+     */
+    _createCanvas(width, height) {
+      const OffscreenCanvasCtor = this.environment?.OffscreenCanvas;
+      if (typeof OffscreenCanvasCtor === 'function') {
+        return new OffscreenCanvasCtor(width, height);
+      }
+
+      const canvas = this.environment?.document?.createElement?.('canvas');
+      if (!canvas) return null;
+
+      canvas.width = width;
+      canvas.height = height;
+      return canvas;
+    }
+
     async _readFramePixels(frame) {
       if (!frame) return null;
 
@@ -300,10 +317,7 @@
 
       // Handle ImageBitmap or OffscreenCanvas
       if (frame.width && frame.height) {
-        const Canvas = this.environment?.OffscreenCanvas || this.environment?.document?.createElement('canvas');
-        if (!Canvas) return null;
-
-        let canvas = Canvas instanceof Function ? new Canvas(frame.width, frame.height) : Canvas;
+        const canvas = this._createCanvas(frame.width, frame.height);
         if (!canvas) return null;
 
         const ctx = canvas.getContext?.('2d');

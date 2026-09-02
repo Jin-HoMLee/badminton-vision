@@ -25,6 +25,7 @@
       this.environment = environment;
       this.modelPath = modelPath || 'models/tracknetv3-3frame.onnx';
       this.onnxManager = onnxManager || (OnnxRuntime ? new OnnxRuntime.OnnxRuntimeManager({ environment }) : null);
+      this.ownsOnnxManager = !onnxManager;
       this.session = null;
       this.sessionReady = null;
       this.mode = mode; // 'post-processing' (offline), not live
@@ -106,24 +107,17 @@
      * Expects heatmap input [H, W] or [1, H, W]
      */
     addFrame(heatmap, timestamp) {
-      // Ensure heatmap is 2D [H, W]
-      let frameData = heatmap;
-      let height, width;
+      // Accept an ONNX tensor ([H, W] or [1, H, W]) or a raw square buffer
+      const dims = heatmap?.dims;
+      const isTensor = Array.isArray(dims)
+        && (dims.length === 2 || (dims.length === 3 && dims[0] === 1));
+      const isRawBuffer = Array.isArray(heatmap) || ArrayBuffer.isView(heatmap);
 
-      if (heatmap.dims && heatmap.dims.length === 3 && heatmap.dims[0] === 1) {
-        height = heatmap.dims[1];
-        width = heatmap.dims[2];
-      } else if (heatmap.dims && heatmap.dims.length === 2) {
-        height = heatmap.dims[0];
-        width = heatmap.dims[1];
-      } else if (Array.isArray(heatmap)) {
-        height = Math.sqrt(heatmap.length);
-        width = height;
-      } else {
+      if (!isTensor && !isRawBuffer) {
         throw new Error('Invalid heatmap format');
       }
 
-      this.frameBuffer.push(frameData);
+      this.frameBuffer.push(heatmap);
       this.timestampBuffer.push(timestamp);
 
       // Maintain rolling window
@@ -319,13 +313,13 @@
         component.sumY += y;
         component.sumConf += data[idx];
 
-        // Check 4-connected neighbors
+        // Check 4-connected neighbors, without wrapping across row edges
         const neighbors = [
           idx - width, // up
-          idx + width, // down
-          idx - 1,     // left
-          idx + 1      // right
+          idx + width  // down
         ];
+        if (x > 0) neighbors.push(idx - 1);          // left
+        if (x < width - 1) neighbors.push(idx + 1);  // right
 
         for (const nIdx of neighbors) {
           if (nIdx >= 0 && nIdx < data.length && !visited[nIdx] && data[nIdx] > threshold) {
@@ -340,8 +334,12 @@
 
     release() {
       this.clear();
-      this.session?.release?.();
-      this.onnxManager?.releaseAll();
+      // Only the owner of the runtime manager may dispose its shared session cache
+      if (this.ownsOnnxManager) {
+        this.onnxManager?.releaseAll();
+      }
+      this.session = null;
+      this.sessionReady = null;
     }
   }
 

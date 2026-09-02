@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import { createRequire } from 'node:module';
 
 /**
  * ML Pipeline unit tests - validate ONNX Runtime initialization,
@@ -242,4 +243,256 @@ test('Tensor dimension validation', async () => {
 
   const data2 = new Float32Array(640 * 640 * 3);
   assert.ok(validateTensor(data2, [1, 3, 640, 640]));
+});
+
+/**
+ * Regression coverage: these exercise the real modules through their public
+ * interfaces rather than restating constants.
+ */
+
+const require = createRequire(import.meta.url);
+const OnnxRuntime = require('../src/ml-pipeline/onnx-runtime.js');
+const BlazePoseAdapter = require('../src/ml-pipeline/adapters/blazepose-adapter.js');
+require('../src/ml-pipeline/adapters/yolov8-shuttle-adapter.js');
+const TrackNetProcessor = require('../src/ml-pipeline/adapters/tracknet-processor.js');
+const InferencePipelineModule = require('../src/ml-pipeline/inference-pipeline.js');
+
+function makeFakeOrt() {
+  const created = [];
+  const released = [];
+  return {
+    created,
+    released,
+    env: { wasm: {} },
+    InferenceSession: {
+      create: async (modelData) => {
+        const session = {
+          modelData,
+          run: async () => ({ output: { data: new Float32Array(0), dims: [1, 0] } }),
+          release: () => {
+            if (session.disposed) throw new Error('session already released');
+            session.disposed = true;
+            released.push(modelData);
+          }
+        };
+        created.push(session);
+        return session;
+      }
+    },
+    Tensor: class {
+      constructor(type, data, dims) {
+        this.type = type;
+        this.data = data;
+        this.dims = dims;
+      }
+    }
+  };
+}
+
+test('OnnxRuntimeManager probes the injected environment, not host globals', async () => {
+  const ort = makeFakeOrt();
+  const manager = new OnnxRuntime.OnnxRuntimeManager({
+    environment: {
+      ort,
+      navigator: { gpu: { requestAdapter: async () => ({ name: 'fake-adapter' }) } }
+    }
+  });
+
+  const status = await manager.initialize();
+
+  assert.strictEqual(status.available, true);
+  assert.strictEqual(status.backend, 'webgpu');
+});
+
+test('OnnxRuntimeManager falls back to WASM when no GPU is present in the environment', async () => {
+  const ort = makeFakeOrt();
+  const manager = new OnnxRuntime.OnnxRuntimeManager({
+    environment: { ort, navigator: { hardwareConcurrency: 2 } }
+  });
+
+  const status = await manager.initialize();
+
+  assert.strictEqual(status.available, true);
+  assert.strictEqual(status.backend, 'wasm');
+  assert.deepStrictEqual(manager.fallbacks, ['webgl-unavailable']);
+  assert.strictEqual(ort.env.wasm.numThreads, 2);
+});
+
+test('TrackNet trajectory extraction does not merge blobs across row edges', () => {
+  const processor = new TrackNetProcessor.TrackNetV3Processor({ environment: {} });
+
+  // 4x4 heatmap: one hot cell at (row 0, col 3), a two-cell blob at (row 1, cols 0-1)
+  const heatmap = new Float32Array(16);
+  heatmap[3] = 0.9;
+  heatmap[4] = 0.9;
+  heatmap[5] = 0.9;
+
+  const point = processor.extractTrajectoryPoint(heatmap, 0.5);
+
+  assert.ok(point);
+  assert.strictEqual(point.componentSize, 2);
+  assert.strictEqual(point.x, 0.125);
+  assert.strictEqual(point.y, 0.25);
+});
+
+test('TrackNet addFrame accepts the typed arrays the processor itself produces', () => {
+  const processor = new TrackNetProcessor.TrackNetV3Processor({ environment: {} });
+
+  processor.addFrame(new Float32Array(16), 0);
+  processor.addFrame(Array.from({ length: 16 }, () => 0), 1);
+  processor.addFrame({ dims: [1, 4, 4], data: new Float32Array(16) }, 2);
+
+  assert.strictEqual(processor.frameBuffer.length, 3);
+  assert.throws(() => processor.addFrame('not-a-heatmap', 3), /Invalid heatmap format/);
+});
+
+test('BlazePose sizes the DOM canvas fallback to the frame', async () => {
+  const drawn = [];
+  const canvas = {
+    width: 300,
+    height: 150,
+    getContext: () => ({
+      drawImage: (...args) => drawn.push(args),
+      getImageData: (x, y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4).fill(200) })
+    })
+  };
+
+  const analyzer = new BlazePoseAdapter.BlazePoseAnalyzer({
+    environment: { document: { createElement: () => canvas } }
+  });
+
+  const pixels = await analyzer._readFramePixels({ width: 1920, height: 1080 });
+
+  assert.strictEqual(canvas.width, 1920);
+  assert.strictEqual(canvas.height, 1080);
+  assert.strictEqual(pixels.data.length, 1920 * 1080 * 3);
+  assert.strictEqual(pixels.data[0], 200);
+  assert.strictEqual(drawn.length, 1);
+});
+
+test('Pipeline reports the runtime backend and fallbacks through getStatus', async () => {
+  const ort = makeFakeOrt();
+  const pipeline = new InferencePipelineModule.InferencePipeline({
+    environment: { ort, navigator: { hardwareConcurrency: 2 } },
+    useWebWorkers: false
+  });
+
+  const result = await pipeline.initialize();
+  assert.strictEqual(result.success, true);
+
+  const status = pipeline.getStatus();
+  assert.strictEqual(status.initialized, true);
+  assert.strictEqual(status.backend, 'wasm');
+  assert.ok(Array.isArray(status.fallbacks));
+});
+
+test('Pipeline release disposes the shared runtime once and reaches the released state', async () => {
+  const ort = makeFakeOrt();
+  const pipeline = new InferencePipelineModule.InferencePipeline({
+    environment: { ort, navigator: { hardwareConcurrency: 2 } },
+    useWebWorkers: false
+  });
+
+  await pipeline.initialize();
+  const sessionCount = ort.created.length;
+  assert.ok(sessionCount > 1, 'expected multiple analyzers to share one runtime manager');
+
+  await pipeline.release();
+
+  assert.strictEqual(ort.released.length, sessionCount);
+  assert.strictEqual(pipeline.getStatus().state, 'released');
+  assert.strictEqual(pipeline.mainThreadAnalyzers, null);
+});
+
+class FakeWorker {
+  constructor() {
+    this.listeners = [];
+    this.terminated = false;
+    this.index = FakeWorker.instances.length;
+    FakeWorker.instances.push(this);
+  }
+
+  addEventListener(type, handler) {
+    if (type === 'message') this.listeners.push(handler);
+  }
+
+  removeEventListener(type, handler) {
+    this.listeners = this.listeners.filter((l) => l !== handler);
+  }
+
+  postMessage(message) {
+    if (message.type !== 'init') return;
+    const success = this.index !== 0;
+    queueMicrotask(() => this._emit({
+      type: 'init-response',
+      success,
+      error: success ? undefined : 'model load failed',
+      runtime: { backend: 'wasm', fallbacks: ['webgpu-unavailable'] }
+    }));
+  }
+
+  terminate() {
+    this.terminated = true;
+  }
+
+  _emit(data) {
+    for (const handler of [...this.listeners]) handler({ data });
+  }
+}
+FakeWorker.instances = [];
+
+test('One failed worker is terminated without failing the whole pool', async () => {
+  FakeWorker.instances = [];
+
+  const pipeline = new InferencePipelineModule.InferencePipeline({
+    environment: { Worker: FakeWorker },
+    numWorkers: 2
+  });
+
+  const result = await pipeline.initialize();
+
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(FakeWorker.instances.length, 2);
+  assert.strictEqual(FakeWorker.instances[0].terminated, true);
+
+  const status = pipeline.getStatus();
+  assert.strictEqual(status.workers, 1);
+  assert.strictEqual(status.backend, 'wasm');
+  assert.deepStrictEqual(status.fallbacks, ['webgpu-unavailable']);
+});
+
+test('Release settles in-flight worker requests instead of leaving live timers', async () => {
+  FakeWorker.instances = [];
+
+  const pipeline = new InferencePipelineModule.InferencePipeline({
+    environment: { Worker: FakeWorker },
+    numWorkers: 1
+  });
+
+  // Worker index 0 fails by default; make every worker initialize for this case.
+  const originalPost = FakeWorker.prototype.postMessage;
+  FakeWorker.prototype.postMessage = function postMessage(message) {
+    if (message.type !== 'init') return;
+    queueMicrotask(() => this._emit({
+      type: 'init-response',
+      success: true,
+      runtime: { backend: 'wasm', fallbacks: [] }
+    }));
+  };
+
+  try {
+    await pipeline.initialize();
+
+    const inFlight = pipeline.runInference({ data: new Uint8Array(4), width: 1, height: 1 });
+    await Promise.resolve();
+    assert.strictEqual(pipeline.pendingRequests.size, 1);
+
+    await pipeline.release();
+
+    await assert.rejects(inFlight, /Pipeline released/);
+    assert.strictEqual(pipeline.pendingRequests.size, 0);
+    assert.deepStrictEqual(pipeline.workerQueue, []);
+  } finally {
+    FakeWorker.prototype.postMessage = originalPost;
+  }
 });
