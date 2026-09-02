@@ -65,6 +65,15 @@ const runtimeFiles = [
   ["offscreen/offscreen.html", "offscreen/offscreen.html"],
   ["offscreen/offscreen.js", "offscreen/offscreen.js"]
 ];
+const mlPipelineFiles = [
+  ["onnx-runtime.js", "ml-pipeline/onnx-runtime.js"],
+  ["adapters/blazepose-adapter.js", "ml-pipeline/adapters/blazepose-adapter.js"],
+  ["adapters/yolov8-shuttle-adapter.js", "ml-pipeline/adapters/yolov8-shuttle-adapter.js"],
+  ["adapters/tracknet-processor.js", "ml-pipeline/adapters/tracknet-processor.js"],
+  ["adapters/onnx-inference-adapter.js", "ml-pipeline/adapters/onnx-inference-adapter.js"],
+  ["inference-pipeline.js", "ml-pipeline/inference-pipeline.js"],
+  ["workers/inference-worker.js", "ml-pipeline/workers/inference-worker.js"]
+];
 const manifestIcons = {
   "16": "design-system/assets/icon-16.png",
   "32": "design-system/assets/icon-32.png",
@@ -246,6 +255,7 @@ for (const file of uiFiles) await copyFile(join(src, file), join(dist, file));
 for (const [source, destination] of browserPrimitiveFiles) await copyFile(join(root, source), join(dist, destination));
 await copyFile(join(root, "manifest.json"), join(dist, "manifest.json"));
 for (const [source, destination] of runtimeFiles) await copyFile(join(extension, source), join(dist, destination));
+for (const [source, destination] of mlPipelineFiles) await copyFile(join(src, "ml-pipeline", source), join(dist, destination));
 for (const file of designSystemFiles) await copyFile(join(designSystem, file), join(dist, "design-system", file));
 await writeContentBundle(join(dist, "content.bundle.js"));
 
@@ -275,6 +285,7 @@ const required = [
   "manifest.json",
   ...browserPrimitiveFiles.map(([, destination]) => destination),
   ...runtimeFiles.map(([, destination]) => destination),
+  ...mlPipelineFiles.map(([, destination]) => destination),
   ...designSystemFiles.map((file) => join("design-system", file))
 ];
 for (const file of required) {
@@ -298,7 +309,7 @@ for (const file of required.filter((entry) => entry.endsWith(".css"))) {
   }
 }
 const offscreenHtml = await readFile(join(dist, "offscreen/offscreen.html"), "utf8");
-for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "lite-runtime-loader.js", "lite-openpose-adapter.js", "shuttle-tracking-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
+for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "lite-runtime-loader.js", "lite-openpose-adapter.js", "shuttle-tracking-adapter.js", "../ml-pipeline/onnx-runtime.js", "../ml-pipeline/adapters/blazepose-adapter.js", "../ml-pipeline/adapters/yolov8-shuttle-adapter.js", "../ml-pipeline/adapters/tracknet-processor.js", "../ml-pipeline/inference-pipeline.js", "../ml-pipeline/adapters/onnx-inference-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
   if (!offscreenHtml.includes(`src="${script}"`)) throw new Error(`Packed offscreen document is missing ${script}`);
 }
 await assertNoRemoteDependencies(dist);
