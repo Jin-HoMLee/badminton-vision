@@ -10,6 +10,18 @@ async function stateModule() {
   return context.globalThis.BVState;
 }
 
+function validCalibration() {
+  const seedPoints = [{ x: 0.1, y: 0.8 }, { x: 0.9, y: 0.8 }, { x: 0.9, y: 0.2 }, { x: 0.1, y: 0.2 }];
+  const identity = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  return {
+    version: 1,
+    coordinateSystem: "normalized-video-image",
+    courtCoordinateSystem: "normalized-court",
+    seedPoints,
+    homography: { imageToCourt: identity, courtToImage: identity }
+  };
+}
+
 test("public setup journey keeps minimal density and exposes reversible states", async () => {
   const state = await stateModule();
   let current = state.initialExtensionState();
@@ -25,7 +37,8 @@ test("public setup journey keeps minimal density and exposes reversible states",
   assert.equal(state.courtConfigurationState(current), "uncalibrated");
   current = state.reduceExtensionState(current, { type: "START_SEED" });
   assert.equal(state.courtConfigurationState(current), "setup");
-  current = state.reduceExtensionState(current, { type: "LOCK_COURT", calibration: { version: 1 } });
+  const calibration = validCalibration();
+  current = state.reduceExtensionState(current, { type: "LOCK_COURT", calibration, seedPoints: calibration.seedPoints });
   assert.equal(current.seeded, true);
   assert.equal(current.seeding, false);
   assert.equal(state.courtConfigurationState(current), "calibrated");
@@ -56,6 +69,22 @@ test("public setup journey keeps minimal density and exposes reversible states",
   assert.equal(current.enabled, false);
   assert.equal(current.panels.stats, true);
   assert.equal(current.panelOverrides.map, false);
+});
+
+test("malformed court records return to first-use setup without disabling inference", async () => {
+  const state = await stateModule();
+  const malformed = [
+    { version: 1 },
+    Object.assign(validCalibration(), { seedPoints: validCalibration().seedPoints.slice(0, 3) }),
+    Object.assign(validCalibration(), { homography: { imageToCourt: [[1, 0], [0, 1]], courtToImage: null } })
+  ];
+  malformed.forEach((calibration) => {
+    const current = state.initialExtensionState({ enabled: true, seeded: true, calibration });
+    assert.equal(state.courtConfigurationState(current), "uncalibrated");
+    assert.equal(current.seeded, false);
+    assert.equal(current.calibration, null);
+    assert.equal(current.enabled, true);
+  });
 });
 
 test("default overlay preferences are evidence-only, video-local, and reversible", async () => {
@@ -107,7 +136,7 @@ test("video-local calibration state persists for one video and resets on navigat
   const state = await stateModule();
   const videoA = state.videoKeyForUrl("https://www.youtube.com/watch?v=alpha");
   const videoB = state.videoKeyForUrl("https://www.youtube.com/watch?v=beta");
-  const calibration = { version: 1, coordinateSystem: "normalized-video-image" };
+  const calibration = validCalibration();
   let current = state.initialExtensionState({ videoKey: videoA });
   current = state.reduceExtensionState(current, {
     type: "LOCK_COURT",

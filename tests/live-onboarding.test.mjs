@@ -537,6 +537,16 @@ test("court map exposes optional first-use setup, calibrated mapping, and recali
   assert.equal(root.querySelector(".bv-calibration-court"), null, "old projected lines are cleared during recalibration");
   assert.ok(root.querySelector(".bv-runtime-evidence"), "raw detections remain visible during recalibration");
 
+  buttonWithText(root, "Skip to manual").dispatchEvent({ type: "click", target: buttonWithText(root, "Skip to manual") });
+  assert.ok(root.querySelector(".bv-label-panel"), "recalibration can hand off to manual labeling");
+  root.querySelector('[aria-label="Close manual labeling"]').dispatchEvent({ type: "click", target: root.querySelector('[aria-label="Close manual labeling"]') });
+  root = live.overlayRoot();
+  map = root.querySelector('[data-bso-panel="map"]');
+  assert.equal(map.getAttribute("data-bso-court-map-state"), "calibrated", "manual handoff restores the prior court mapping");
+  assert.equal(map.getAttribute("data-bso-mapped-player-count"), "1", "restored mapping remains available after manual labeling");
+
+  buttonWithText(map, "Recalibrate court").dispatchEvent({ type: "click", target: buttonWithText(map, "Recalibrate court") });
+  root = live.overlayRoot();
   buttonWithText(root, "Reset court").dispatchEvent({ type: "click", target: buttonWithText(root, "Reset court") });
   root = live.overlayRoot();
   map = root.querySelector('[data-bso-panel="map"]');

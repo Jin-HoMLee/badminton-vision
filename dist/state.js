@@ -76,6 +76,36 @@
     }) : [];
   }
 
+  function isNormalizedPoint(value) {
+    return value && typeof value === "object" && !Array.isArray(value)
+      && typeof value.x === "number" && Number.isFinite(value.x)
+      && typeof value.y === "number" && Number.isFinite(value.y)
+      && value.x >= 0 && value.x <= 1 && value.y >= 0 && value.y <= 1;
+  }
+
+  function isCalibrationMatrix(value) {
+    if (!Array.isArray(value) || value.length !== 3 || value.some(function (row) {
+      return !Array.isArray(row) || row.length !== 3 || row.some(function (entry) { return typeof entry !== "number" || !Number.isFinite(entry); });
+    })) return false;
+    var determinant = value[0][0] * (value[1][1] * value[2][2] - value[1][2] * value[2][1])
+      - value[0][1] * (value[1][0] * value[2][2] - value[1][2] * value[2][0])
+      + value[0][2] * (value[1][0] * value[2][1] - value[1][1] * value[2][0]);
+    return Number.isFinite(determinant) && Math.abs(determinant) > 1e-12;
+  }
+
+  function isCourtCalibration(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)
+      || value.version !== 1
+      || value.coordinateSystem !== "normalized-video-image"
+      || value.courtCoordinateSystem !== "normalized-court") return false;
+    var seedPoints = value.seedPoints || value.normalizedSeedPoints || value.sourcePoints;
+    var homography = value.homography;
+    return Array.isArray(seedPoints) && seedPoints.length === 4 && seedPoints.every(isNormalizedPoint)
+      && homography && typeof homography === "object"
+      && isCalibrationMatrix(homography.imageToCourt)
+      && isCalibrationMatrix(homography.courtToImage);
+  }
+
   function copyCardPosition(position) {
     if (!position || typeof position !== "object") return null;
     var x = Number(position.x);
@@ -465,6 +495,11 @@
     value.seedPoints = copyPoints(raw.seedPoints);
     value.seedDraftPoints = copyPoints(raw.seedDraftPoints);
     value.seedCardPosition = copyCardPosition(raw.seedCardPosition);
+    if (value.seeded && !isCourtCalibration(value.calibration)) {
+      value.seeded = false;
+      value.calibration = null;
+      value.seedPoints = [];
+    }
     value.panelLayoutsByVideo = copyPanelLayoutMap(raw.panelLayoutsByVideo);
     value.panelLayouts = copyPanelLayouts(raw.panelLayouts);
     value.collapsedPanelsByVideo = copyPanelCollapseMap(raw.collapsedPanelsByVideo);
@@ -575,8 +610,9 @@
 
   function courtConfigurationState(input) {
     var current = initialExtensionState(input);
-    if (current.seeding) return current.seeded && current.calibration ? "recalibrating" : "setup";
-    return current.seeded && current.calibration ? "calibrated" : "uncalibrated";
+    var calibrated = current.seeded && isCourtCalibration(current.calibration);
+    if (current.seeding) return calibrated ? "recalibrating" : "setup";
+    return calibrated ? "calibrated" : "uncalibrated";
   }
   function reduceExtensionState(state, action) {
     var current = initialExtensionState(state);
@@ -603,7 +639,7 @@
         return initialExtensionState(Object.assign({}, current, { videoKey: layoutKey || current.videoKey, seedCardPosition: null, panelLayouts: nextLayouts, panelLayoutsByVideo: nextLayoutMap }));
       }
       case "RESET_PANEL_LAYOUT": return reduceExtensionState(current, { type: "SET_PANEL_LAYOUT", videoKey: action.videoKey, panel: action.panel, layout: null });
-      case "LOCK_COURT": return Object.assign(current, {
+      case "LOCK_COURT": return initialExtensionState(Object.assign(current, {
         enabled: true,
         seeded: true,
         seeding: false,
@@ -613,7 +649,7 @@
         seedPoints: copyPoints(action.seedPoints || current.seedPoints),
         seedDraftPoints: [],
         calibrationError: null
-      });
+      }));
       case "RESET_COURT": return Object.assign(current, {
         seeded: false,
         seeding: true,
