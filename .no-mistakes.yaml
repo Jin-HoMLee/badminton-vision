@@ -1,5 +1,7 @@
 # Repository-level no-mistakes configuration.
-# This repository currently has no CI workflows, so an empty PR check list is
-# declared green. Real GitHub Actions CI is planned next; once a workflow is
-# merged on the default branch, remove this declaration so checks are enforced.
-no_ci: true
+# Phase 1 CI: Build validation and extension manifest checks
+# GitHub Actions CI workflow is now active; checks are enforced.
+
+gates:
+  - build    # npm run build
+  - test     # npm run test + npm run validate-extension
