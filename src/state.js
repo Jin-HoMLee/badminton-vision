@@ -63,6 +63,8 @@
     // The court-setup line overlay is a show/hide preference scoped by video.
     // Absent entries mean visible (the default); only explicit hides are kept.
     courtLinesByVideo: {},
+    // Panel Controls disclosure expansion state in the popup: collapsed by default.
+    panelControlsExpanded: false,
   };
 
   function clone(value) {
@@ -797,6 +799,7 @@
         else delete nextLines[linesKey];
         return initialExtensionState(Object.assign({}, current, { videoKey: linesKey || current.videoKey, courtLinesByVideo: nextLines }));
       }
+      case "TOGGLE_PANEL_CONTROLS_EXPANDED": return Object.assign(current, { panelControlsExpanded: Boolean(action.value) });
       case "SET_PANELS": {
         var nextPanels = Object.assign({}, current.panels);
         var nextOverrides = Object.assign({}, current.panelOverrides);
