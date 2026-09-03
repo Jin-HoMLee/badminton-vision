@@ -45,7 +45,10 @@
     // Panels are on-demand furniture. Minimal starts with only the normalized
     // detection layer and the compact in-video access point; the popup is the
     // canonical place to choose persistent panel visibility.
-    panels: { feed: false, stats: false, map: false, evidence: false, controls: false },
+    // Evidence visibility is controlled in the popup's disclosure; it is not
+    // an on-video panel. Keep panel furniture limited to actual overlay
+    // surfaces so legacy evidence-panel state cannot mount a duplicate UI.
+    panels: { feed: false, stats: false, map: false, controls: false },
     // Explicit panel choices override density presets while the preference
     // still gives Balanced/Full a useful default presentation. Both the
     // effective values and overrides are scoped to the active video.
@@ -208,7 +211,7 @@
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
   }
 
-  var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls", "evidence"];
+  var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls"];
 
   function copyPanelLayout(layout) {
     if (!layout || typeof layout !== "object") return null;
@@ -252,7 +255,7 @@
 
   // Panels that are overlay furniture (not the transient court-setup card)
   // get a header collapse/expand affordance; state mirrors layout persistence.
-  var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls", "evidence"];
+  var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls"];
 
   function copyPanelCollapseState(collapsed) {
     var result = {};
@@ -294,7 +297,7 @@
 
   function copyEdit(edit) { return edit && typeof edit === "object" ? clone(edit) : null; }
 
-  var PANEL_VISIBILITY_KEYS = ["feed", "stats", "map", "evidence", "controls"];
+  var PANEL_VISIBILITY_KEYS = ["feed", "stats", "map", "controls"];
   function copyPanelVisibility(panels) {
     var result = {};
     if (!panels || typeof panels !== "object") return result;
@@ -342,7 +345,6 @@
       feed: density !== "minimal",
       stats: density !== "minimal",
       map: density === "full",
-      evidence: density === "full",
       controls: density !== "minimal"
     };
     Object.keys(overrides || {}).forEach(function (key) {
@@ -565,6 +567,13 @@
       if (current.manualLabels.length && !mapKeys(current.manualLabelsByVideo).length) current.manualLabelsByVideo[key] = copyRecords(current.manualLabels);
       if (Object.keys(current.panelLayouts).length) current.panelLayoutsByVideo[key] = copyPanelLayouts(current.panelLayouts);
       if (Object.keys(current.collapsedPanels).length) current.collapsedPanelsByVideo[key] = copyPanelCollapseState(current.collapsedPanels);
+      if (!current.trackerSettingsByVideo[key]) {
+        var unscopedTrackerSettings = copyTrackerSettings(current.trackerSettings);
+        var storesUnscopedPreference = Object.keys(defaults.trackerSettings).some(function (trackerName) {
+          return unscopedTrackerSettings[trackerName] !== defaults.trackerSettings[trackerName];
+        });
+        if (storesUnscopedPreference) current.trackerSettingsByVideo[key] = unscopedTrackerSettings;
+      }
       current.videoKey = key;
     }
     if (!key || current.videoKey === key) {
@@ -581,7 +590,7 @@
   function initialExtensionState(overrides, options) {
     var raw = overrides || {};
     var value = Object.assign({}, defaults, raw);
-    value.panels = Object.assign({}, defaults.panels, raw.panels || {});
+    value.panels = Object.assign({}, defaults.panels, copyPanelVisibility(raw.panels));
     value.panelOverrides = copyPanelOverrides(raw.panelOverrides);
     value.panelsByVideo = copyPanelVisibilityMap(raw.panelsByVideo);
     value.panelOverridesByVideo = copyPanelOverridesMap(raw.panelOverridesByVideo);
@@ -612,8 +621,7 @@
       // those values into the video-local maps once, while new states always
       // read the map entry instead of leaking another video's choices.
       if (!Object.prototype.hasOwnProperty.call(raw, "panelsByVideo") && raw.panels) {
-        // The previous minimal default showed the feed and evidence controls.
-        // Treat that legacy shape as a migration, not as a fresh opt-in; keep
+        // Treat the legacy panel shape as a migration, not as a fresh opt-in; keep
         // deliberate SET_PANELS choices through panelOverrides and preserve a
         // deliberately selected Balanced/Full density preset.
         value.panelsByVideo[panelVideoKey] = copyPanelVisibility(panelsForDensity(raw.density || "minimal", raw.panelOverrides));
@@ -623,6 +631,9 @@
       if (value.panelOverridesByVideo[panelVideoKey]) value.panelOverrides = copyPanelOverrides(value.panelOverridesByVideo[panelVideoKey]);
       if (value.panelsByVideo[panelVideoKey]) value.panels = Object.assign({}, defaults.panels, value.panelsByVideo[panelVideoKey]);
       if (value.trackerSettingsByVideo[panelVideoKey]) value.trackerSettings = Object.assign({}, defaults.trackerSettings, value.trackerSettingsByVideo[panelVideoKey]);
+      else value.trackerSettings = Object.assign({}, defaults.trackerSettings);
+    } else {
+      value.trackerSettings = Object.assign({}, defaults.trackerSettings, raw.trackerSettings || {});
     }
     var labelOptions = options || {};
     var mapSource = raw.manualLabelsByVideo || raw.labelsByVideo || (raw.manualLabelStore && raw.manualLabelStore.videos) || {};
@@ -644,7 +655,6 @@
     if (raw.videoKey != null && value.manualLabelsByVideo[String(raw.videoKey)]) value.manualLabels = copyRecords(value.manualLabelsByVideo[String(raw.videoKey)]);
     value.lastEdit = copyEdit(raw.lastEdit);
     if (raw.videoKey != null && value.labelUndoByVideo[String(raw.videoKey)]) value.lastEdit = copyEdit(value.labelUndoByVideo[String(raw.videoKey)]);
-    value.trackerSettings = Object.assign({}, defaults.trackerSettings, raw.trackerSettings || {});
     return value;
   }
 
@@ -760,7 +770,7 @@
       case "SET_DENSITY": {
         var density = ["minimal", "balanced", "full"].indexOf(action.value) >= 0 ? action.value : current.density;
         // Density presets decide only the density-driven panels; explicit
-        // toggles (including Evidence visibility) always win and survive.
+        // toggles always win and survive.
         return withPanelPreferences(Object.assign({}, current, { density: density }), Object.assign({}, current.panels, panelsForDensity(density, current.panelOverrides)), current.panelOverrides);
       }
       case "TOGGLE_PANEL": {

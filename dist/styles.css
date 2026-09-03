@@ -90,6 +90,9 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-tracker-summary { display: flex; align-items: center; gap: var(--sp-4); }
 .bv-tracker-summary small { font: var(--type-ui-sm); font-size: var(--fs-11); color: var(--text-faint); }
 .bv-tracker-list { display: flex; flex-direction: column; gap: var(--sp-1); }
+.bv-evidence-section-body { display: flex; flex-direction: column; gap: var(--sp-4); }
+.bv-evidence-disclosure[hidden] { display: none; }
+.bv-evidence-disclosure-help { margin-top: 0; }
 .bv-tracker-row { display: flex; align-items: center; gap: var(--sp-4); min-height: 28px; }
 .bv-tracker-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--signal-in); }
 .bv-tracker-dot.warn { background: var(--signal-warn); }
@@ -359,7 +362,6 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-overlay-feed { width: var(--overlay-panel-width); }
 .bv-overlay-label { position: absolute; right: var(--overlay-gutter); top: var(--overlay-gutter); bottom: var(--overlay-gutter); width: min(380px, calc(100% - 32px)); pointer-events: auto; }
 .bv-overlay-actions { position: absolute; right: var(--overlay-gutter); bottom: 56px; display: flex; gap: var(--sp-3); pointer-events: auto; }
-.bv-overlay-root > [data-bso-panel="evidence"] { left: var(--overlay-gutter); top: 58px; width: min(268px, calc(100% - 32px)); }
 .bv-overlay-root > [data-bso-panel="stats"] { left: var(--overlay-gutter); top: 58px; width: var(--overlay-panel-width); }
 .bv-overlay-root > [data-bso-panel="map"] { left: var(--overlay-gutter); bottom: calc(var(--overlay-controls-reserve) + 16px); width: 176px; }
 .bv-overlay-root > [data-bso-panel="feed"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: var(--overlay-panel-width); }
@@ -405,11 +407,6 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-racket-point { fill: var(--signal-warn); stroke: var(--ink-900); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
 .bv-shuttle-trajectory { fill: none; stroke: var(--lime-500); stroke-width: 3px; stroke-linecap: round; stroke-dasharray: 8 6; vector-effect: non-scaling-stroke; opacity: .95; }
 .bv-shuttle-point { fill: var(--lime-500); stroke: var(--ink-900); stroke-width: 2px; vector-effect: non-scaling-stroke; }
-.bv-evidence-controls { width: min(268px, calc(100vw - 32px)); }
-.bv-evidence-controls .bv-panel-body { display: flex; flex-direction: column; gap: var(--sp-3); }
-.bv-evidence-controls .bv-toggle { gap: var(--sp-3); }
-.bv-evidence-controls .bv-toggle-copy strong { font-size: var(--fs-11); }
-.bv-evidence-controls .bv-toggle-copy span { font-size: var(--fs-10); }
 .bv-runtime-signal { display: inline-flex; align-items: center; gap: var(--sp-2); padding: 3px 5px; border: 1px solid var(--border-subtle); border-radius: var(--radius-xs); background: var(--ink-900); color: var(--text-body); font: var(--type-mono); font-size: var(--fs-10); }
 .bv-seed-layer { position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: auto; background: rgba(6,9,11,.42); cursor: crosshair; /* The native player control strip stays fully interactive during setup: the
    seed layer's capture surface (and scrim) ends at the reserve, so pause,
