@@ -371,6 +371,43 @@
     var panelControlsBody = ui.el("div", { className: "bv-panel-toggles" }, [ui.el("div", { className: "bv-panel-controls-disclosure", id: "bv-panel-controls-list", role: "region", "aria-label": "Panel Controls options", "data-bso-panel-controls-disclosure": "true", hidden: !panelControlsExpanded }, panelControlRows)]);
     var panelSection = section(panelControlHeader, panelControlsBody, panelControlAside);
 
+    // Model selector section for pose detection
+    var modelSelectHandler = function(event) {
+      var selectedModel = event.target.value;
+      state.selectedPoseModel = selectedModel;
+      persist();
+      // Send model switch request to offscreen
+      if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+        chrome.runtime.sendMessage({ action: 'switchPoseModel', modelId: selectedModel }, function(response) {
+          if (chrome.runtime.lastError) {
+            console.error('Model switch error:', chrome.runtime.lastError);
+          } else if (response && !response.ok) {
+            console.warn('Model switch failed:', response.reason);
+          } else {
+            console.log('Model switched to:', selectedModel);
+          }
+        });
+      }
+    };
+    var modelOptions = [
+      { value: 'lightweight-openpose-lite-256-v1', label: 'Lightweight OpenPose (Production)' },
+      { value: 'movenet-multipose-lightning-v1', label: 'MoveNet MultiPose Lightning' },
+      { value: 'blazepose-tfjs-heavy-v1', label: 'BlazePose Heavy' }
+    ];
+    var modelSelect = ui.el('select', {
+      className: 'bv-model-selector',
+      value: state.selectedPoseModel || 'lightweight-openpose-lite-256-v1',
+      onChange: modelSelectHandler,
+      "data-bso-model-selector": "true"
+    }, modelOptions.map(function(opt) {
+      return ui.el('option', { value: opt.value }, [opt.label]);
+    }));
+    var modelSectionContent = ui.el('div', { className: 'bv-model-section-body' }, [
+      ui.el('p', { className: 'bv-helper' }, ['Select the pose detection model. Lightweight OpenPose is optimized for real-time performance; BlazePose offers higher accuracy for detailed analysis.']),
+      modelSelect
+    ]);
+    var modelSection = section(ui.el('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-4)' } }, ['Pose Detection Model']), modelSectionContent);
+
     var primaryLabel = state.enabled ? "Open overlay" : "Turn on inference";
     var primary = ui.button(primaryLabel, { variant: "primary", full: true, icon: state.enabled ? "layout" : "play", disabled: !detected, title: !detected ? "Open a YouTube watch page first" : null, onClick: function () { dispatch({ type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, { type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, finishAction); } });
     primary.setAttribute("data-bso-action", state.enabled ? "open-overlay" : "enable");
@@ -383,7 +420,7 @@
     var summaryButton = ui.button("See match summary · download data", { variant: "ghost", icon: "table", onClick: openSummary });
     summaryButton.setAttribute("data-bso-action", "export");
     var actions = ui.el("div", { className: "bv-footer-actions" }, [primary, ui.el("div", { className: "bv-footer-row" }, [seedButton, manualButton]), disableButton, summaryButton]);
-    root.replaceChildren(header, intro, trackerSection, densitySection, panelSection, actions);
+    root.replaceChildren(header, intro, trackerSection, densitySection, panelSection, modelSection, actions);
     restoreDisclosureFocus();
     restorePanelControlsFocus();
   }

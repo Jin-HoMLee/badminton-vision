@@ -1,4 +1,4 @@
-/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter, BSOLiteOpenPoseAdapter, BSOShuttleTrackingAdapter, BSOOnnxInferenceAdapter */
+/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter, BSOLiteOpenPoseAdapter, BSOBlazePoseAdapter, BSoPoseModelSelector, BSOShuttleTrackingAdapter, BSOOnnxInferenceAdapter */
 'use strict';
 
 const ANALYZER_FALLBACK = 'fixture-probe-v1';
@@ -319,6 +319,38 @@ let activeAnalyzer = onnxInferenceEnabled
     : ProductionAnalyzer
       ? new ProductionAnalyzer({ environment: globalThis })
       : diagnosticFixture && FixtureAnalyzer ? new FixtureAnalyzer() : new MockAnalyzer();
+
+// Initialize pose model selector for dynamic model switching
+let poseModelSelector = null;
+let selectedPoseModel = 'lightweight-openpose-lite-256-v1'; // default model
+try {
+  if (globalThis.BSoPoseModelSelector) {
+    poseModelSelector = new globalThis.BSoPoseModelSelector.PoseModelSwitcher({
+      initialModelId: selectedPoseModel,
+      environment: globalThis,
+      onModelChange: (result) => {
+        if (result.ok) {
+          selectedPoseModel = result.modelId;
+          // Persist the user's model preference
+          if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set({ bvSelectedPoseModel: selectedPoseModel });
+          }
+        }
+      },
+      onStatus: (status) => {
+        // Forward model selector status events
+        if (globalThis.BSOOffscreenLogger && typeof globalThis.BSOOffscreenLogger.debug === 'function') {
+          globalThis.BSOOffscreenLogger.debug('pose-model-selector', status);
+        }
+      }
+    });
+  }
+} catch (error) {
+  if (globalThis.BSOOffscreenLogger && typeof globalThis.BSOOffscreenLogger.error === 'function') {
+    globalThis.BSOOffscreenLogger.error('pose-model-selector-init', error instanceof Error ? error.message : String(error));
+  }
+}
+
 const sessions = new Map();
 const sessionQueues = new Map();
 const frameStates = new Map();
@@ -689,10 +721,34 @@ async function handleSessionEnd(message) {
   });
 }
 
+function handleModelSwitch(message) {
+  if (!poseModelSelector) {
+    return Promise.resolve({ ok: false, reason: 'pose-model-selector-unavailable' });
+  }
+  const newModelId = message.modelId;
+  if (!newModelId) {
+    return Promise.resolve({ ok: false, reason: 'no-model-id-specified' });
+  }
+  const result = poseModelSelector.switchModel(newModelId);
+  return Promise.resolve(result);
+}
+
+function handleGetAvailableModels(message) {
+  if (!poseModelSelector) {
+    return Promise.resolve({ ok: false, models: [], reason: 'pose-model-selector-unavailable' });
+  }
+  const models = poseModelSelector.getAvailableModels();
+  const currentModel = poseModelSelector.getCurrentModel();
+  return Promise.resolve({ ok: true, models, currentModel: currentModel.id });
+}
+
 function handle(message) {
   if (message.type === BSOProtocol.TYPES.SESSION_START) return handleSessionStart(message);
   if (message.type === BSOProtocol.TYPES.SESSION_END) return handleSessionEnd(message);
   if (message.type === BSOProtocol.TYPES.FRAME_SAMPLE) return handleFrame(message);
+  // Handle custom model switching messages (non-protocol messages)
+  if (message.action === 'switchPoseModel') return handleModelSwitch(message);
+  if (message.action === 'getAvailablePoseModels') return handleGetAvailableModels(message);
   return Promise.resolve();
 }
 
@@ -701,7 +757,25 @@ if (typeof chrome !== 'object' || !chrome.runtime || !chrome.runtime.onMessage |
   // The analyzer module can also be opened as a local diagnostics page; an
   // MV3 offscreen context is required for message handling.
 } else {
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Handle custom model switching messages (before protocol check)
+  if (message && message.action === 'switchPoseModel') {
+    Promise.resolve(handleModelSwitch(message)).then((result) => {
+      sendResponse(result);
+    }).catch((error) => {
+      sendResponse({ ok: false, reason: error instanceof Error ? error.message : String(error) });
+    });
+    return true; // Keep the channel open for async response
+  }
+  if (message && message.action === 'getAvailablePoseModels') {
+    Promise.resolve(handleGetAvailableModels(message)).then((result) => {
+      sendResponse(result);
+    }).catch((error) => {
+      sendResponse({ ok: false, models: [], reason: error instanceof Error ? error.message : String(error) });
+    });
+    return true; // Keep the channel open for async response
+  }
+
   if (!BSOProtocol.isRuntimeMessage(message)) return false;
   void Promise.resolve(handle(message)).catch(async (error) => {
     const session = sessions.get(message.sessionId);
