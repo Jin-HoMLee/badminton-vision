@@ -559,6 +559,12 @@
     var runtimeSignal = overlay.querySelector(".bv-runtime-signal");
     if (runtimeSignal && runtimeSignal.getAttribute("data-bso-runtime-signal-key") !== runtimeSignalKey()) replaceRuntimeNode(runtimeSignal, runtimeSignalNode());
     if (options.resultChanged || options.strokesChanged) {
+      // Ensure calibration is available for map panel rendering
+      if (!calibration && state.seeded && state.calibration && calibrationApi && typeof calibrationApi.restoreCalibration === "function") {
+        try {
+          calibration = calibrationApi.restoreCalibration(state.calibration);
+        } catch (_) {}
+      }
       var statsPanelNode = overlay.querySelector('[data-bso-panel="stats"]');
       if (statsPanelNode) replaceRuntimePanelBody(statsPanelNode, statsPanel);
       var mapPanelNode = overlay.querySelector('[data-bso-panel="map"]');
@@ -1295,8 +1301,16 @@
     return ui.panel("Stats", { layoutId: "stats", icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", collapsed: panelCollapsed("stats"), onToggleCollapse: function (value) { togglePanelCollapsed("stats", value); }, actions: [ui.iconButton("x", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, children);
   }
   function mapPanel() {
+    // Ensure calibration is restored from state before checking availability
+    if (!calibration && state.seeded && state.calibration && calibrationApi && typeof calibrationApi.restoreCalibration === "function") {
+      try {
+        calibration = calibrationApi.restoreCalibration(state.calibration);
+      } catch (_) {
+        // If restoration fails, fall back to using state.calibration directly for mapping checks
+      }
+    }
     var configuration = courtConfigurationState();
-    var mapped = courtMappingAvailable();
+    var mapped = calibration && !state.seeding;
     // Mapping is the only consumer that depends on calibration. Keep the
     // canonical diagram useful before setup, but never pass raw image
     // detections into court-relative rendering until a committed fit exists.
@@ -1867,7 +1881,9 @@
     // Court setup is an optional mapping flow layered over the same live
     // inference surface. Never replace raw pose/shuttle/racket evidence with
     // the setup card just because calibration is missing or being changed.
-    if (state.enabled) root.appendChild(liveOverlay());
+    // However, when a camera cut triggers seeding, the old evidence is stale
+    // and must not be shown frozen over the new camera angle.
+    if (state.enabled && !(state.seeding && state.cameraCut)) root.appendChild(liveOverlay());
     if (state.seeding) root.appendChild(seedFlow());
     if (state.labeling && !state.seeding) root.appendChild(manualPanel());
     refreshPanelLayouts();

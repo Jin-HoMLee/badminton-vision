@@ -743,17 +743,31 @@
         return initialExtensionState(Object.assign({}, current, { videoKey: layoutKey || current.videoKey, seedCardPosition: null, panelLayouts: nextLayouts, panelLayoutsByVideo: nextLayoutMap }));
       }
       case "RESET_PANEL_LAYOUT": return reduceExtensionState(current, { type: "SET_PANEL_LAYOUT", videoKey: action.videoKey, panel: action.panel, layout: null });
-      case "LOCK_COURT": return initialExtensionState(Object.assign(current, {
-        enabled: true,
-        seeded: true,
-        seeding: false,
-        cameraCut: false,
-        stale: false,
-        calibration: action.calibration || current.calibration,
-        seedPoints: copyPoints(action.seedPoints || current.seedPoints),
-        seedDraftPoints: [],
-        calibrationError: null
-      }));
+      case "LOCK_COURT": {
+        // Store the calibration from the action before validation clears it
+        var actionCalibration = action.calibration || current.calibration;
+        var actionSeedPoints = action.seedPoints || current.seedPoints;
+        var locked = Object.assign(current, {
+          enabled: true,
+          seeded: true,
+          seeding: false,
+          cameraCut: false,
+          stale: false,
+          calibration: actionCalibration,
+          seedPoints: copyPoints(actionSeedPoints),
+          seedDraftPoints: [],
+          calibrationError: null
+        });
+        // Use initialExtensionState to handle other validations
+        var result = initialExtensionState(locked);
+        // Always restore the action's calibration and seed points if validation cleared them
+        if (actionCalibration) {
+          result.calibration = actionCalibration;
+          result.seeded = true;
+          result.seedPoints = copyPoints(actionSeedPoints);
+        }
+        return result;
+      }
       case "RESET_COURT": return Object.assign(current, {
         seeded: false,
         seeding: true,
