@@ -139,9 +139,9 @@ tracker. RGBA capture pixels are swapped into the artifact's BGR input contract
 before the bounded 256x256 model tensor is created. The model card explicitly
 clears the published conversion and source weights under Apache-2.0; `vendor/lite-openpose/MODEL-NOTICE.md` records the
 source links and SHA-256. LiteRT.js 2.5.3 and both selected WASM executors are
-Apache-2.0 and are packaged locally. The older `movenet-adapter.js` remains a
-contract-tested seam only: its official checkpoint is not bundled because the
-MoveNet model card does not state a weight redistribution license.
+Apache-2.0 and are packaged locally. MoveNet and BlazePose checkpoints are not
+bundled; the artifact release gate below is the authority on what may ship for
+the TF.js pose-model-switcher entries.
 
 ### Native runtime log classification
 
