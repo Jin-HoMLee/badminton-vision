@@ -52,6 +52,7 @@ const runtimeFiles = [
   // The bounded local shuttle adapter is loaded by offscreen.html and composed
   // with production pose results; it has no model weights or network path.
   ["offscreen/shuttle-tracking-adapter.js", "offscreen/shuttle-tracking-adapter.js"],
+  ["offscreen/hough-court-lines-adapter.js", "offscreen/hough-court-lines-adapter.js"],
   ["offscreen/fixture-model.js", "offscreen/fixture-model.js"],
   ["offscreen/vendor/lite-openpose/pose_256.tflite", "offscreen/vendor/lite-openpose/pose_256.tflite"],
   ["offscreen/vendor/lite-openpose/LICENSE", "offscreen/vendor/lite-openpose/LICENSE"],
@@ -330,7 +331,7 @@ for (const match of offscreenHtml.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']
   }
   try { await stat(join(dist, scriptFile)); } catch { throw new Error(`Packed offscreen document references a missing script: ${script}`); }
 }
-for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "blazepose-adapter.js", "pose-model-selector.js", "vendor/tfjs/tf.min.js", "lite-runtime-loader.js", "lite-openpose-adapter.js", "shuttle-tracking-adapter.js", "../ml-pipeline/onnx-runtime.js", "../ml-pipeline/adapters/blazepose-adapter.js", "../ml-pipeline/adapters/yolov8-shuttle-adapter.js", "../ml-pipeline/adapters/tracknet-processor.js", "../ml-pipeline/inference-pipeline.js", "../ml-pipeline/adapters/onnx-inference-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
+for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "blazepose-adapter.js", "pose-model-selector.js", "vendor/tfjs/tf.min.js", "lite-runtime-loader.js", "lite-openpose-adapter.js", "shuttle-tracking-adapter.js", "hough-court-lines-adapter.js", "../ml-pipeline/onnx-runtime.js", "../ml-pipeline/adapters/blazepose-adapter.js", "../ml-pipeline/adapters/yolov8-shuttle-adapter.js", "../ml-pipeline/adapters/tracknet-processor.js", "../ml-pipeline/inference-pipeline.js", "../ml-pipeline/adapters/onnx-inference-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
   if (!offscreenHtml.includes(`src="${script}"`)) throw new Error(`Packed offscreen document is missing ${script}`);
 }
 await assertNoRemoteDependencies(dist);

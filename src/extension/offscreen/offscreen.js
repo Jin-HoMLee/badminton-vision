@@ -885,6 +885,57 @@ async function handleGetAvailableModels(message) {
   return { ok: true, models, currentModel: poseModelSwitcher.getCurrentModel().id };
 }
 
+/**
+ * Handle Hough line detection for court calibration guidance.
+ * Detects court lines in a frame and returns their coordinates.
+ */
+async function handleHoughDetection(message) {
+  if (!globalThis.BSOHoughCourtLinesAdapter) {
+    return { ok: false, lines: [], reason: 'hough-adapter-unavailable' };
+  }
+
+  try {
+    const { frameData, width, height } = message;
+    if (!frameData || !width || !height) {
+      return { ok: false, lines: [], reason: 'invalid-frame-data' };
+    }
+
+    // Convert frameData back to ImageData if needed
+    let frame;
+    if (frameData instanceof ImageData) {
+      frame = frameData;
+    } else if (frameData.data && frameData.width && frameData.height) {
+      frame = frameData;
+    } else if (typeof OffscreenCanvas !== 'undefined') {
+      // If frameData is a bitmap or raw data, create a canvas and draw it
+      const canvas = new OffscreenCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return { ok: false, lines: [], reason: 'canvas-context-unavailable' };
+      }
+      // Assume frameData is a bitmap
+      ctx.drawImage(frameData, 0, 0);
+      frame = ctx.getImageData(0, 0, width, height);
+    } else {
+      return { ok: false, lines: [], reason: 'unsupported-frame-format' };
+    }
+
+    const result = await globalThis.BSOHoughCourtLinesAdapter.detectCourtLines(frame);
+    return {
+      ok: true,
+      lines: result.lines || [],
+      config: result.config
+    };
+  } catch (error) {
+    console.error('Hough detection error:', error);
+    return {
+      ok: false,
+      lines: [],
+      reason: error instanceof Error ? error.message : 'hough-detection-failed'
+    };
+  }
+}
+
 function handle(message) {
   if (message.type === BSOProtocol.TYPES.SESSION_START) return handleSessionStart(message);
   if (message.type === BSOProtocol.TYPES.SESSION_END) return handleSessionEnd(message);
@@ -901,6 +952,15 @@ if (typeof chrome !== 'object' || !chrome.runtime || !chrome.runtime.onMessage |
   // MV3 offscreen context is required for message handling.
 } else {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Handle Hough line detection for calibration
+  if (message && message.action === 'detectHoughLines') {
+    Promise.resolve(handleHoughDetection(message)).then((result) => {
+      sendResponse(result);
+    }).catch((error) => {
+      sendResponse({ ok: false, lines: [], reason: error instanceof Error ? error.message : String(error) });
+    });
+    return true; // Keep the channel open for async response
+  }
   // Handle custom model switching messages (before protocol check)
   if (message && message.action === 'switchPoseModel') {
     Promise.resolve(handleModelSwitch(message)).then((result) => {

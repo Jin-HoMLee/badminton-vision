@@ -55,6 +55,7 @@ const expectedFiles = [
   "offscreen/offscreen-console-filter.js",
   "offscreen/pose-model-selector.js",
   "offscreen/shuttle-tracking-adapter.js",
+  "offscreen/hough-court-lines-adapter.js",
   "ml-pipeline/onnx-runtime.js",
   "ml-pipeline/adapters/blazepose-adapter.js",
   "ml-pipeline/adapters/yolov8-shuttle-adapter.js",
