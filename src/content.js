@@ -469,7 +469,7 @@
     var scrollTop = Number(body.scrollTop) || 0;
     if (!replaceRuntimeNode(body, nextBody)) return false;
     nextBody.scrollTop = scrollTop;
-    return true;
+    return replacement;
   }
   function runtimeFeedItem(stroke) {
     var row = ui.strokeFeedItem(stroke, function () { openExistingLabel(stroke); });
@@ -562,7 +562,15 @@
       var statsPanelNode = overlay.querySelector('[data-bso-panel="stats"]');
       if (statsPanelNode) replaceRuntimePanelBody(statsPanelNode, statsPanel);
       var mapPanelNode = overlay.querySelector('[data-bso-panel="map"]');
-      if (mapPanelNode) replaceRuntimePanelBody(mapPanelNode, mapPanel);
+      if (mapPanelNode) {
+        var freshMapPanel = replaceRuntimePanelBody(mapPanelNode, mapPanel);
+        if (freshMapPanel) {
+          ["data-bso-court-map-state", "data-bso-mapped-player-count", "data-bso-mapped-trajectory-count"].forEach(function (name) {
+            var value = freshMapPanel.getAttribute(name);
+            if (value != null) mapPanelNode.setAttribute(name, value);
+          });
+        }
+      }
     }
     return true;
   }
@@ -1867,7 +1875,9 @@
     // Court setup is an optional mapping flow layered over the same live
     // inference surface. Never replace raw pose/shuttle/racket evidence with
     // the setup card just because calibration is missing or being changed.
-    if (state.enabled) root.appendChild(liveOverlay());
+    // However, when a camera cut triggers seeding, the old evidence is stale
+    // and must not be shown frozen over the new camera angle.
+    if (state.enabled && !(state.seeding && state.cameraCut)) root.appendChild(liveOverlay());
     if (state.seeding) root.appendChild(seedFlow());
     if (state.labeling && !state.seeding) root.appendChild(manualPanel());
     refreshPanelLayouts();
