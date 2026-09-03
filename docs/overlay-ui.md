@@ -98,11 +98,13 @@ Runtime views stay structural only when they actually change structure. A
 `cameraCut: true` result re-enters the court-setup flow once (`CAMERA_CUT` flips
 `seeding`, which would otherwise look like a user-driven setup and suppress the
 swap); later playing results leave that reseed layer intact, so corner input
-resumes immediately and no stale pre-cut projection or evidence layer is left
-frozen over the new camera angle. If the manual-labeling form is open when
-the cut arrives, that swap is deferred so the in-flight form is never
-replaced; closing the form renders the reseed flow, so the reseed is only
-delayed, never dropped.
+resumes immediately. While that camera-cut reseed is active, the overlay mounts
+only the reseed flow and withholds the raw evidence layer — the pre-cut
+drawing would be stale over the new camera angle — until the reseed resolves,
+unlike user-initiated setup, which keeps raw evidence mounted. If the
+manual-labeling form is open when the cut arrives, that swap is deferred so
+the in-flight form is never replaced; closing the form renders the reseed
+flow, so the reseed is only delayed, never dropped.
 
 ## Native player controls stay interactive
 
@@ -171,8 +173,9 @@ fit, it shows **NOT SET UP**, explains that mapped coordinates are unavailable,
 and offers **Set up court**. After a committed fit it shows **CALIBRATED** and
 offers **Recalibrate court**. During a new draft it shows **RECALIBRATING** and
 withholds the previous mapped output until the replacement is locked; cancelling
-restores the prior fit. Clearing or camera-cut invalidation returns to setup
-without stopping raw evidence.
+restores the prior fit. Clearing returns to setup without stopping raw
+evidence; camera-cut invalidation is the withholding reseed flow described
+above.
 
 Court line rendering uses the bright highlight tokens
 (`--court-setup-line: var(--lime-400)`, `--court-setup-net: var(--lime-300)`)

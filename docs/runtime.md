@@ -220,7 +220,10 @@ video-local result. During setup, reset, camera-cut invalidation, or a changed
 draft, map-relative player/shuttle output and projected lines are withheld
 until the new four-click fit is locked; cancelling a recalibration — or
 leaving setup through the Skip to manual handoff — restores the prior fit.
-Raw video evidence remains mounted throughout. Normalized
+Raw video evidence remains mounted throughout those user-initiated flows;
+only a camera-cut-triggered reseed unmounts it until that reseed resolves,
+because the pre-cut drawing would be stale over the new camera angle (see
+[`docs/overlay-ui.md`](overlay-ui.md)). Normalized
 coordinates are rendered through the existing video client-rect anchor, so
 resize, theater, and fullscreen do not alter the physical court or touch
 playback.
