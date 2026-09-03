@@ -195,14 +195,35 @@ normalized court, validates the quadrilateral/conditioning, and projects all
 13 generated lines while retaining their dimensions and line ownership
 metadata.
 
+Calibration is an optional map capability, not an inference prerequisite. The
+pose, shuttle candidate/trajectory, and racket evidence adapters run through
+the offscreen analyzer without seed points or a calibration. The explicit
+video-local court lifecycle is `uncalibrated` → `setup` → `calibrated`; starting
+setup with an existing fit is `recalibrating`. The map exposes **Set up court**
+in the first-use states and **Recalibrate court** once a committed fit exists.
+
+Persisted calibration is validated again at the shared `BVState` boundary in
+`src/state.js` (`isCourtCalibration`, also used by the popup, which loads no
+calibration primitives): the record version/coordinate systems, four in-bounds
+seed points forming a distinct, ordered convex quadrilateral, finite
+invertible matrices, and two-way seed-to-canonical-corner correspondence. A
+malformed or legacy record coerces to the first-use `uncalibrated` state
+(`seeded: false`, no calibration) and is repaired without disabling inference
+or clearing unrelated video-local state; the focused gate is
+`tests/state.test.mjs`.
+
 A locked result stores `videoKey`, normalized committed `seedPoints`, and the
 serializable calibration matrices in the existing `bvState` local-storage
 record. The content UI refits from stored seeds rather than trusting stored
 matrices. Navigation, video replacement, and `CAMERA_CUT` clear this
-video-local result; the overlay can only return to live court display after a
-new four-click fit. Normalized coordinates are rendered through the existing
-video client-rect anchor, so resize, theater, and fullscreen do not alter the
-physical court or touch playback.
+video-local result. During setup, reset, camera-cut invalidation, or a changed
+draft, map-relative player/shuttle output and projected lines are withheld
+until the new four-click fit is locked; cancelling a recalibration — or
+leaving setup through the Skip to manual handoff — restores the prior fit.
+Raw video evidence remains mounted throughout. Normalized
+coordinates are rendered through the existing video client-rect anchor, so
+resize, theater, and fullscreen do not alter the physical court or touch
+playback.
 
 ## Playback boundary
 
@@ -234,7 +255,9 @@ accepted runtime player keypoints are drawn with a named skeleton, a player box
 is drawn only when the runtime supplies a valid box, and explicit shuttle
 trajectory/candidate and racket fields are consumed without creating detections
 or confidence. Pose, player-box, racket, shuttle, and court-projection
-visibility switches are independent persisted UI state. Missing fields remain
+visibility switches are independent persisted UI state; court projection is
+additionally guarded by a committed calibration, while the raw pose/shuttle/
+racket layers remain available uncalibrated. Missing fields remain
 `unknown` or `unavailable`; the SVG and every child use `pointer-events: none`
 so court seeding and playback remain safe.
 

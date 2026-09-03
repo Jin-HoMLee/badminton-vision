@@ -76,6 +76,130 @@
     }) : [];
   }
 
+  function isNormalizedPoint(value) {
+    return value && typeof value === "object" && !Array.isArray(value)
+      && typeof value.x === "number" && Number.isFinite(value.x)
+      && typeof value.y === "number" && Number.isFinite(value.y)
+      && value.x >= 0 && value.x <= 1 && value.y >= 0 && value.y <= 1;
+  }
+
+  var CANONICAL_COURT_CORNERS = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
+  var CALIBRATION_DUPLICATE_RATIO = 1e-7;
+  var CALIBRATION_AREA_RATIO = 1e-7;
+  var CALIBRATION_CORNER_TOLERANCE = 1e-4;
+
+  function calibrationScale(matrix) {
+    var scale = 1;
+    for (var row = 0; row < 3; row += 1) {
+      for (var col = 0; col < 3; col += 1) scale = Math.max(scale, Math.abs(matrix[row][col]));
+    }
+    return scale;
+  }
+
+  function isCalibrationMatrix(value) {
+    if (!Array.isArray(value) || value.length !== 3 || value.some(function (row) {
+      return !Array.isArray(row) || row.length !== 3 || row.some(function (entry) { return typeof entry !== "number" || !Number.isFinite(entry); });
+    })) return false;
+    var determinant = value[0][0] * (value[1][1] * value[2][2] - value[1][2] * value[2][1])
+      - value[0][1] * (value[1][0] * value[2][2] - value[1][2] * value[2][0])
+      + value[0][2] * (value[1][0] * value[2][1] - value[1][1] * value[2][0]);
+    var scale = calibrationScale(value);
+    return Number.isFinite(determinant) && Math.abs(determinant) > 1e-14 * scale * scale * scale;
+  }
+
+  function applyCalibrationMatrix(matrix, point) {
+    var scale = Math.max(calibrationScale(matrix), Math.abs(point.x), Math.abs(point.y));
+    var denominator = matrix[2][0] * point.x + matrix[2][1] * point.y + matrix[2][2];
+    if (!Number.isFinite(denominator) || Math.abs(denominator) <= 1e-12 * scale) return null;
+    var result = {
+      x: (matrix[0][0] * point.x + matrix[0][1] * point.y + matrix[0][2]) / denominator,
+      y: (matrix[1][0] * point.x + matrix[1][1] * point.y + matrix[1][2]) / denominator
+    };
+    return Number.isFinite(result.x) && Number.isFinite(result.y) ? result : null;
+  }
+
+  function seedQuadScale(seedPoints) {
+    var minX = Infinity;
+    var maxX = -Infinity;
+    var minY = Infinity;
+    var maxY = -Infinity;
+    for (var index = 0; index < 4; index += 1) {
+      minX = Math.min(minX, seedPoints[index].x);
+      maxX = Math.max(maxX, seedPoints[index].x);
+      minY = Math.min(minY, seedPoints[index].y);
+      maxY = Math.max(maxY, seedPoints[index].y);
+    }
+    var scale = Math.max(maxX - minX, maxY - minY, 1e-15);
+    for (var first = 0; first < 4; first += 1) {
+      for (var second = first + 1; second < 4; second += 1) {
+        var distance = Math.sqrt(Math.pow(seedPoints[first].x - seedPoints[second].x, 2)
+          + Math.pow(seedPoints[first].y - seedPoints[second].y, 2));
+        scale = Math.max(scale, distance);
+      }
+    }
+    return scale;
+  }
+
+  function isValidSeedQuad(seedPoints) {
+    var scale = seedQuadScale(seedPoints);
+    var duplicateFloor = CALIBRATION_DUPLICATE_RATIO * scale;
+    for (var first = 0; first < 4; first += 1) {
+      for (var second = first + 1; second < 4; second += 1) {
+        var distance = Math.sqrt(Math.pow(seedPoints[first].x - seedPoints[second].x, 2)
+          + Math.pow(seedPoints[first].y - seedPoints[second].y, 2));
+        if (distance <= duplicateFloor) return false;
+      }
+    }
+    var collinearFloor = CALIBRATION_AREA_RATIO * scale * scale;
+    var winding = 0;
+    for (var index = 0; index < 4; index += 1) {
+      var a = seedPoints[index];
+      var b = seedPoints[(index + 1) % 4];
+      var c = seedPoints[(index + 2) % 4];
+      var cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+      if (Math.abs(cross) <= collinearFloor) return false;
+      var sign = cross > 0 ? 1 : -1;
+      if (winding !== 0 && sign !== winding) return false;
+      winding = sign;
+    }
+    var doubledArea = 0;
+    for (index = 0; index < 4; index += 1) {
+      var point = seedPoints[index];
+      var next = seedPoints[(index + 1) % 4];
+      doubledArea += point.x * next.y - next.x * point.y;
+    }
+    return Math.abs(doubledArea) / 2 > collinearFloor;
+  }
+
+  function mapsSeedsToCanonicalCourt(seedPoints, homography) {
+    for (var index = 0; index < 4; index += 1) {
+      var seed = seedPoints[index];
+      var canonical = CANONICAL_COURT_CORNERS[index];
+      var projected = applyCalibrationMatrix(homography.imageToCourt, seed);
+      if (!projected || Math.abs(projected.x - canonical.x) > CALIBRATION_CORNER_TOLERANCE
+        || Math.abs(projected.y - canonical.y) > CALIBRATION_CORNER_TOLERANCE) return false;
+      var mapped = applyCalibrationMatrix(homography.courtToImage, canonical);
+      if (!mapped || Math.abs(mapped.x - seed.x) > CALIBRATION_CORNER_TOLERANCE
+        || Math.abs(mapped.y - seed.y) > CALIBRATION_CORNER_TOLERANCE) return false;
+    }
+    return true;
+  }
+
+  function isCourtCalibration(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)
+      || value.version !== 1
+      || value.coordinateSystem !== "normalized-video-image"
+      || value.courtCoordinateSystem !== "normalized-court") return false;
+    var seedPoints = value.seedPoints || value.normalizedSeedPoints || value.sourcePoints;
+    var homography = value.homography;
+    return Array.isArray(seedPoints) && seedPoints.length === 4 && seedPoints.every(isNormalizedPoint)
+      && homography && typeof homography === "object"
+      && isCalibrationMatrix(homography.imageToCourt)
+      && isCalibrationMatrix(homography.courtToImage)
+      && isValidSeedQuad(seedPoints)
+      && mapsSeedsToCanonicalCourt(seedPoints, homography);
+  }
+
   function copyCardPosition(position) {
     if (!position || typeof position !== "object") return null;
     var x = Number(position.x);
@@ -465,6 +589,11 @@
     value.seedPoints = copyPoints(raw.seedPoints);
     value.seedDraftPoints = copyPoints(raw.seedDraftPoints);
     value.seedCardPosition = copyCardPosition(raw.seedCardPosition);
+    if (value.seeded && !isCourtCalibration(value.calibration)) {
+      value.seeded = false;
+      value.calibration = null;
+      value.seedPoints = [];
+    }
     value.panelLayoutsByVideo = copyPanelLayoutMap(raw.panelLayoutsByVideo);
     value.panelLayouts = copyPanelLayouts(raw.panelLayouts);
     value.collapsedPanelsByVideo = copyPanelCollapseMap(raw.collapsedPanelsByVideo);
@@ -573,10 +702,18 @@
     return result;
   }
 
+  function courtConfigurationState(input) {
+    var current = initialExtensionState(input);
+    var calibrated = current.seeded && isCourtCalibration(current.calibration);
+    if (current.seeding) return calibrated ? "recalibrating" : "setup";
+    return calibrated ? "calibrated" : "uncalibrated";
+  }
   function reduceExtensionState(state, action) {
     var current = initialExtensionState(state);
     switch (action && action.type) {
-      case "ENABLE": return Object.assign(current, { enabled: true, seeding: !current.seeded });
+      // Enabling inference is deliberately independent from court setup. The
+      // map can be configured later without hiding or delaying raw evidence.
+      case "ENABLE": return Object.assign(current, { enabled: true, seeding: false });
       case "DISABLE": return Object.assign(current, { enabled: false, seeding: false, labeling: false, stale: false, cameraCut: false });
       case "OPEN_OVERLAY": return Object.assign(current, { enabled: true, labeling: false });
       case "START_SEED": return Object.assign(current, { enabled: true, seeding: true, labeling: false, seedDraftPoints: [], calibrationError: null });
@@ -596,7 +733,7 @@
         return initialExtensionState(Object.assign({}, current, { videoKey: layoutKey || current.videoKey, seedCardPosition: null, panelLayouts: nextLayouts, panelLayoutsByVideo: nextLayoutMap }));
       }
       case "RESET_PANEL_LAYOUT": return reduceExtensionState(current, { type: "SET_PANEL_LAYOUT", videoKey: action.videoKey, panel: action.panel, layout: null });
-      case "LOCK_COURT": return Object.assign(current, {
+      case "LOCK_COURT": return initialExtensionState(Object.assign(current, {
         enabled: true,
         seeded: true,
         seeding: false,
@@ -606,7 +743,7 @@
         seedPoints: copyPoints(action.seedPoints || current.seedPoints),
         seedDraftPoints: [],
         calibrationError: null
-      });
+      }));
       case "RESET_COURT": return Object.assign(current, {
         seeded: false,
         seeding: true,
@@ -743,6 +880,10 @@
     PANEL_COLLAPSE_KEYS: PANEL_COLLAPSE_KEYS.slice(),
     panelLayoutsForVideo: panelLayoutsForVideo,
     collapsedPanelsForVideo: collapsedPanelsForVideo,
+    // This is the persisted court lifecycle, separate from inference. During
+    // a re-seed the prior configuration remains recoverable by Cancel, but no
+    // mapped output should be treated as active until the new fit is locked.
+    courtConfigurationState: courtConfigurationState,
     courtLinesForVideo: function (stateOrMap, videoKey) {
       var map = stateOrMap && stateOrMap.courtLinesByVideo ? stateOrMap.courtLinesByVideo : stateOrMap;
       return map && videoKey != null && map[String(videoKey)] === false ? false : true;

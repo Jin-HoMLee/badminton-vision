@@ -279,6 +279,12 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-suggestion-time { font: var(--type-mono); font-size: var(--fs-10); color: var(--text-faint); }
 .bv-court { display: block; }
 .bv-court-panel .bv-court { width: 100%; height: auto; }
+.bv-court-map-status { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.bv-court-map-status .bv-mono { color: var(--text-faint); font-size: var(--fs-10); line-height: 1.35; }
+.bv-court-map-status .bv-button { width: 100%; }
+.bv-court-map-status[data-bso-court-map-state="calibrated"] { border-left: 2px solid var(--signal-in); padding-left: var(--sp-3); }
+.bv-court-map-status[data-bso-court-map-state="uncalibrated"],
+.bv-court-map-status[data-bso-court-map-state="recalibrating"] { border-left: 2px solid var(--signal-warn); padding-left: var(--sp-3); }
 
 /* Manual labeling */
 .bv-label-panel { max-height: min(690px, calc(100vh - 32px)); display: flex; flex-direction: column; }

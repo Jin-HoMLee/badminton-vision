@@ -18,7 +18,9 @@
   var badmintonDetection = null;
   function tabUrlForInfo() { return activeTabUrl; }
   var trackers = [
-    { id: "court", label: "Court", health: "degraded", note: "not seeded", on: true, noSwitch: true },
+    // Court is a map-only capability, not an inference prerequisite. Keep it
+    // visible as a separate status row without counting it as a detector.
+    { id: "court", label: "Court map", health: "degraded", note: "optional · not set up", on: false, noSwitch: true },
     { id: "players", label: "Player boxes", health: "degraded", note: "off by default · detection still runs", on: false },
     { id: "body", label: "Body pose", health: "degraded", note: "starting · local pose model", on: true, disabled: false },
     { id: "shuttle", label: "Shuttle", health: "degraded", note: "unknown · awaiting local runtime", on: true },
@@ -198,21 +200,27 @@
     var runtimeFallback = runtimeStatus && (runtimeStatus.phase === "fallback" || runtimeStatus.inference === false && runtimeStatus.analyzer === "none");
     var runtimeStale = Boolean(state.stale || runtimeStatus && runtimeStatus.stale);
     var runtimeReady = Boolean(runtimeStatus && runtimeStatus.inference && runtimeStatus.analyzer && runtimeStatus.analyzer !== "none");
-    var courtSeeded = Boolean(state.seeded && state.calibration && state.seedPoints && state.seedPoints.length === 4);
+    var courtConfiguration = window.BVState && typeof window.BVState.courtConfigurationState === "function"
+      ? window.BVState.courtConfigurationState(state)
+      : state.seeded && state.calibration ? (state.seeding ? "recalibrating" : "calibrated") : state.seeding ? "setup" : "uncalibrated";
+    var courtSeeded = courtConfiguration === "calibrated";
     root.setAttribute("data-bso-popup", "true");
     root.setAttribute("data-bso-youtube-detected", String(Boolean(detected)));
     root.setAttribute("data-bso-badminton-detected", badmintonDetection == null ? "unknown" : String(Boolean(badmintonDetection)));
     root.setAttribute("data-bso-enabled", String(Boolean(state.enabled)));
     root.setAttribute("data-bso-court-state", courtSeeded ? "seeded" : state.seeding ? "seeding" : "not-seeded");
+    root.setAttribute("data-bso-court-map-state", courtConfiguration);
     root.setAttribute("data-bso-runtime-phase", runtimeStatus && runtimeStatus.phase || (state.enabled ? "starting" : "idle"));
     root.setAttribute("data-bso-runtime-analyzer", runtimeStatus && runtimeStatus.analyzer || "none");
     root.setAttribute("data-bso-inference", String(Boolean(runtimeStatus && runtimeStatus.inference)));
     root.setAttribute("data-bso-frame-transport", runtimeStatus && runtimeStatus.frameTransport || "unknown");
     root.setAttribute("data-bso-backend", runtimeStatus && runtimeStatus.backend || "unknown");
     root.setAttribute("data-bso-fallback", runtimeFallback ? (runtimeStatus.reason || "runtime-fallback") : "none");
-    trackers[0].note = courtSeeded ? "seeded" : "not seeded";
-    trackers[0].health = courtSeeded ? "ok" : "degraded";
-    trackers[0].on = courtSeeded;
+    trackers[0].note = courtConfiguration === "calibrated" ? "optional · map ready" : courtConfiguration === "recalibrating" ? "optional · replacing map" : courtConfiguration === "setup" ? "optional · setup required" : "optional · map unavailable";
+    trackers[0].health = courtConfiguration === "calibrated" ? "ok" : "degraded";
+    // Unlike body pose, shuttle, and racket evidence, court setup has no
+    // inference switch and must never make the detector count look blocked.
+    trackers[0].on = false;
     // The detected block shows the real current tab when one is open. Title,
     // channel, and duration come from the tab plus the content script's
     // published bvVideoInfo; the demo fixture appears only as a labeled
@@ -251,7 +259,7 @@
         : fixtureReady
           ? ui.callout("guide", "Local fixture demo", "Any fixture result is an integration probe, not production CV. Nothing is uploaded; labels and corrections stay local.")
           : ui.callout("guide", "Local runtime pending", "The local pose model is starting. Until evidence arrives, player, shuttle, shot, rally-end, and winner fields remain unknown.");
-    var intro = ui.el("div", { className: "bv-popup-intro" }, [ui.statusChip(statusState, statusLabel, statusDetail), ui.el("div", { className: "bv-detected" }, [ui.el("span", { className: "bv-detected-icon" }, [ui.icon(detected ? "check" : "info", 15)]), ui.el("span", { className: "bv-detected-copy" }, detectedChildren)]), actionError ? ui.callout("warn", "Could not reach the YouTube tab", actionError + " Reload the tab and try again.") : null, !detected ? ui.callout("info", "Overlay unavailable here", "Open a youtube.com/watch page to use live overlay, court setup, or manual labeling. The summary remains available locally.") : backendNotice, !state.enabled && detected ? ui.callout("guide", "Three steps to get going", "Turn the overlay on, click the four court corners once, then keep watching — the video is never paused or moved.") : null, state.cameraCut ? ui.callout("warn", "Camera cut", "The court projection is stale. Re-seed the court; analysis stays paused while the video keeps playing.") : null]);
+    var intro = ui.el("div", { className: "bv-popup-intro" }, [ui.statusChip(statusState, statusLabel, statusDetail), ui.el("div", { className: "bv-detected" }, [ui.el("span", { className: "bv-detected-icon" }, [ui.icon(detected ? "check" : "info", 15)]), ui.el("span", { className: "bv-detected-copy" }, detectedChildren)]), actionError ? ui.callout("warn", "Could not reach the YouTube tab", actionError + " Reload the tab and try again.") : null, !detected ? ui.callout("info", "Overlay unavailable here", "Open a youtube.com/watch page to use live overlay, court setup, or manual labeling. The summary remains available locally.") : backendNotice, !state.enabled && detected ? ui.callout("guide", "Inference starts independently", "Turn on the overlay to run body pose, shuttle, and racket evidence. Court setup is optional and only enables court-map projection.") : state.enabled && courtConfiguration === "recalibrating" ? ui.callout("info", "Court map recalibration in progress", "Raw video detections stay live. Finish the four-corner setup to replace the previous court-relative mapping.") : state.enabled && courtConfiguration !== "calibrated" ? ui.callout("info", "Court map not set up", "Raw video detections stay live without calibration. Set up the court only when you want projected court-relative coordinates.") : null, state.cameraCut ? ui.callout("warn", "Camera cut", "The court projection is stale. Re-seed the court; raw inference continues while the video keeps playing.") : null]);
 
     var barNodes = trackers.map(function (t) { return ui.el("i", { className: t.on ? (t.health === "degraded" ? "warn" : "") : "off" }); });
     var trackerHeader = ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-4)" } }, ["What's being tracked", ui.el("span", { className: "bv-tracker-bars" }, barNodes)]);
@@ -265,10 +273,10 @@
     var densitySection = section(ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-3)" } }, ["How much to show", ui.infoTip("How much to show", "Changes only what appears on the video. Everything is still analysed either way.")]), ui.segmented([{ value: "minimal", label: "Minimal" }, { value: "balanced", label: "Balanced" }, { value: "full", label: "Full" }], state.density, function (value) { dispatch({ type: "SET_DENSITY", value: value }, { type: "SET_DENSITY", value: value }); }, true));
     var panelSection = section("On-video controls", ui.el("div", { className: "bv-panel-toggles" }, [ui.el("p", { className: "bv-helper", style: { marginTop: "0" } }, ["The default video layer is detection-only. Choose a panel here when you want it over the video; these choices are saved for this video."]), panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), panelToggle("Evidence visibility", "Which live signals are drawn", "evidence"), panelToggle("Live controls", "Quick density and summary shortcuts", "controls"), ui.toggle("Compare with the pros", "Coming later — needs a licensed benchmark", false, null, { disabled: true, id: "panel-pro" })]));
 
-    var primaryLabel = state.enabled ? "Open overlay" : "Turn on — step 1 of 3";
+    var primaryLabel = state.enabled ? "Open overlay" : "Turn on inference";
     var primary = ui.button(primaryLabel, { variant: "primary", full: true, icon: state.enabled ? "layout" : "play", disabled: !detected, title: !detected ? "Open a YouTube watch page first" : null, onClick: function () { dispatch({ type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, { type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, finishAction); } });
     primary.setAttribute("data-bso-action", state.enabled ? "open-overlay" : "enable");
-    var seedButton = ui.button(courtSeeded ? "Set up court again" : "Set up court", { icon: "crosshair", disabled: !detected, title: !detected ? "Court setup needs a YouTube watch page" : null, onClick: function () { dispatch({ type: "START_SEED" }, { type: "START_SEED" }, finishAction); } });
+    var seedButton = ui.button(courtSeeded ? "Recalibrate court" : "Set up court", { icon: "crosshair", disabled: !detected, title: !detected ? "Court setup needs a YouTube watch page" : courtSeeded ? "Replace the saved court mapping" : "Enable the court map; inference does not depend on setup", onClick: function () { dispatch({ type: "START_SEED" }, { type: "START_SEED" }, finishAction); } });
     seedButton.setAttribute("data-bso-action", "seed-court");
     var manualButton = ui.button("Label it myself", { icon: "pencil", disabled: !detected, title: !detected ? "Manual labeling needs a YouTube watch page" : null, onClick: function () { dispatch({ type: "OPEN_LABELING" }, { type: "OPEN_LABELING" }, finishAction); } });
     manualButton.setAttribute("data-bso-action", "manual-only");
@@ -305,7 +313,17 @@
             ? window.BVState.stateForVideo(result.bvState, activeVideoKey)
             : window.BVState.initialExtensionState(result.bvState);
           if (detected && state.seeded && !state.calibration) {
-            state = window.BVState.resetVideoLocalState(state, activeVideoKey);
+            // Invalidate only the malformed court record. Labels, panel
+            // choices, and an enabled inference session are unrelated to the
+            // court map and must survive this repair state.
+            state = window.BVState.initialExtensionState(Object.assign({}, state, {
+              seeded: false,
+              seeding: false,
+              calibration: null,
+              seedPoints: [],
+              seedDraftPoints: [],
+              calibrationError: "This saved court has no fitted calibration. Set up the four outer corners to enable the court map."
+            }));
           }
         } else if (detected) {
           state = window.BVState.stateForVideo(state, activeVideoKey);
