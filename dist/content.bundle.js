@@ -6876,31 +6876,17 @@
           return initialExtensionState(Object.assign({}, current, { videoKey: layoutKey || current.videoKey, seedCardPosition: null, panelLayouts: nextLayouts, panelLayoutsByVideo: nextLayoutMap }));
         }
         case "RESET_PANEL_LAYOUT": return reduceExtensionState(current, { type: "SET_PANEL_LAYOUT", videoKey: action.videoKey, panel: action.panel, layout: null });
-        case "LOCK_COURT": {
-          // Store the calibration from the action before validation clears it
-          var actionCalibration = action.calibration || current.calibration;
-          var actionSeedPoints = action.seedPoints || current.seedPoints;
-          var locked = Object.assign(current, {
-            enabled: true,
-            seeded: true,
-            seeding: false,
-            cameraCut: false,
-            stale: false,
-            calibration: actionCalibration,
-            seedPoints: copyPoints(actionSeedPoints),
-            seedDraftPoints: [],
-            calibrationError: null
-          });
-          // Use initialExtensionState to handle other validations
-          var result = initialExtensionState(locked);
-          // Always restore the action's calibration and seed points if validation cleared them
-          if (actionCalibration) {
-            result.calibration = actionCalibration;
-            result.seeded = true;
-            result.seedPoints = copyPoints(actionSeedPoints);
-          }
-          return result;
-        }
+        case "LOCK_COURT": return initialExtensionState(Object.assign(current, {
+          enabled: true,
+          seeded: true,
+          seeding: false,
+          cameraCut: false,
+          stale: false,
+          calibration: action.calibration || current.calibration,
+          seedPoints: copyPoints(action.seedPoints || current.seedPoints),
+          seedDraftPoints: [],
+          calibrationError: null
+        }));
         case "RESET_COURT": return Object.assign(current, {
           seeded: false,
           seeding: true,
@@ -7806,7 +7792,7 @@
       var scrollTop = Number(body.scrollTop) || 0;
       if (!replaceRuntimeNode(body, nextBody)) return false;
       nextBody.scrollTop = scrollTop;
-      return true;
+      return replacement;
     }
     function runtimeFeedItem(stroke) {
       var row = ui.strokeFeedItem(stroke, function () { openExistingLabel(stroke); });
@@ -7896,16 +7882,18 @@
       var runtimeSignal = overlay.querySelector(".bv-runtime-signal");
       if (runtimeSignal && runtimeSignal.getAttribute("data-bso-runtime-signal-key") !== runtimeSignalKey()) replaceRuntimeNode(runtimeSignal, runtimeSignalNode());
       if (options.resultChanged || options.strokesChanged) {
-        // Ensure calibration is available for map panel rendering
-        if (!calibration && state.seeded && state.calibration && calibrationApi && typeof calibrationApi.restoreCalibration === "function") {
-          try {
-            calibration = calibrationApi.restoreCalibration(state.calibration);
-          } catch (_) {}
-        }
         var statsPanelNode = overlay.querySelector('[data-bso-panel="stats"]');
         if (statsPanelNode) replaceRuntimePanelBody(statsPanelNode, statsPanel);
         var mapPanelNode = overlay.querySelector('[data-bso-panel="map"]');
-        if (mapPanelNode) replaceRuntimePanelBody(mapPanelNode, mapPanel);
+        if (mapPanelNode) {
+          var freshMapPanel = replaceRuntimePanelBody(mapPanelNode, mapPanel);
+          if (freshMapPanel) {
+            ["data-bso-court-map-state", "data-bso-mapped-player-count", "data-bso-mapped-trajectory-count"].forEach(function (name) {
+              var value = freshMapPanel.getAttribute(name);
+              if (value != null) mapPanelNode.setAttribute(name, value);
+            });
+          }
+        }
       }
       return true;
     }
@@ -8638,16 +8626,8 @@
       return ui.panel("Stats", { layoutId: "stats", icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", collapsed: panelCollapsed("stats"), onToggleCollapse: function (value) { togglePanelCollapsed("stats", value); }, actions: [ui.iconButton("x", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, children);
     }
     function mapPanel() {
-      // Ensure calibration is restored from state before checking availability
-      if (!calibration && state.seeded && state.calibration && calibrationApi && typeof calibrationApi.restoreCalibration === "function") {
-        try {
-          calibration = calibrationApi.restoreCalibration(state.calibration);
-        } catch (_) {
-          // If restoration fails, fall back to using state.calibration directly for mapping checks
-        }
-      }
       var configuration = courtConfigurationState();
-      var mapped = calibration && !state.seeding;
+      var mapped = courtMappingAvailable();
       // Mapping is the only consumer that depends on calibration. Keep the
       // canonical diagram useful before setup, but never pass raw image
       // detections into court-relative rendering until a committed fit exists.
