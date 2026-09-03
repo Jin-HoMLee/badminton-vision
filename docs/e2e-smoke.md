@@ -31,6 +31,15 @@ worktree's `dist/` directory in Chrome's file picker, and confirm **Open**.
 Do not use a second browser or a filesystem/automation workaround. For a
 package already loaded from this worktree, click its **Reload** button instead.
 
+Chrome-branded 152 currently ignores the command-line `--load-extension` and
+`--disable-extensions-except` flags in this remote-debugging setup (even when
+`--enable-unsafe-extension-debugging` is present). Launch the clean headed
+profile without extension flags, then use the native **Load unpacked** picker in
+that same profile. Verify the card appears under **All extensions** before
+opening YouTube; a transient “Extension loaded” toast alone is not sufficient.
+The profile should be `/tmp/badminton-playing-ui-stability-chrome` (or the
+supervisor's equivalent), not the operator's logged-in profile.
+
 ### CDP boundary and agent procedure
 
 `chrome-devtools-axi` can automate page targets in the dedicated instance,
