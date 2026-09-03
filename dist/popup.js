@@ -3,7 +3,9 @@
   var root = document.getElementById("app");
   var state = window.BVState.initialExtensionState();
   var expanded = false;
+  var panelControlsExpanded = false;
   var disclosureFocusTarget = null;
+  var panelControlsFocusTarget = null;
   var detected = false;
   var runtimeStatus = null;
   var actionError = null;
@@ -165,6 +167,12 @@
     disclosureFocusTarget = expanded ? "first-control" : "toggle";
     render();
   }
+  function togglePanelControlsDisclosure() {
+    panelControlsExpanded = !panelControlsExpanded;
+    panelControlsFocusTarget = panelControlsExpanded ? "first-panel-control" : "panel-toggle";
+    dispatch({ type: "TOGGLE_PANEL_CONTROLS_EXPANDED", value: panelControlsExpanded }, { type: "TOGGLE_PANEL_CONTROLS_EXPANDED", value: panelControlsExpanded });
+    render();
+  }
   function courtProjectionToggle() {
     var visible = window.BVState.courtLinesForVideo(state, evidenceVideoKey());
     var toggle = ui.toggle("Court projection", visible ? "calibrated court polygon over the video" : "hidden until re-enabled", visible, function (next) {
@@ -194,9 +202,29 @@
     disclosureFocusTarget = null;
     if (target && typeof target.focus === "function") target.focus();
   }
+  function restorePanelControlsFocus() {
+    if (!panelControlsFocusTarget) return;
+    var target = null;
+    if (panelControlsFocusTarget === "panel-toggle") {
+      target = root.querySelector("[data-bso-panel-controls-toggle]");
+    } else {
+      var disclosure = root.querySelector("[data-bso-panel-controls-disclosure]");
+      // Focus on the first visible panel control toggle
+      var panelOrder = ["feed", "stats", "map", "controls"];
+      for (var index = 0; disclosure && index < panelOrder.length; index += 1) {
+        var button = disclosure.querySelector("#panel-" + panelOrder[index]);
+        if (button && !button.disabled) { target = button; break; }
+      }
+      if (!target) target = root.querySelector("[data-bso-panel-controls-toggle]");
+    }
+    panelControlsFocusTarget = null;
+    if (target && typeof target.focus === "function") target.focus();
+  }
 
   function render() {
     var fixture = window.BVFixtures;
+    // Restore panel controls expansion state from persisted state
+    panelControlsExpanded = Boolean(state.panelControlsExpanded);
     var poseTracker = trackers.find(function (tracker) { return tracker.id === "body"; });
     var playerTracker = trackers.find(function (tracker) { return tracker.id === "players"; });
     var shuttleTracker = trackers.find(function (tracker) { return tracker.id === "shuttle"; });
@@ -334,7 +362,14 @@
     var trackerSection = section(trackerHeader, trackerBody, trackerAside);
 
     var densitySection = section(ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-3)" } }, ["How much to show", ui.infoTip("How much to show", "Changes only what appears on the video. Everything is still analysed either way.")]), ui.segmented([{ value: "minimal", label: "Minimal" }, { value: "balanced", label: "Balanced" }, { value: "full", label: "Full" }], state.density, function (value) { dispatch({ type: "SET_DENSITY", value: value }, { type: "SET_DENSITY", value: value }); }, true));
-    var panelSection = section("On-video controls", ui.el("div", { className: "bv-panel-toggles" }, [ui.el("p", { className: "bv-helper", style: { marginTop: "0" } }, ["The default video layer is detection-only. Choose a panel here when you want it over the video; these choices are saved for this video."]), panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), panelToggle("Live controls", "Quick density and summary shortcuts", "controls"), ui.toggle("Compare with the pros", "Coming later — needs a licensed benchmark", false, null, { disabled: true, id: "panel-pro" })]));
+
+    var panelItems = ["feed", "stats", "map", "controls"];
+    var visiblePanelCount = panelItems.filter(function (key) { return state.panels[key]; }).length;
+    var panelControlHeader = ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-4)" } }, ["Panel Controls"]);
+    var panelControlAside = ui.el("button", { className: "bv-link-button", type: "button", "aria-expanded": panelControlsExpanded, "aria-controls": "bv-panel-controls-list", "aria-label": (panelControlsExpanded ? "Collapse" : "Expand") + " Panel Controls", "data-bso-panel-controls-toggle": "true", onClick: togglePanelControlsDisclosure }, [visiblePanelCount + " of " + panelItems.length + " visible", ui.icon(panelControlsExpanded ? "chevron-up" : "chevron-down", 12)]);
+    var panelControlRows = panelControlsExpanded ? [ui.el("p", { className: "bv-helper", style: { marginTop: "0" } }, ["The default video layer is detection-only. Choose a panel here when you want it over the video; these choices are saved for this video."]), panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), panelToggle("Live controls", "Quick density and summary shortcuts", "controls")] : [];
+    var panelControlsBody = ui.el("div", { className: "bv-panel-toggles" }, [ui.el("div", { className: "bv-panel-controls-disclosure", id: "bv-panel-controls-list", role: "region", "aria-label": "Panel Controls options", "data-bso-panel-controls-disclosure": "true", hidden: !panelControlsExpanded }, panelControlRows)]);
+    var panelSection = section(panelControlHeader, panelControlsBody, panelControlAside);
 
     var primaryLabel = state.enabled ? "Open overlay" : "Turn on inference";
     var primary = ui.button(primaryLabel, { variant: "primary", full: true, icon: state.enabled ? "layout" : "play", disabled: !detected, title: !detected ? "Open a YouTube watch page first" : null, onClick: function () { dispatch({ type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, { type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, finishAction); } });
@@ -350,6 +385,7 @@
     var actions = ui.el("div", { className: "bv-footer-actions" }, [primary, ui.el("div", { className: "bv-footer-row" }, [seedButton, manualButton]), disableButton, summaryButton]);
     root.replaceChildren(header, intro, trackerSection, densitySection, panelSection, actions);
     restoreDisclosureFocus();
+    restorePanelControlsFocus();
   }
 
   function load() {

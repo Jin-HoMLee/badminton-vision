@@ -93,6 +93,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-evidence-section-body { display: flex; flex-direction: column; gap: var(--sp-4); }
 .bv-evidence-disclosure[hidden] { display: none; }
 .bv-evidence-disclosure-help { margin-top: 0; }
+.bv-panel-controls-disclosure[hidden] { display: none; }
 .bv-tracker-row { display: flex; align-items: center; gap: var(--sp-4); min-height: 28px; }
 .bv-tracker-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--signal-in); }
 .bv-tracker-dot.warn { background: var(--signal-warn); }

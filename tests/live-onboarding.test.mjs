@@ -495,6 +495,13 @@ test("popup mode and panel controls are single-activation and visibly stateful",
   buttonWithText(popup.app, "Full").dispatchEvent({ type: "click" });
   assert.equal(radioButtons().find((button) => button.getAttribute("aria-checked") === "true").children.at(-1).textContent, "Full");
 
+  // Expand Panel Controls disclosure to access panel toggles
+  let panelControlsToggle = popup.app.querySelector("[data-bso-panel-controls-toggle]");
+  assert.equal(panelControlsToggle.getAttribute("aria-expanded"), "false", "panel controls start collapsed");
+  panelControlsToggle.dispatchEvent({ type: "click" });
+  panelControlsToggle = popup.app.querySelector("[data-bso-panel-controls-toggle]");
+  assert.equal(panelControlsToggle.getAttribute("aria-expanded"), "true", "panel controls expand on toggle");
+
   let switchButton = popup.app.querySelector('[aria-label="Toggle Shots this rally"]');
   assert.equal(switchButton.getAttribute("aria-checked"), "true");
   switchButton.dispatchEvent({ type: "click" });
