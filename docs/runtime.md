@@ -125,9 +125,11 @@ and media timestamps are copied into every result, and all of this work is
 synchronous and local to the offscreen analyzer; it never blocks or mutates
 playback.
 
-The offscreen HTML loads this contract before the LiteRT runtime loader,
-Lightweight OpenPose adapter, local shuttle adapter, MoveNet seam, and fixture
-analyzer. `offscreen/lite-openpose-adapter.js` decodes the cleared model's
+The offscreen HTML loads this contract before the vendored TensorFlow.js
+runtime, LiteRT runtime loader, Lightweight OpenPose adapter, TF.js pose
+adapters (MoveNet and BlazePose), the pose model selector, local shuttle
+adapter, and fixture analyzer. `offscreen/lite-openpose-adapter.js` decodes the
+cleared model's
 `[1, 32, 32, 19]` heatmap output, groups torso-anchored local peaks into up to
 four normalized candidates, and feeds them to `SessionPlayerTracker`; its
 result is placed under the existing model-neutral `analysis.result` envelope.
@@ -170,6 +172,50 @@ not necessarily Google's separately distributed weights. Until Google provides
 an explicit weight redistribution grant or a model package with a clear license
 and attribution notice, adding `model.json` or weight shards would violate the
 launch brief's licensing gate. Do not replace this gate with a CDN URL.
+
+## Pose model switcher and TensorFlow.js runtime
+
+The offscreen document bundles the Apache-2.0 TensorFlow.js runtime
+(`@tensorflow/tfjs` 4.22.0 `tf.min.js`, with CPU and WebGL backends) under
+`vendor/tfjs/`; provenance, license, and SHA-256 are recorded in
+`vendor/tfjs/README.md`. No model weights are bundled there: LiteOpenPose is
+the only shipped pose checkpoint. MoveNet and BlazePose graph checkpoints
+remain behind the same licensing gate as above (a vendored artifact requires a
+clear redistribution grant plus a recorded source/checksum notice), and both
+adapters report their model as unavailable until an operator vendors the
+cleared artifact beside the others under `vendor/`.
+
+`offscreen/pose-model-selector.js` owns the live pose model selection. When
+the production composition (pose + shuttle) is active, the popup's **Pose
+Detection Model** selector talks to the offscreen document through two non-
+protocol actions: `switchPoseModel` (with `modelId`) and
+`getAvailablePoseModels`. The switcher prepares and initializes the target
+analyzer while the current model keeps serving frames; only after the target
+reports itself available does it dispose the previous analyzer (the offscreen
+scheduler waits for idle sessions first, so a swap never disposes an analyzer
+that is mid-frame). A model whose runtime, adapter, or local artifact is
+missing is refused with `ok:false` and never displaces the active analyzer.
+Availability is reported per model (analyzer namespace + LiteRT loader or
+TensorFlow.js presence + a reachable local `model.json`), and the popup
+disables unavailable options instead of advertising models that cannot run.
+
+The committed model id is stored under the `bvSelectedPoseModel` key and is
+only written when a switch actually activates. The preference is re-applied at
+every `session.start` (the service worker can recreate the offscreen document
+mid-session), and a stored model that cannot activate falls back to the
+production default and converges the stored key back to it. Switching models
+mid-session starts a fresh player-association timeline for the new model
+(identity continuity is per-model); the media-time watermark and shuttle
+component are model-neutral and continue uninterrupted. Results carry the
+active pose model's identity, and the composition result `kind` follows the
+pose envelope (`lightweight-openpose-pose-shuttle`,
+`movenet-multipose-lightning-pose-shuttle`, or `blazepose-pose-shuttle`). The
+BlazePose TF.js adapter decodes the landmark tensor of the cited MediaPipe
+model family (`[1, 195]` = 39 landmarks x (x, y, z, visibility, presence)) with
+the canonical 33-landmark ordering mapped onto COCO's 17 names and sigmoid
+visibility as per-keypoint confidence; z is never treated as a confidence
+score. The TF.js adapters accept the serializable RGBA frame transport
+(stable Chrome) as well as ImageBitmap frames.
 
 ## Shuttle candidate composition
 

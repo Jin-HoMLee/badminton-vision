@@ -12,6 +12,8 @@
   var messageSequence = 0;
   var stateHydrated = false;
   var pendingDispatches = [];
+  var poseModelReport = null;
+  var modelSwitchNotice = null;
   // The detected block shows the real current tab: title/channel/duration come
   // from the tab and the content script's published bvVideoInfo. The demo
   // fixture stays available only as a clearly labeled fallback.
@@ -111,6 +113,26 @@
     });
     sendToTab(outbound, onDone);
     render();
+  }
+  function writePoseModelPreference(modelId) {
+    if (!chromeAvailable() || !chrome.storage || !chrome.storage.local || typeof chrome.storage.local.set !== "function") return;
+    try { chrome.storage.local.set({ bvSelectedPoseModel: String(modelId) }); } catch (_) {}
+  }
+  // Ask the offscreen analyzer which pose models can actually run here and
+  // which one is active, then reflect that in the model selector. The probe
+  // only reports models whose adapter, runtime, and local artifact exist.
+  function refreshPoseModelReport() {
+    if (!chromeAvailable() || !chrome.runtime || typeof chrome.runtime.sendMessage !== "function") return;
+    chrome.runtime.sendMessage({ action: "getAvailablePoseModels" }, function (response) {
+      if (!response || !Array.isArray(response.models)) return;
+      poseModelReport = response;
+      if (response.ok && response.currentModel && state.selectedPoseModel !== response.currentModel) {
+        state.selectedPoseModel = response.currentModel;
+        persist();
+        writePoseModelPreference(response.currentModel);
+      }
+      render();
+    });
   }
   function summaryUrl(originUrl) {
     var url = chromeAvailable() && chrome.runtime ? chrome.runtime.getURL("summary.html") : "summary.html";
@@ -372,40 +394,62 @@
     var panelSection = section(panelControlHeader, panelControlsBody, panelControlAside);
 
     // Model selector section for pose detection
-    var modelSelectHandler = function(event) {
+    var modelSelectHandler = function (event) {
+      var previousModel = state.selectedPoseModel || "lightweight-openpose-lite-256-v1";
       var selectedModel = event.target.value;
+      if (!selectedModel || selectedModel === previousModel) return;
       state.selectedPoseModel = selectedModel;
+      modelSwitchNotice = null;
       persist();
-      // Send model switch request to offscreen
+      writePoseModelPreference(selectedModel);
       if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
-        chrome.runtime.sendMessage({ action: 'switchPoseModel', modelId: selectedModel }, function(response) {
-          if (chrome.runtime.lastError) {
-            console.error('Model switch error:', chrome.runtime.lastError);
-          } else if (response && !response.ok) {
-            console.warn('Model switch failed:', response.reason);
-          } else {
+        chrome.runtime.sendMessage({ action: 'switchPoseModel', modelId: selectedModel }, function (response) {
+          if (!response) return; // Offscreen analyzer not reachable; the stored preference applies when analysis starts.
+          if (response.ok) {
             console.log('Model switched to:', selectedModel);
+          } else {
+            // The offscreen analyzer stayed on its previous model, so the
+            // selector and the stored preference converge back to it.
+            console.warn('Model switch failed:', response.reason);
+            modelSwitchNotice = { error: response.reason || 'model-unavailable', modelId: selectedModel };
+            state.selectedPoseModel = previousModel;
+            persist();
+            writePoseModelPreference(previousModel);
+            render();
           }
         });
       }
     };
-    var modelOptions = [
+    var POSE_MODEL_IDS = [
       { value: 'lightweight-openpose-lite-256-v1', label: 'Lightweight OpenPose (Production)' },
       { value: 'movenet-multipose-lightning-v1', label: 'MoveNet MultiPose Lightning' },
       { value: 'blazepose-tfjs-heavy-v1', label: 'BlazePose Heavy' }
     ];
+    var availabilityById = {};
+    if (poseModelReport && Array.isArray(poseModelReport.models)) {
+      poseModelReport.models.forEach(function (model) { availabilityById[model.id] = model; });
+    }
+    var modelOptions = POSE_MODEL_IDS.map(function (opt) {
+      var known = availabilityById[opt.value];
+      var disabled = Boolean(known && !known.available && state.selectedPoseModel !== opt.value);
+      var title = disabled && known && known.reason ? 'Unavailable: ' + known.reason : null;
+      return ui.el('option', { value: opt.value, disabled: disabled, title: title }, [opt.label]);
+    });
     var modelSelect = ui.el('select', {
       className: 'bv-model-selector',
       value: state.selectedPoseModel || 'lightweight-openpose-lite-256-v1',
       onChange: modelSelectHandler,
       "data-bso-model-selector": "true"
-    }, modelOptions.map(function(opt) {
-      return ui.el('option', { value: opt.value }, [opt.label]);
-    }));
-    var modelSectionContent = ui.el('div', { className: 'bv-model-section-body' }, [
-      ui.el('p', { className: 'bv-helper' }, ['Select the pose detection model. Lightweight OpenPose is optimized for real-time performance; BlazePose offers higher accuracy for detailed analysis.']),
-      modelSelect
-    ]);
+    }, modelOptions);
+    modelSelect.value = state.selectedPoseModel || 'lightweight-openpose-lite-256-v1';
+    var modelHelper = ui.el('p', { className: 'bv-helper' }, ['Select the pose detection model. Lightweight OpenPose is bundled and cleared for redistribution; other models appear only when their local runtime and licensed model artifacts are available in this build.']);
+    if (modelSwitchNotice && modelSwitchNotice.error) {
+      modelHelper = ui.callout('warn', 'Pose model not switched', 'The selected model could not start here: ' + modelSwitchNotice.error + '. The previous model remains active.');
+    } else if (poseModelReport && poseModelReport.ok) {
+      var activeModel = poseModelReport.currentModel ? availabilityById[poseModelReport.currentModel] : null;
+      modelHelper = ui.el('p', { className: 'bv-helper' }, [activeModel ? 'Active model: ' + activeModel.label + '.' : 'Model choices update when analysis is running.']);
+    }
+    var modelSectionContent = ui.el('div', { className: 'bv-model-section-body' }, [modelHelper, modelSelect]);
     var modelSection = section(ui.el('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-4)' } }, ['Pose Detection Model']), modelSectionContent);
 
     var primaryLabel = state.enabled ? "Open overlay" : "Turn on inference";
@@ -444,7 +488,7 @@
       // action in this small window is queued and replayed against the stored
       // video-local state rather than being overwritten by the read callback.
       render();
-      if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvRuntimeStatus", "bvVideoInfo"], function (result) {
+      if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvRuntimeStatus", "bvVideoInfo", "bvSelectedPoseModel"], function (result) {
         if (result && result.bvState) {
           state = detected
             ? window.BVState.stateForVideo(result.bvState, activeVideoKey)
@@ -470,14 +514,17 @@
           videoInfo = result.bvVideoInfo;
           badmintonDetection = typeof videoInfo.badmintonDetected === "boolean" ? videoInfo.badmintonDetected : null;
         }
+        if (result && result.bvSelectedPoseModel) state.selectedPoseModel = result.bvSelectedPoseModel;
         stateHydrated = true;
         persist();
         render();
+        refreshPoseModelReport();
         replayPendingDispatches();
       }); else {
         state.videoKey = activeVideoKey;
         stateHydrated = true;
         render();
+        refreshPoseModelReport();
         replayPendingDispatches();
       }
     });

@@ -6198,6 +6198,9 @@
       courtLinesByVideo: {},
       // Panel Controls disclosure expansion state in the popup: collapsed by default.
       panelControlsExpanded: false,
+      // Selected pose detection model for multi-model system
+      // Default is lightweight-openpose-lite-256-v1 (production model)
+      selectedPoseModel: 'lightweight-openpose-lite-256-v1',
     };
   
     function clone(value) {

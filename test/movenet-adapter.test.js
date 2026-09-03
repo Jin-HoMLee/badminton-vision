@@ -32,7 +32,7 @@ function sample(sessionId, requestId, mediaTime) {
     sessionId,
     requestId,
     mediaTime,
-    frame: { width: 1000, height: 500 }
+    frame: { width: 1000, height: 500, data: new Uint8Array(1000 * 500 * 4).fill(128) }
   };
 }
 
@@ -165,6 +165,28 @@ test('adapter places two-player detections in analysis.result and retains sessio
   const partial = await analyzer.analyze(sample('match', 'r3', 3));
   assert.equal(partial.result.players.some((player) => player.state === 'partial'), true);
   assert.equal(partial.result.players.length, 2);
+});
+
+test('adapter wraps the serializable RGBA frame transport as typed pixel data for TensorFlow.js', async () => {
+  let fromPixelsArg = null;
+  function tensor() {
+    return { dispose() {} };
+  }
+  const tf = {
+    browser: { fromPixels(pixels) { fromPixelsArg = pixels; return tensor(); } },
+    image: { resizeBilinear: () => tensor() },
+    pad: () => tensor(),
+    expandDims: () => tensor(),
+    cast: () => tensor()
+  };
+  const analyzer = new moveNet.MoveNetMultiPoseLightningAnalyzer({ tf, tracking });
+  const rgba = new Uint8Array(2 * 2 * 4).fill(255);
+  const input = await analyzer.inputTensor({ width: 2, height: 2, data: rgba });
+  assert.ok(input);
+  assert.ok(fromPixelsArg.data instanceof Uint8Array);
+  assert.equal(fromPixelsArg.data.length, 16);
+  assert.equal(fromPixelsArg.width, 2);
+  assert.equal(fromPixelsArg.height, 2);
 });
 
 test('adapter preserves partial/unknown states and resets IDs on a camera reset', async () => {

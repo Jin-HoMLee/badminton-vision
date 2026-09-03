@@ -1,23 +1,38 @@
 /* global globalThis, BSOProtocol, BSOPlayerTracking */
-(function installBlazePoseAdapter(root, factory) {
+// The offscreen-level TF.js BlazePose adapter. It installs a distinct global
+// (BSOBlazePoseTfjsAdapter) so it cannot collide with the ml-pipeline ONNX
+// BlazePose adapter (BSOBlazePoseAdapter) that the same offscreen document
+// loads for the optional inference-pipeline path.
+(function installBlazePoseTfjsAdapter(root, factory) {
   const api = factory(root.BSOProtocol, root.BSOPlayerTracking, root);
   if (typeof module === 'object' && module.exports) module.exports = api;
-  root.BSOBlazePoseAdapter = api;
-}(typeof globalThis === 'object' ? globalThis : self, function blazePoseAdapterFactory(protocol, trackingApi, defaultEnvironment) {
+  root.BSOBlazePoseTfjsAdapter = api;
+}(typeof globalThis === 'object' ? globalThis : self, function blazePoseTfjsAdapterFactory(protocol, trackingApi, defaultEnvironment) {
   'use strict';
 
+  // TensorFlow.js graph model for a single person: MediaPipe BlazePose GHUM
+  // landmark regressor. The model family's landmark output (ld_3d) is a
+  // [1, 195] tensor: 39 landmarks x (x, y, z, visibility, presence), where the
+  // first 33 landmarks use the canonical MediaPipe ordering (nose, inner/outer
+  // eyes, ears, then shoulders/elbows/wrists/hips/knees/ankles/feet). The pose
+  // presence flag (output_poseflag, [1, 1]) gates the whole pose. Landmark
+  // coordinates are normalized to the model's 256x256 letterboxed input.
   const MODEL = Object.freeze({
     schema: 'bso.blazepose.model.v1',
     id: 'blazepose-tfjs-heavy-v1',
     version: 1,
     kind: 'local-tensorflowjs-graph-model',
-    modelUrl: '../vendor/blazepose-tfjs/model.json',
-    sourceUrl: 'https://tfhub.dev/mediapipe/tfjs-model/blazepose/3d_human_pose_lite/1',
+    modelUrl: './vendor/blazepose-tfjs/model.json',
+    sourceUrl: 'https://tfhub.dev/mediapipe/tfjs-model/blazepose_3d/landmark/heavy/2',
     license: 'Apache-2.0',
     licenseStatus: 'cleared-for-redistribution',
     maxPoses: 1,
     outputShape: [1, 195],
-    inputDimension: 256
+    inputDimension: 256,
+    numLandmarks: 39,
+    numValuesPerLandmark: 5,
+    visibilityValueOffset: 3,
+    presenceValueOffset: 4
   });
 
   const KEYPOINT_NAMES = Object.freeze([
@@ -26,6 +41,12 @@
     'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
     'left_knee', 'right_knee', 'left_ankle', 'right_ankle'
   ]);
+
+  // COCO's 17 pose names read from BlazePose's canonical 33-landmark order.
+  // The identity table is deliberately not used: BlazePose indices 1-10 are
+  // face landmarks, shoulders live at 11/12, wrists at 15/16, hips at 23/24,
+  // knees at 25/26, and ankles at 27/28.
+  const COCO_TO_BLAZE = Object.freeze([0, 2, 5, 7, 8, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]);
 
   const BACKENDS = Object.freeze(['webgpu', 'webgl', 'wasm']);
   const DEFAULTS = Object.freeze({
@@ -82,6 +103,36 @@
     if (tensor && typeof tensor.data === 'function') return tensor.data();
     if (tensor && typeof tensor.dataSync === 'function') return tensor.dataSync();
     throw new TypeError('BlazePose output tensor cannot be read');
+  }
+
+  /**
+   * Normalize a captured frame into a pixel source TensorFlow.js can consume.
+   * Stable Chrome's serializable transport delivers { width, height, data }
+   * RGBA arrays (frameFormat rgba-array-v1); tf.browser.fromPixels requires a
+   * Uint8Array-typed pixel source or a drawable, so array frames are wrapped
+   * in ImageData where the environment provides it. Drawables (ImageBitmap,
+   * canvas, video) are passed through untouched.
+   */
+  function framePixels(frame, environment = defaultEnvironment) {
+    const width = Number(frame?.width);
+    const height = Number(frame?.height);
+    if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) {
+      throw new TypeError('BlazePose frame dimensions must be positive integers');
+    }
+    const typed = frame && (frame.data instanceof Uint8Array || frame.data instanceof Uint8ClampedArray);
+    if (frame && (Array.isArray(frame.data) || typed)) {
+      const data = typed ? frame.data : Uint8Array.from(frame.data);
+      const ImageDataCtor = environment?.ImageData || defaultEnvironment.ImageData;
+      if (typeof ImageDataCtor === 'function') {
+        try { return new ImageDataCtor(new Uint8ClampedArray(data), width, height); } catch (_) { /* fall back to typed pixel data */ }
+      }
+      return { data, width, height };
+    }
+    if (frame && typeof frame.getContext === 'function') return frame;
+    if (typeof ImageBitmap !== 'undefined' && frame instanceof ImageBitmap) return frame;
+    if (typeof HTMLVideoElement !== 'undefined' && frame instanceof HTMLVideoElement) return frame;
+    if (typeof HTMLImageElement !== 'undefined' && frame instanceof HTMLImageElement) return frame;
+    throw new TypeError('BlazePose frame is neither RGBA data nor a drawable image source');
   }
 
   /**
@@ -154,12 +205,23 @@
   }
 
   /**
-   * Decode the BlazePose output (195 values = 33 keypoints * 3 (x, y, z) + 65 body flags + 26 hand flags).
-   * For 2D badminton pose detection, we extract the 33 keypoints but treat z as confidence score.
+   * Decode the BlazePose landmark output (195 values = 39 landmarks x 5
+   * (x, y, z, visibility, presence)) into one normalized COCO-17 pose
+   * observation. Per-keypoint confidence is the sigmoid-activated visibility
+   * channel; the depth channel (z) carries no confidence and is ignored, and
+   * an optional pose-presence score (output_poseflag) gates the pose when the
+   * caller supplies it.
    */
+  function sigmoid(value) {
+    if (!finite(value)) return 0;
+    return 1 / (1 + Math.exp(-clamp(value, -30, 30)));
+  }
+
   function decodeBlazePoseOutput(values, options = {}) {
-    if (!values || values.length < 33 * 3) {
-      throw new Error('BlazePose output is too short: expected at least 99 values');
+    const stride = MODEL.numValuesPerLandmark;
+    const required = MODEL.numLandmarks * stride;
+    if (!values || values.length < required) {
+      throw new Error(`BlazePose output is too short: expected at least ${required} values`);
     }
 
     const minPoseScore = options.minPoseScore ?? DEFAULTS.minPoseScore;
@@ -173,56 +235,45 @@
 
     const keypoints = [];
     let visible = 0;
-    let totalConfidence = 0;
+    let confidenceSum = 0;
+    let confidenceCount = 0;
     let minX = Infinity;
     let maxX = -Infinity;
     let minY = Infinity;
     let maxY = -Infinity;
 
-    // BlazePose outputs 33 keypoints (vs COCO's 17). Map them to COCO format for compatibility.
-    // BlazePose keypoints: 0-10 (upper body), 11-16 (lower body + some repeats), 17-32 (hand landmarks)
-    // We'll use the core 17 COCO keypoints by mapping BlazePose indices
-    const blaze_to_coco = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-
     for (let cocoIdx = 0; cocoIdx < KEYPOINT_NAMES.length; cocoIdx += 1) {
-      const blazeIdx = blaze_to_coco[cocoIdx] || cocoIdx;
-      const offset = blazeIdx * 3;
+      const blazeIdx = COCO_TO_BLAZE[cocoIdx];
+      const offset = blazeIdx * stride;
       const x = values[offset];
       const y = values[offset + 1];
-      // BlazePose outputs z (depth) as third value; we'll use it as confidence
-      const confidence = clamp(values[offset + 2] || 0);
-
-      if (finite(x) && finite(y)) {
-        keypoints.push({
-          name: KEYPOINT_NAMES[cocoIdx],
-          x: normalizedNumber(clamp(x)),
-          y: normalizedNumber(clamp(y)),
-          confidence
-        });
-        if (confidence >= keypointScoreThreshold) visible += 1;
-        minX = Math.min(minX, x);
-        maxX = Math.max(maxX, x);
-        minY = Math.min(minY, y);
-        maxY = Math.max(maxY, y);
-        totalConfidence += confidence;
-      } else {
-        keypoints.push({
-          name: KEYPOINT_NAMES[cocoIdx],
-          x: 0,
-          y: 0,
-          confidence: 0
-        });
-      }
+      const confidence = sigmoid(values[offset + MODEL.visibilityValueOffset]);
+      const normalizedX = clamp(Number(x));
+      const normalizedY = clamp(Number(y));
+      const finitePoint = finite(x) && finite(y) && Number.isFinite(normalizedX) && Number.isFinite(normalizedY);
+      keypoints.push({
+        name: KEYPOINT_NAMES[cocoIdx],
+        x: finitePoint ? normalizedNumber(clamp(x)) : 0,
+        y: finitePoint ? normalizedNumber(clamp(y)) : 0,
+        confidence: finitePoint ? normalizedNumber(confidence) : 0
+      });
+      if (!finitePoint) continue;
+      if (confidence >= keypointScoreThreshold) visible += 1;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+      confidenceSum += confidence;
+      confidenceCount += 1;
     }
 
-    const poseScore = totalConfidence / Math.max(1, KEYPOINT_NAMES.length);
+    const meanVisibility = confidenceCount > 0 ? confidenceSum / confidenceCount : 0;
+    const posePresence = options.posePresence == null ? null : clamp(Number(options.posePresence));
+    const poseScore = posePresence != null && finite(posePresence)
+      ? posePresence
+      : meanVisibility;
 
-    // If no valid keypoints, return unknown state
-    if (keypoints.length === 0) {
-      return [];
-    }
-
-    const bbox = {
+    const bbox = confidenceCount === 0 ? { x: 0, y: 0, width: 0, height: 0 } : {
       x: normalizedNumber(clamp(Math.max(0, minX - 0.05))),
       y: normalizedNumber(clamp(Math.max(0, minY - 0.05))),
       width: normalizedNumber(clamp(Math.min(1, maxX + 0.05) - Math.max(0, minX - 0.05))),
@@ -238,8 +289,9 @@
       bbox,
       keypoints,
       confidence: normalizedNumber(clamp(poseScore)),
-      state: poseScore >= minPoseScore && visible >= (options.minVisibleKeypoints ?? DEFAULTS.minVisibleKeypoints)
-        ? 'tracked' : poseScore >= minPartialPoseScore && visible >= 2 ? 'partial' : 'unknown',
+      state: confidenceCount === 0 || poseScore < minPartialPoseScore ? 'unknown'
+        : poseScore >= minPoseScore && visible >= (options.minVisibleKeypoints ?? DEFAULTS.minVisibleKeypoints)
+          ? 'tracked' : 'partial',
       detector,
       source
     }];
@@ -351,8 +403,8 @@
     configureWasm() {
       if (!this.tf?.wasm || typeof this.tf.wasm.setWasmPaths !== 'function') return;
       const path = this.wasmPath || (this.environment?.location?.href && typeof URL === 'function'
-        ? new URL('../vendor/tfjs/', this.environment.location.href).toString()
-        : '../vendor/tfjs/');
+        ? new URL('./vendor/tfjs/', this.environment.location.href).toString()
+        : './vendor/tfjs/');
       this.tf.wasm.setWasmPaths(path);
     }
 
@@ -426,18 +478,14 @@
         throw new Error('TensorFlow.js image operations are unavailable');
       }
 
-      const width = frame?.width;
-      const height = frame?.height;
-      if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) {
-        throw new TypeError('BlazePose frame dimensions must be positive integers');
-      }
-
+      const pixels = framePixels(frame, this.environment);
+      if (!pixels) throw new TypeError('BlazePose frame pixels are unavailable');
       let image = null;
       let expanded = null;
       let resized = null;
       let input = null;
       try {
-        image = this.tf.browser.fromPixels(frame, 3);
+        image = this.tf.browser.fromPixels(pixels, 3);
         expanded = this.tf.expandDims(image, 0);
         resized = this.tf.image.resizeBilinear(expanded, [MODEL.inputDimension, MODEL.inputDimension]);
         input = this.tf.cast(resized, 'float32');
@@ -459,9 +507,19 @@
       let output = null;
       try {
         output = this.model.execute(input);
-        const tensor = Array.isArray(output) ? output[0] : output;
-        if (!tensor) throw new Error('BlazePose graph model returned no tensor');
-        const values = await readTensor(tensor);
+        const tensors = Array.isArray(output) ? output : [output];
+        const landmarkTensor = tensors[0];
+        if (!landmarkTensor) throw new Error('BlazePose graph model returned no tensor');
+        const values = await readTensor(landmarkTensor);
+        let posePresence = null;
+        const presenceTensor = tensors[1];
+        if (presenceTensor && Array.isArray(presenceTensor.shape) &&
+            presenceTensor.shape.length === 2 && presenceTensor.shape[0] === 1 && presenceTensor.shape[1] === 1) {
+          const presenceValues = await readTensor(presenceTensor);
+          if (presenceValues && presenceValues.length === 1 && finite(Number(presenceValues[0]))) {
+            posePresence = clamp(Number(presenceValues[0]));
+          }
+        }
         return decodeBlazePoseOutput(values, {
           sessionId: context.sessionId || 'unknown-session',
           requestId: context.requestId || 'unknown-request',
@@ -470,6 +528,7 @@
           minPartialPoseScore: this.minPartialPoseScore,
           minVisibleKeypoints: this.minVisibleKeypoints,
           keypointScoreThreshold: this.keypointScoreThreshold,
+          posePresence,
           detector: this.identity,
           source: { id: 'captured-frame', version: 1, kind: 'mv3-offscreen-frame' }
         });

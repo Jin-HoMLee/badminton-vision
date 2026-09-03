@@ -1,4 +1,4 @@
-/* global globalThis, BSOProtocol, BSOLiteOpenPoseAdapter, BSOMoveNetAdapter, BSOBlazePoseAdapter */
+/* global globalThis, BSOProtocol, BSOLiteOpenPoseAdapter, BSOMoveNetAdapter, BSOBlazePoseTfjsAdapter */
 (function installPoseModelSelector(root, factory) {
   const api = factory(root.BSOProtocol, root);
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -7,8 +7,11 @@
   'use strict';
 
   /**
-   * Available pose models. The production model is LiteOpenPose (cleared for redistribution).
-   * MoveNet and BlazePose are additional high-accuracy options.
+   * Available pose models. The production model is LiteOpenPose (cleared for
+   * redistribution and bundled). MoveNet and BlazePose are additional options
+   * whose TensorFlow.js graph checkpoints are not bundled (see the artifact
+   * release gates in docs/runtime.md); their adapters report the models as
+   * unavailable until cleared, licensed artifacts are vendored locally.
    */
   const AVAILABLE_MODELS = Object.freeze({
     'lightweight-openpose-lite-256-v1': {
@@ -18,6 +21,7 @@
       adapterKey: 'LiteOpenPoseAdapter',
       analyzerClass: 'LiteOpenPoseAnalyzer',
       licenseStatus: 'cleared-for-redistribution',
+      runtimeKind: 'litert',
       isProduction: true
     },
     'movenet-multipose-lightning-v1': {
@@ -27,15 +31,17 @@
       adapterKey: 'MoveNetAdapter',
       analyzerClass: 'MoveNetMultiPoseLightningAnalyzer',
       licenseStatus: 'not-cleared-for-redistribution',
+      runtimeKind: 'tensorflowjs',
       isProduction: false
     },
     'blazepose-tfjs-heavy-v1': {
       id: 'blazepose-tfjs-heavy-v1',
       label: 'BlazePose Heavy',
       description: 'High-accuracy single person pose. Best for detailed footwork.',
-      adapterKey: 'BlazePoseAdapter',
+      adapterKey: 'BlazePoseTfjsAdapter',
       analyzerClass: 'BlazePoseAnalyzer',
       licenseStatus: 'cleared-for-redistribution',
+      runtimeKind: 'tensorflowjs',
       isProduction: false
     }
   });
@@ -43,46 +49,148 @@
   const DEFAULT_MODEL = 'lightweight-openpose-lite-256-v1';
 
   /**
+   * Each adapter installs one analyzer namespace under a distinct global key.
+   * The keys are deliberately unique per adapter module so the TF.js adapters
+   * loaded by the offscreen document cannot shadow (or be shadowed by) the
+   * ml-pipeline ONNX adapters in the same document.
+   */
+  const ADAPTER_GLOBALS = Object.freeze({
+    LiteOpenPoseAdapter: { globalKey: 'BSOLiteOpenPoseAdapter', analyzerNames: ['LiteOpenPoseAnalyzer', 'LiteRTAnalyzer'] },
+    MoveNetAdapter: { globalKey: 'BSOMoveNetAdapter', analyzerNames: ['MoveNetMultiPoseLightningAnalyzer', 'MoveNetAnalyzer'] },
+    BlazePoseTfjsAdapter: { globalKey: 'BSOBlazePoseTfjsAdapter', analyzerNames: ['BlazePoseAnalyzer', 'BlazePose'] }
+  });
+
+  function environmentFor(environment) {
+    return environment || defaultEnvironment || globalThis;
+  }
+
+  function modelConfig(modelId) {
+    return AVAILABLE_MODELS[modelId] || null;
+  }
+
+  /**
+   * Resolve the analyzer namespace and constructor for a model id.
+   * Returns null when the model id is unknown or its adapter is not loaded.
+   */
+  function adapterBinding(modelId, environment = defaultEnvironment) {
+    const config = modelConfig(modelId);
+    if (!config) return null;
+    const binding = ADAPTER_GLOBALS[config.adapterKey];
+    if (!binding) return null;
+    const env = environmentFor(environment);
+    const adapter = env[binding.globalKey];
+    if (!adapter) return null;
+    for (const name of binding.analyzerNames) {
+      if (typeof adapter[name] === 'function') {
+        return { config, adapter, AnalyzerClass: adapter[name], binding };
+      }
+    }
+    return null;
+  }
+
+  /**
    * Get the pose analyzer class for a given model ID.
    * Returns a constructor that can be instantiated with { environment, ... }
    */
   function getPoseAnalyzerClass(modelId, environment = defaultEnvironment) {
-    const modelConfig = AVAILABLE_MODELS[modelId];
-    if (!modelConfig) {
-      return null;
+    const binding = adapterBinding(modelId, environment);
+    return binding ? binding.AnalyzerClass : null;
+  }
+
+  function liteRuntimeLoaded(environment) {
+    const env = environmentFor(environment);
+    return Boolean(env.BSOLiteRuntimeReady);
+  }
+
+  function tensorFlowJsLoaded(environment) {
+    const env = environmentFor(environment);
+    return Boolean(env.tf);
+  }
+
+  function runtimeAvailableFor(config, environment) {
+    if (config.runtimeKind === 'litert') {
+      return liteRuntimeLoaded(environment)
+        ? { available: true, reason: '' }
+        : { available: false, reason: 'litert-runtime-unavailable' };
     }
+    return tensorFlowJsLoaded(environment)
+      ? { available: true, reason: '' }
+      : { available: false, reason: 'tensorflowjs-not-loaded' };
+  }
 
-    // Map adapter keys to the actual analyzer classes in globalThis
-    const adapterMap = {
-      'LiteOpenPoseAdapter': () => {
-        const adapter = environment?.BSOLiteOpenPoseAdapter || globalThis.BSOLiteOpenPoseAdapter;
-        return adapter?.LiteOpenPoseAnalyzer;
-      },
-      'MoveNetAdapter': () => {
-        const adapter = environment?.BSOMoveNetAdapter || globalThis.BSOMoveNetAdapter;
-        return adapter?.MoveNetMultiPoseLightningAnalyzer || adapter?.MoveNetAnalyzer;
-      },
-      'BlazePoseAdapter': () => {
-        const adapter = environment?.BSOBlazePoseAdapter || globalThis.BSOBlazePoseAdapter;
-        return adapter?.BlazePoseAnalyzer || adapter?.BlazePose;
-      }
-    };
+  function localArtifactUrl(modelId, environment = defaultEnvironment) {
+    const binding = adapterBinding(modelId, environment);
+    if (!binding || !binding.adapter.MODEL || typeof binding.adapter.MODEL.modelUrl !== 'string') return null;
+    return binding.adapter.MODEL.modelUrl;
+  }
 
-    const getAnalyzer = adapterMap[modelConfig.adapterKey];
-    return getAnalyzer ? getAnalyzer() : null;
+  function resolveLocalArtifactUrl(url, environment = defaultEnvironment) {
+    const env = environmentFor(environment);
+    const href = env.location?.href;
+    if (!href || typeof URL !== 'function') return String(url);
+    const resolved = new URL(url, href);
+    if (resolved.protocol !== 'chrome-extension:' && resolved.protocol !== 'file:' &&
+        resolved.protocol !== 'http:' && resolved.protocol !== 'https:') {
+      throw new TypeError('pose model artifact URL resolved outside the extension package');
+    }
+    return resolved.toString();
   }
 
   /**
-   * Get available models with their status.
-   * A model is usable if its adapter is loaded.
+   * Probe whether a model can actually run in this document: its analyzer
+   * namespace must be loaded, its runtime (LiteRT loader or TensorFlow.js)
+   * must be present, and for graph-model checkpoints the local model.json
+   * artifact must be reachable. This is the honest availability signal for
+   * UI lists: adapter-class presence alone never marks a model usable.
+   */
+  async function probePoseModelAvailability(modelId, environment = defaultEnvironment) {
+    const binding = adapterBinding(modelId, environment);
+    if (!binding) {
+      return { modelId, available: false, reason: 'pose-analyzer-not-loaded' };
+    }
+    const env = environmentFor(environment);
+    const runtime = runtimeAvailableFor(binding.config, env);
+    if (!runtime.available) return { modelId, available: false, reason: runtime.reason };
+    if (binding.config.runtimeKind === 'litert') {
+      // The LiteRT loader and the cleared tflite artifact ship together in the
+      // offscreen package; full readiness is verified by initialize().
+      return { modelId, available: true, reason: '' };
+    }
+    const artifactUrl = localArtifactUrl(modelId, env);
+    if (!artifactUrl) return { modelId, available: false, reason: 'pose-model-artifact-url-unavailable' };
+    const fetchFn = env.fetch || defaultEnvironment.fetch;
+    if (typeof fetchFn !== 'function') return { modelId, available: false, reason: 'pose-model-artifact-probe-unavailable' };
+    let resolved;
+    try {
+      resolved = resolveLocalArtifactUrl(artifactUrl, env);
+    } catch (_) {
+      return { modelId, available: false, reason: 'pose-model-artifact-url-invalid' };
+    }
+    try {
+      const response = await fetchFn(resolved, { method: 'GET', cache: 'force-cache' });
+      if (response && (response.ok === true || response.status === 200 || response.status === 0)) {
+        return { modelId, available: true, reason: '' };
+      }
+      return { modelId, available: false, reason: 'pose-model-artifacts-not-bundled' };
+    } catch (_) {
+      return { modelId, available: false, reason: 'pose-model-artifacts-not-bundled' };
+    }
+  }
+
+  /**
+   * Get available models with their status. A model is usable only when its
+   * adapter is loaded and its runtime prerequisites are present; artifact
+   * presence is verified by the async probePoseModelAvailability().
    */
   function getAvailableModels(environment = defaultEnvironment) {
     const models = [];
     for (const [modelId, config] of Object.entries(AVAILABLE_MODELS)) {
       const analyzerClass = getPoseAnalyzerClass(modelId, environment);
+      const runtime = runtimeAvailableFor(config, environment);
       models.push({
         ...config,
-        available: Boolean(analyzerClass)
+        available: Boolean(analyzerClass) && runtime.available,
+        reason: !analyzerClass ? 'pose-analyzer-not-loaded' : runtime.reason
       });
     }
     return models;
@@ -90,26 +198,20 @@
 
   /**
    * Create a pose analyzer instance for the given model.
-   * If the model is not available, returns null.
+   * If the model is not available, throws.
    */
   function createPoseAnalyzer(modelId, options = {}) {
-    const modelConfig = AVAILABLE_MODELS[modelId];
-    if (!modelConfig) {
-      throw new Error(`Unknown pose model: ${modelId}`);
-    }
-
-    const environment = options.environment || defaultEnvironment;
-    const AnalyzerClass = getPoseAnalyzerClass(modelId, environment);
-    if (!AnalyzerClass) {
+    const binding = adapterBinding(modelId, options.environment);
+    if (!binding) {
       throw new Error(`Pose analyzer for model ${modelId} is not loaded`);
     }
-
+    const AnalyzerClass = binding.AnalyzerClass;
     return new AnalyzerClass(options);
   }
 
   /**
    * Validate that exactly 2 players are detected and assign stable IDs.
-   * Returns { isValid: boolean, players: [{ trackId, keypoints, ... }], reason?: string }
+   * Returns { isValid, players: [{ trackId, keypoints, ... }], reason? }
    */
   function validateAndAssignPlayerIds(observations, lastPlayerPositions = new Map()) {
     if (!Array.isArray(observations)) {
@@ -162,8 +264,10 @@
   }
 
   /**
-   * PoseModelSwitcher manages switching between different pose detection models.
-   * It wraps any pose analyzer and provides consistent player-filtering behavior.
+   * PoseModelSwitcher owns the active pose analyzer instance. activateModel()
+   * prepares and initializes the target model before it commits, so a model
+   * whose runtime or local artifact is missing never displaces the analyzer
+   * that is currently serving frames.
    */
   class PoseModelSwitcher {
     constructor({
@@ -172,22 +276,24 @@
       onModelChange = () => {},
       onStatus = () => {}
     } = {}) {
-      this.modelId = initialModelId;
-      this.environment = environment;
+      this.environment = environmentFor(environment);
       this.onModelChange = typeof onModelChange === 'function' ? onModelChange : () => {};
       this.onStatus = typeof onStatus === 'function' ? onStatus : () => {};
       this.currentAnalyzer = null;
+      this.modelId = initialModelId;
       this.lastPlayerPositions = new Map();
 
       try {
-        this.currentAnalyzer = this._createAnalyzer(this.modelId);
+        if (!AVAILABLE_MODELS[initialModelId]) throw new Error(`Unknown pose model: ${initialModelId}`);
+        this.currentAnalyzer = this._createAnalyzer(initialModelId);
         this.identity = this.currentAnalyzer?.identity || {
-          id: this.modelId,
+          id: initialModelId,
           kind: 'pose-model-switcher',
           version: 1
         };
       } catch (error) {
         this.currentAnalyzer = null;
+        this.modelId = DEFAULT_MODEL;
         this.identity = {
           id: 'pose-model-unavailable',
           kind: 'pose-model-switcher',
@@ -204,48 +310,127 @@
       });
     }
 
+    _activate(next, modelId) {
+      const previous = this.currentAnalyzer;
+      if (previous && typeof previous.dispose === 'function') previous.dispose();
+      this.currentAnalyzer = next;
+      this.modelId = modelId;
+      this.identity = this.currentAnalyzer?.identity || {
+        id: this.modelId,
+        kind: 'pose-model-switcher',
+        version: 1
+      };
+      this.lastPlayerPositions.clear();
+      this.onModelChange({ modelId, ok: true });
+      this.onStatus({ type: 'model-switched', modelId });
+    }
+
     /**
-     * Switch to a different pose detection model.
-     * Disposes the old model and creates a new one.
+     * Prepare a target model without touching the active analyzer: the target
+     * is created and initialized while the current model keeps serving
+     * frames. Returns { ok, prepared } where `prepared` is the initialized
+     * analyzer ready for commitModel(). Callers that never commit must
+     * dispose the prepared analyzer themselves.
+     */
+    async prepareModel(modelId) {
+      if (!AVAILABLE_MODELS[modelId]) {
+        const reason = `Unknown model: ${modelId}`;
+        this.onModelChange({ modelId, ok: false, reason });
+        return { ok: false, modelId, reason, prepared: null, alreadyActive: false };
+      }
+      if (modelId === this.modelId && this.currentAnalyzer) {
+        return { ok: true, modelId, prepared: null, alreadyActive: true, message: 'Model already active' };
+      }
+      let prepared = null;
+      try {
+        const AnalyzerClass = getPoseAnalyzerClass(modelId, this.environment);
+        if (!AnalyzerClass) {
+          const reason = `Model ${modelId} is not loaded in this environment`;
+          this.onModelChange({ modelId, ok: false, reason });
+          return { ok: false, modelId, reason, prepared: null, alreadyActive: false };
+        }
+        prepared = this._createAnalyzer(modelId);
+        const initialized = await prepared.initialize();
+        if (!initialized || initialized.available !== true) {
+          const reason = (initialized && initialized.reason) || 'pose-model-initialization-failed';
+          if (prepared && typeof prepared.dispose === 'function') prepared.dispose();
+          this.onModelChange({ modelId, ok: false, reason });
+          return {
+            ok: false,
+            modelId,
+            reason,
+            fallbacks: initialized && Array.isArray(initialized.fallbacks) ? initialized.fallbacks.slice() : [],
+            prepared: null,
+            alreadyActive: false
+          };
+        }
+        return { ok: true, modelId, prepared, alreadyActive: false };
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        if (prepared && typeof prepared.dispose === 'function') prepared.dispose();
+        this.onModelChange({ modelId, ok: false, reason });
+        return { ok: false, modelId, reason, prepared: null, alreadyActive: false };
+      }
+    }
+
+    /**
+     * Commit a prepared analyzer as the active model. Synchronous: callers
+     * must ensure no frame is running on the previous analyzer (the offscreen
+     * scheduler waits for idle sessions before committing).
+     */
+    commitModel(modelId, prepared) {
+      if (!prepared || typeof prepared.analyze !== 'function') {
+        const reason = 'pose-model-not-prepared';
+        this.onModelChange({ modelId, ok: false, reason });
+        return { ok: false, modelId, reason, changed: false };
+      }
+      this._activate(prepared, modelId);
+      return {
+        ok: true,
+        modelId,
+        message: `Switched to ${AVAILABLE_MODELS[modelId]?.label || modelId}`,
+        changed: true
+      };
+    }
+
+    /**
+     * Switch to a different pose detection model. The target analyzer is
+     * created and initialized first; the currently active analyzer is
+     * disposed only after the target reports itself available. A failed
+     * initialization leaves the active model untouched. Use prepareModel() +
+     * commitModel() when frames may be running concurrently so the dispose
+     * can wait for idle sessions.
+     */
+    async activateModel(modelId) {
+      const preparedResult = await this.prepareModel(modelId);
+      if (preparedResult.alreadyActive) {
+        return { ok: true, modelId, message: 'Model already active', changed: false };
+      }
+      if (!preparedResult.ok || !preparedResult.prepared) {
+        return { ok: false, modelId, reason: preparedResult.reason, fallbacks: preparedResult.fallbacks, changed: false };
+      }
+      return this.commitModel(modelId, preparedResult.prepared);
+    }
+
+    /**
+     * Synchronous compatibility alias kept for callers that manage analyzer
+     * initialization themselves; it swaps in the target immediately.
      */
     switchModel(modelId) {
       if (modelId === this.modelId && this.currentAnalyzer) {
         return { ok: true, modelId, message: 'Model already active' };
       }
-
       if (!AVAILABLE_MODELS[modelId]) {
-        return { ok: false, reason: `Unknown model: ${modelId}` };
+        return { ok: false, modelId, reason: `Unknown model: ${modelId}` };
       }
-
       try {
-        const AnalyzerClass = getPoseAnalyzerClass(modelId, this.environment);
-        if (!AnalyzerClass) {
-          return { ok: false, reason: `Model ${modelId} is not loaded in this environment` };
-        }
-
-        // Dispose the old analyzer
-        if (this.currentAnalyzer && typeof this.currentAnalyzer.dispose === 'function') {
-          this.currentAnalyzer.dispose();
-        }
-
-        // Create and activate the new analyzer
-        this.currentAnalyzer = this._createAnalyzer(modelId);
-        this.modelId = modelId;
-        this.identity = this.currentAnalyzer?.identity || {
-          id: this.modelId,
-          kind: 'pose-model-switcher',
-          version: 1
-        };
-        this.lastPlayerPositions.clear();
-
-        this.onModelChange({ modelId, ok: true });
-        this.onStatus({ type: 'model-switched', modelId });
-
+        const next = this._createAnalyzer(modelId);
+        this._activate(next, modelId);
         return { ok: true, modelId, message: `Switched to ${AVAILABLE_MODELS[modelId]?.label || modelId}` };
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         this.onModelChange({ modelId, ok: false, reason });
-        return { ok: false, reason };
+        return { ok: false, modelId, reason };
       }
     }
 
@@ -363,15 +548,21 @@
     getAvailableModels() {
       return getAvailableModels(this.environment);
     }
+
+    async probeModelAvailability(modelId) {
+      return probePoseModelAvailability(modelId, this.environment);
+    }
   }
 
   return Object.freeze({
     AVAILABLE_MODELS,
     DEFAULT_MODEL,
+    ADAPTER_GLOBALS,
     PoseModelSwitcher,
     getPoseAnalyzerClass,
     createPoseAnalyzer,
     getAvailableModels,
+    probePoseModelAvailability,
     validateAndAssignPlayerIds
   });
 }));
