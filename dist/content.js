@@ -559,12 +559,6 @@
     var runtimeSignal = overlay.querySelector(".bv-runtime-signal");
     if (runtimeSignal && runtimeSignal.getAttribute("data-bso-runtime-signal-key") !== runtimeSignalKey()) replaceRuntimeNode(runtimeSignal, runtimeSignalNode());
     if (options.resultChanged || options.strokesChanged) {
-      // Ensure calibration is available for map panel rendering
-      if (!calibration && state.seeded && state.calibration && calibrationApi && typeof calibrationApi.restoreCalibration === "function") {
-        try {
-          calibration = calibrationApi.restoreCalibration(state.calibration);
-        } catch (_) {}
-      }
       var statsPanelNode = overlay.querySelector('[data-bso-panel="stats"]');
       if (statsPanelNode) replaceRuntimePanelBody(statsPanelNode, statsPanel);
       var mapPanelNode = overlay.querySelector('[data-bso-panel="map"]');
@@ -1309,16 +1303,8 @@
     return ui.panel("Stats", { layoutId: "stats", icon: "activity", mediaTime: state.time, stale: runtimeIsStale(), className: "bv-overlay-feed", collapsed: panelCollapsed("stats"), onToggleCollapse: function (value) { togglePanelCollapsed("stats", value); }, actions: [ui.iconButton("x", "Hide stats", { size: "sm", onClick: function () { state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "stats", value: false }); persist(); render(); } })] }, children);
   }
   function mapPanel() {
-    // Ensure calibration is restored from state before checking availability
-    if (!calibration && state.seeded && state.calibration && calibrationApi && typeof calibrationApi.restoreCalibration === "function") {
-      try {
-        calibration = calibrationApi.restoreCalibration(state.calibration);
-      } catch (_) {
-        // If restoration fails, fall back to using state.calibration directly for mapping checks
-      }
-    }
     var configuration = courtConfigurationState();
-    var mapped = calibration && !state.seeding;
+    var mapped = courtMappingAvailable();
     // Mapping is the only consumer that depends on calibration. Keep the
     // canonical diagram useful before setup, but never pass raw image
     // detections into court-relative rendering until a committed fit exists.
