@@ -1,4 +1,4 @@
-/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter, BSOLiteOpenPoseAdapter, BSOShuttleTrackingAdapter, BSOOnnxInferenceAdapter */
+/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter, BSOLiteOpenPoseAdapter, BSOBlazePoseTfjsAdapter, BSoPoseModelSelector, BSOShuttleTrackingAdapter, BSOOnnxInferenceAdapter */
 'use strict';
 
 const ANALYZER_FALLBACK = 'fixture-probe-v1';
@@ -132,15 +132,27 @@ function racketEvidence(players) {
  */
 class LocalPoseShuttleAnalyzer {
   constructor({ environment = globalThis, poseAnalyzer, shuttleAnalyzer, onStatus = () => {} } = {}) {
-    this.poseAnalyzer = poseAnalyzer || (ProductionAnalyzer ? new ProductionAnalyzer({ environment }) : null);
+    const resolvedPose = poseAnalyzer || (ProductionAnalyzer ? new ProductionAnalyzer({ environment }) : null);
+    if (!resolvedPose || typeof resolvedPose.analyze !== 'function') throw new TypeError('A production pose analyzer is required');
     this.shuttleAnalyzer = shuttleAnalyzer || (ShuttleAdapter ? new ShuttleAdapter({ environment }) : null);
-    if (!this.poseAnalyzer || typeof this.poseAnalyzer.analyze !== 'function') throw new TypeError('A production pose analyzer is required');
     if (!this.shuttleAnalyzer || typeof this.shuttleAnalyzer.analyze !== 'function') throw new TypeError('A local shuttle analyzer is required');
     this.onStatus = typeof onStatus === 'function' ? onStatus : () => {};
     // Forward backend and reset transitions without allowing status observers
     // to affect inference. The adapters retain their own resource ownership.
-    if (Object.hasOwn(this.poseAnalyzer, 'onStatus')) this.poseAnalyzer.onStatus = (value) => this.status({ component: 'pose', ...value });
     if (Object.hasOwn(this.shuttleAnalyzer, 'onStatus')) this.shuttleAnalyzer.onStatus = (value) => this.status({ component: 'shuttle', ...value });
+    this.lastMediaBySession = new Map();
+    this.setPoseAnalyzer(resolvedPose);
+  }
+
+  /**
+   * Swap the pose component of the composition (used when the user switches
+   * pose models mid-session). The caller owns the previous analyzer's
+   * lifecycle: the pose model switcher disposes it when the switch commits.
+   */
+  setPoseAnalyzer(nextPoseAnalyzer) {
+    if (!nextPoseAnalyzer || typeof nextPoseAnalyzer.analyze !== 'function') throw new TypeError('A production pose analyzer is required');
+    this.poseAnalyzer = nextPoseAnalyzer;
+    if (Object.hasOwn(this.poseAnalyzer, 'onStatus')) this.poseAnalyzer.onStatus = (value) => this.status({ component: 'pose', ...value });
     this.identity = Object.freeze({
       ...(this.poseAnalyzer.identity || { id: 'lightweight-openpose-lite-256-v1', version: 1, kind: 'local-litert-tflite-multipose' }),
       composition: 'pose-plus-shuttle-v1',
@@ -151,8 +163,12 @@ class LocalPoseShuttleAnalyzer {
     });
     this.initialization = null;
     this.initializationState = null;
-    this.capabilityDetails = { backend: null, fallbacks: [], shuttle: this.shuttleAnalyzer.identity?.id || 'local-shuttle-frame-difference-v1' };
-    this.lastMediaBySession = new Map();
+    this.capabilityDetails = {
+      backend: this.poseAnalyzer.backend || null,
+      fallbacks: Array.isArray(this.poseAnalyzer.backendReport?.fallbacks) ? this.poseAnalyzer.backendReport.fallbacks.slice() : [],
+      shuttle: this.shuttleAnalyzer.identity?.id || 'local-shuttle-frame-difference-v1'
+    };
+    return this;
   }
 
   status(value) {
@@ -252,8 +268,9 @@ class LocalPoseShuttleAnalyzer {
     const tracking = poseResult.tracking || null;
     const players = Array.isArray(poseResult.players) ? poseResult.players : tracking?.players || [];
     const poseAvailable = Boolean(poseEnvelope.inferenceAvailable);
+    const poseKind = typeof poseResult.kind === 'string' && poseResult.kind ? poseResult.kind : null;
     const analysis = {
-      kind: 'lightweight-openpose-pose-shuttle',
+      kind: poseKind && poseKind !== 'lightweight-openpose' ? `${poseKind}-pose-shuttle` : 'lightweight-openpose-pose-shuttle',
       composition: 'pose-plus-shuttle-v1',
       runtimeIntegrationTest: false,
       productionModel: poseAvailable && poseEnvelope.analyzerIdentity?.productionModel === true,
@@ -307,18 +324,53 @@ class LocalPoseShuttleAnalyzer {
   }
 }
 
+// The pose model switcher owns the active pose analyzer when the production
+// composition (cleared LiteRT pose + local shuttle) is selected. It lets the
+// popup swap the pose model mid-session; the deterministic fixture and the
+// explicit ONNX pipeline are separate selections and never route through it.
+const poseModelSwitcher = Boolean(globalThis.BSoPoseModelSelector) && Boolean(ProductionAnalyzer) && Boolean(ShuttleAdapter) && !onnxInferenceEnabled
+  ? (() => {
+    try {
+      return new globalThis.BSoPoseModelSelector.PoseModelSwitcher({
+        initialModelId: globalThis.BSoPoseModelSelector.DEFAULT_MODEL,
+        environment: globalThis,
+        onModelChange: (result) => {
+          // The preference is committed only when the model actually
+          // activated; a failed switch never rewrites the stored choice.
+          if (result && result.ok && typeof result.modelId === 'string') {
+            persistPoseModelPreference(result.modelId);
+          }
+        },
+        onStatus: (status) => {
+          if (globalThis.BSOOffscreenLogger && typeof globalThis.BSOOffscreenLogger.debug === 'function') {
+            globalThis.BSOOffscreenLogger.debug('pose-model-selector', status);
+          }
+        }
+      });
+    } catch (error) {
+      if (globalThis.BSOOffscreenLogger && typeof globalThis.BSOOffscreenLogger.error === 'function') {
+        globalThis.BSOOffscreenLogger.error('pose-model-selector-init', error instanceof Error ? error.message : String(error));
+      }
+      return null;
+    }
+  })()
+  : null;
+
 // The cleared local LiteRT analyzer is the only production selection. The
 // deterministic fixture is selected only when the explicit diagnostics flag
 // is present; it is never silently substituted after a model or backend
 // failure, which keeps capability identity honest.
 const diagnosticFixture = globalThis.BSO_DIAGNOSTIC_FIXTURE === true;
-let activeAnalyzer = onnxInferenceEnabled
-  ? new OnnxInferenceAnalyzer({ environment: globalThis, inferenceConfig: onnxInferenceConfig, onStatus: analyzerStatus })
-  : ProductionAnalyzer && ShuttleAdapter
-    ? new LocalPoseShuttleAnalyzer({ environment: globalThis, onStatus: analyzerStatus })
-    : ProductionAnalyzer
-      ? new ProductionAnalyzer({ environment: globalThis })
-      : diagnosticFixture && FixtureAnalyzer ? new FixtureAnalyzer() : new MockAnalyzer();
+let activeAnalyzer = poseModelSwitcher && poseModelSwitcher.getCurrentModel().analyzer
+  ? new LocalPoseShuttleAnalyzer({ environment: globalThis, poseAnalyzer: poseModelSwitcher.getCurrentModel().analyzer, onStatus: analyzerStatus })
+  : onnxInferenceEnabled
+    ? new OnnxInferenceAnalyzer({ environment: globalThis, inferenceConfig: onnxInferenceConfig, onStatus: analyzerStatus })
+    : ProductionAnalyzer && ShuttleAdapter
+      ? new LocalPoseShuttleAnalyzer({ environment: globalThis, onStatus: analyzerStatus })
+      : ProductionAnalyzer
+        ? new ProductionAnalyzer({ environment: globalThis })
+        : diagnosticFixture && FixtureAnalyzer ? new FixtureAnalyzer() : new MockAnalyzer();
+
 const sessions = new Map();
 const sessionQueues = new Map();
 const frameStates = new Map();
@@ -457,6 +509,21 @@ async function handleSessionStart(message) {
     });
     const input = message.capabilities || {};
     analyzerStatusSessionId = message.sessionId;
+    // The offscreen document can outlive sessions (Chrome closes and the
+    // service worker recreates it), so the stored pose-model preference is
+    // re-applied at every session start. An unavailable preference falls back
+    // to the production default and the stored key converges to what runs.
+    if (poseModelSwitcher && activeAnalyzer instanceof LocalPoseShuttleAnalyzer) {
+      try {
+        const storedModel = await readStoredPoseModelPreference();
+        if (storedModel && storedModel !== poseModelSwitcher.getCurrentModel().id) {
+          const committed = await commitPoseModelSwitch(storedModel);
+          if (!committed.ok) persistPoseModelPreference(poseModelSwitcher.getCurrentModel().id);
+        }
+      } catch (_) {
+        persistPoseModelPreference(poseModelSwitcher.getCurrentModel().id);
+      }
+    }
     let initialized;
     try {
       initialized = typeof activeAnalyzer.initialize === 'function'
@@ -689,10 +756,142 @@ async function handleSessionEnd(message) {
   });
 }
 
+function persistPoseModelPreference(modelId) {
+  if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local ||
+      typeof chrome.storage.local.set !== 'function') return;
+  try {
+    chrome.storage.local.set({ bvSelectedPoseModel: String(modelId) });
+  } catch (_) { /* preference persistence must never break inference */ }
+}
+
+function readStoredPoseModelPreference() {
+  return new Promise((resolve) => {
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local ||
+        typeof chrome.storage.local.get !== 'function') {
+      resolve(null);
+      return;
+    }
+    try {
+      chrome.storage.local.get('bvSelectedPoseModel', (result) => {
+        const stored = result && typeof result.bvSelectedPoseModel === 'string' ? result.bvSelectedPoseModel : null;
+        resolve(stored || null);
+      });
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+function isPoseSwitchingComposition() {
+  return Boolean(poseModelSwitcher) && activeAnalyzer instanceof LocalPoseShuttleAnalyzer &&
+    typeof activeAnalyzer.setPoseAnalyzer === 'function';
+}
+
+async function waitForFrameIdle() {
+  const sessionIds = Array.from(frameStates.keys());
+  for (const sessionId of sessionIds) {
+    await waitForFrames(sessionId);
+  }
+}
+
+function announcePoseModelChange(modelId) {
+  const identity = activeAnalyzer.identity || {};
+  const details = activeAnalyzer.capabilityDetails || {};
+  const ready = activeAnalyzer.initializationState?.available !== false;
+  for (const [sessionId] of sessions) {
+    const session = sessions.get(sessionId);
+    if (!session) continue;
+    void send(BSOProtocol.createRuntimeStatus({
+      sessionId,
+      phase: ready ? 'ready' : 'fallback',
+      message: ready ? `Local pose model is now ${identity.model || modelId}.` : 'The selected pose model could not start; playback is unaffected.',
+      capabilities: capabilityState(session.capabilities, {
+        inference: ready,
+        analyzer: ready ? identity.id || modelId : 'none',
+        backend: details.backend || null,
+        fallbacks: details.fallbacks || [],
+        shuttle: details.shuttle || null
+      }),
+      reason: 'pose-model-switched'
+    }));
+  }
+}
+
+/**
+ * Activate a pose model on the live composition. The target model is probed
+ * and initialized before the active analyzer is touched, so an unavailable
+ * model (missing TensorFlow.js, missing local artifact, backend failure)
+ * leaves the current model serving frames and reports ok:false.
+ */
+async function commitPoseModelSwitch(modelId) {
+  if (!poseModelSwitcher) {
+    return { ok: false, reason: 'pose-model-selector-unavailable' };
+  }
+  if (!isPoseSwitchingComposition()) {
+    return { ok: false, reason: 'pose-model-switching-unavailable-in-current-mode' };
+  }
+  if (poseModelSwitcher.getCurrentModel().id === modelId) {
+    return { ok: true, modelId, message: 'Model already active', changed: false };
+  }
+  const probe = await poseModelSwitcher.probeModelAvailability(modelId);
+  if (!probe.available) {
+    return { ok: false, modelId, reason: probe.reason, changed: false };
+  }
+  // Prepare and initialize the target while the current analyzer keeps
+  // serving frames; then wait for idle sessions so the synchronous commit
+  // never disposes an analyzer that is still running a frame.
+  const prepared = await poseModelSwitcher.prepareModel(modelId);
+  if (!prepared.ok) {
+    return { ok: false, modelId, reason: prepared.reason, changed: false };
+  }
+  if (prepared.alreadyActive) {
+    return { ok: true, modelId, message: 'Model already active', changed: false };
+  }
+  await waitForFrameIdle();
+  const committed = poseModelSwitcher.commitModel(modelId, prepared.prepared);
+  if (committed.ok && activeAnalyzer instanceof LocalPoseShuttleAnalyzer) {
+    activeAnalyzer.setPoseAnalyzer(poseModelSwitcher.getCurrentModel().analyzer);
+    announcePoseModelChange(modelId);
+  } else if (!committed.ok && prepared.prepared && typeof prepared.prepared.dispose === 'function') {
+    prepared.prepared.dispose();
+  }
+  return committed;
+}
+
+function handleModelSwitch(message) {
+  const modelId = typeof message?.modelId === 'string' ? message.modelId.trim() : '';
+  if (!modelId) {
+    return Promise.resolve({ ok: false, reason: 'no-model-id-specified' });
+  }
+  return commitPoseModelSwitch(modelId);
+}
+
+async function handleGetAvailableModels(message) {
+  if (!poseModelSwitcher || !globalThis.BSoPoseModelSelector) {
+    return { ok: false, models: [], reason: 'pose-model-selector-unavailable' };
+  }
+  const selector = globalThis.BSoPoseModelSelector;
+  const models = [];
+  for (const modelId of Object.keys(selector.AVAILABLE_MODELS || {})) {
+    const probe = await poseModelSwitcher.probeModelAvailability(modelId);
+    models.push({
+      id: modelId,
+      label: selector.AVAILABLE_MODELS[modelId].label,
+      available: probe.available,
+      reason: probe.available ? '' : probe.reason,
+      current: poseModelSwitcher.getCurrentModel().id === modelId
+    });
+  }
+  return { ok: true, models, currentModel: poseModelSwitcher.getCurrentModel().id };
+}
+
 function handle(message) {
   if (message.type === BSOProtocol.TYPES.SESSION_START) return handleSessionStart(message);
   if (message.type === BSOProtocol.TYPES.SESSION_END) return handleSessionEnd(message);
   if (message.type === BSOProtocol.TYPES.FRAME_SAMPLE) return handleFrame(message);
+  // Handle custom model switching messages (non-protocol messages)
+  if (message.action === 'switchPoseModel') return handleModelSwitch(message);
+  if (message.action === 'getAvailablePoseModels') return handleGetAvailableModels(message);
   return Promise.resolve();
 }
 
@@ -701,7 +900,25 @@ if (typeof chrome !== 'object' || !chrome.runtime || !chrome.runtime.onMessage |
   // The analyzer module can also be opened as a local diagnostics page; an
   // MV3 offscreen context is required for message handling.
 } else {
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Handle custom model switching messages (before protocol check)
+  if (message && message.action === 'switchPoseModel') {
+    Promise.resolve(handleModelSwitch(message)).then((result) => {
+      sendResponse(result);
+    }).catch((error) => {
+      sendResponse({ ok: false, reason: error instanceof Error ? error.message : String(error) });
+    });
+    return true; // Keep the channel open for async response
+  }
+  if (message && message.action === 'getAvailablePoseModels') {
+    Promise.resolve(handleGetAvailableModels(message)).then((result) => {
+      sendResponse(result);
+    }).catch((error) => {
+      sendResponse({ ok: false, models: [], reason: error instanceof Error ? error.message : String(error) });
+    });
+    return true; // Keep the channel open for async response
+  }
+
   if (!BSOProtocol.isRuntimeMessage(message)) return false;
   void Promise.resolve(handle(message)).catch(async (error) => {
     const session = sessions.get(message.sessionId);

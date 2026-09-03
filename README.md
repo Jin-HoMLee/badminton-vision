@@ -233,8 +233,9 @@ LiteRT.js, and WASM is the local fallback. If the local runtime or checkpoint
 is unavailable, the analyzer reports `inference: false` and unknown pose state;
 the deterministic `fixture-probe-v1` is only used when the production analyzer
 script is absent (for Node plumbing diagnostics), never as a silent CV
-substitute. `src/extension/offscreen/movenet-adapter.js` remains a tested
-legacy MoveNet seam, but its uncleared checkpoint is not selected or bundled.
+substitute. The popup's **Pose Detection Model** selector can switch the live
+composition to the MoveNet or BlazePose TF.js adapters, but their checkpoints
+are not bundled, so LiteOpenPose is the only model that runs in a stock build.
 The versioned pose shape and deterministic multi-person association gates live
 in `src/extension/common/player-tracking.js`; see `docs/runtime.md` for the
 contract, licensing notice, runtime smoke check, and canonical packaging

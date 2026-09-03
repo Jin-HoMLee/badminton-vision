@@ -45,6 +45,8 @@ const runtimeFiles = [
   ["offscreen/analyzer.js", "offscreen/analyzer.js"],
   ["offscreen/offscreen-console-filter.js", "offscreen/offscreen-console-filter.js"],
   ["offscreen/movenet-adapter.js", "offscreen/movenet-adapter.js"],
+  ["offscreen/blazepose-adapter.js", "offscreen/blazepose-adapter.js"],
+  ["offscreen/pose-model-selector.js", "offscreen/pose-model-selector.js"],
   ["offscreen/lite-runtime-loader.js", "offscreen/lite-runtime-loader.js"],
   ["offscreen/lite-openpose-adapter.js", "offscreen/lite-openpose-adapter.js"],
   // The bounded local shuttle adapter is loaded by offscreen.html and composed
@@ -61,6 +63,9 @@ const runtimeFiles = [
   ["offscreen/vendor/litert/litert_wasm_compat_internal.wasm", "offscreen/vendor/litert/litert_wasm_compat_internal.wasm"],
   ["offscreen/vendor/litert/LICENSE", "offscreen/vendor/litert/LICENSE"],
   ["offscreen/vendor/litert/LITERT-README.md", "offscreen/vendor/litert/LITERT-README.md"],
+  ["offscreen/vendor/tfjs/tf.min.js", "offscreen/vendor/tfjs/tf.min.js"],
+  ["offscreen/vendor/tfjs/LICENSE", "offscreen/vendor/tfjs/LICENSE"],
+  ["offscreen/vendor/tfjs/README.md", "offscreen/vendor/tfjs/README.md"],
   ["offscreen/vendor/lite-openpose/MODEL-NOTICE.md", "offscreen/vendor/lite-openpose/MODEL-NOTICE.md"],
   ["offscreen/offscreen.html", "offscreen/offscreen.html"],
   ["offscreen/offscreen.js", "offscreen/offscreen.js"]
@@ -309,7 +314,23 @@ for (const file of required.filter((entry) => entry.endsWith(".css"))) {
   }
 }
 const offscreenHtml = await readFile(join(dist, "offscreen/offscreen.html"), "utf8");
-for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "lite-runtime-loader.js", "lite-openpose-adapter.js", "shuttle-tracking-adapter.js", "../ml-pipeline/onnx-runtime.js", "../ml-pipeline/adapters/blazepose-adapter.js", "../ml-pipeline/adapters/yolov8-shuttle-adapter.js", "../ml-pipeline/adapters/tracknet-processor.js", "../ml-pipeline/inference-pipeline.js", "../ml-pipeline/adapters/onnx-inference-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
+// The packed offscreen document is copied verbatim, so every script it loads
+// must exist in dist and be a declared runtime package entry.
+const offscreenPackagedScripts = [
+  ...runtimeFiles.map(([, destination]) => destination),
+  ...mlPipelineFiles.map(([, destination]) => destination)
+];
+for (const match of offscreenHtml.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/g)) {
+  const script = match[1];
+  const scriptFile = script.startsWith("../")
+    ? script.replace(/^\.\.\//, "")
+    : `offscreen/${script}`;
+  if (!offscreenPackagedScripts.includes(scriptFile)) {
+    throw new Error(`Packed offscreen document loads an unpackaged script: ${script}`);
+  }
+  try { await stat(join(dist, scriptFile)); } catch { throw new Error(`Packed offscreen document references a missing script: ${script}`); }
+}
+for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "blazepose-adapter.js", "pose-model-selector.js", "vendor/tfjs/tf.min.js", "lite-runtime-loader.js", "lite-openpose-adapter.js", "shuttle-tracking-adapter.js", "../ml-pipeline/onnx-runtime.js", "../ml-pipeline/adapters/blazepose-adapter.js", "../ml-pipeline/adapters/yolov8-shuttle-adapter.js", "../ml-pipeline/adapters/tracknet-processor.js", "../ml-pipeline/inference-pipeline.js", "../ml-pipeline/adapters/onnx-inference-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
   if (!offscreenHtml.includes(`src="${script}"`)) throw new Error(`Packed offscreen document is missing ${script}`);
 }
 await assertNoRemoteDependencies(dist);

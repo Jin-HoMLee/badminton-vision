@@ -11,7 +11,7 @@
     id: 'movenet-multipose-lightning-v1',
     version: 1,
     kind: 'local-tensorflowjs-graph-model',
-    modelUrl: '../vendor/movenet-multipose-lightning/model.json',
+    modelUrl: './vendor/movenet-multipose-lightning/model.json',
     sourceUrl: 'https://tfhub.dev/google/tfjs-model/movenet/multipose/lightning/1',
     license: null,
     licenseStatus: 'not-cleared-for-redistribution',
@@ -85,6 +85,36 @@
     if (tensor && typeof tensor.data === 'function') return tensor.data();
     if (tensor && typeof tensor.dataSync === 'function') return tensor.dataSync();
     throw new TypeError('MoveNet output tensor cannot be read');
+  }
+
+  /**
+   * Normalize a captured frame into a pixel source TensorFlow.js can consume.
+   * Stable Chrome's serializable transport delivers { width, height, data }
+   * RGBA arrays (frameFormat rgba-array-v1); tf.browser.fromPixels requires a
+   * Uint8Array-typed pixel source or a drawable, so array frames are wrapped
+   * in ImageData where the environment provides it. Drawables (ImageBitmap,
+   * canvas, video) are passed through untouched.
+   */
+  function framePixels(frame, environment = defaultEnvironment) {
+    const width = Number(frame?.width);
+    const height = Number(frame?.height);
+    if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) {
+      throw new TypeError('MoveNet frame dimensions must be positive integers');
+    }
+    const typed = frame && (frame.data instanceof Uint8Array || frame.data instanceof Uint8ClampedArray);
+    if (frame && (Array.isArray(frame.data) || typed)) {
+      const data = typed ? frame.data : Uint8Array.from(frame.data);
+      const ImageDataCtor = environment?.ImageData || defaultEnvironment.ImageData;
+      if (typeof ImageDataCtor === 'function') {
+        try { return new ImageDataCtor(new Uint8ClampedArray(data), width, height); } catch (_) { /* fall back to typed pixel data */ }
+      }
+      return { data, width, height };
+    }
+    if (frame && typeof frame.getContext === 'function') return frame;
+    if (typeof ImageBitmap !== 'undefined' && frame instanceof ImageBitmap) return frame;
+    if (typeof HTMLVideoElement !== 'undefined' && frame instanceof HTMLVideoElement) return frame;
+    if (typeof HTMLImageElement !== 'undefined' && frame instanceof HTMLImageElement) return frame;
+    throw new TypeError('MoveNet frame is neither RGBA data nor a drawable image source');
   }
 
   /**
@@ -357,8 +387,8 @@
     configureWasm() {
       if (!this.tf?.wasm || typeof this.tf.wasm.setWasmPaths !== 'function') return;
       const path = this.wasmPath || (this.environment?.location?.href && typeof URL === 'function'
-        ? new URL('../vendor/tfjs/', this.environment.location.href).toString()
-        : '../vendor/tfjs/');
+        ? new URL('./vendor/tfjs/', this.environment.location.href).toString()
+        : './vendor/tfjs/');
       this.tf.wasm.setWasmPaths(path);
     }
 
@@ -435,13 +465,15 @@
           typeof this.tf.cast !== 'function') {
         throw new Error('TensorFlow.js image operations are unavailable');
       }
+      const pixels = framePixels(frame, this.environment);
+      if (!pixels) throw new TypeError('MoveNet frame pixels are unavailable');
       let image = null;
       let expanded = null;
       let resized = null;
       let padded = null;
       let input = null;
       try {
-        image = this.tf.browser.fromPixels(frame, 3);
+        image = this.tf.browser.fromPixels(pixels, 3);
         expanded = this.tf.expandDims(image, 0);
         resized = this.tf.image.resizeBilinear(expanded, [geometry.resizedHeight, geometry.resizedWidth]);
         padded = this.tf.pad(resized, [[0, 0], [0, geometry.paddedHeight - geometry.resizedHeight],
@@ -557,6 +589,7 @@
     probeBackend,
     selectBackend,
     dimensionGeometry,
+    framePixels,
     decodeMoveNetOutput,
     MoveNetMultiPoseLightningAnalyzer,
     MoveNetAnalyzer: MoveNetMultiPoseLightningAnalyzer,

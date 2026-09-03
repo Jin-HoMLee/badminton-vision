@@ -1,31 +1,53 @@
 /* global globalThis, BSOProtocol, BSOPlayerTracking */
-(function installMoveNetAdapter(root, factory) {
+// The offscreen-level TF.js BlazePose adapter. It installs a distinct global
+// (BSOBlazePoseTfjsAdapter) so it cannot collide with the ml-pipeline ONNX
+// BlazePose adapter (BSOBlazePoseAdapter) that the same offscreen document
+// loads for the optional inference-pipeline path.
+(function installBlazePoseTfjsAdapter(root, factory) {
   const api = factory(root.BSOProtocol, root.BSOPlayerTracking, root);
   if (typeof module === 'object' && module.exports) module.exports = api;
-  root.BSOMoveNetAdapter = api;
-}(typeof globalThis === 'object' ? globalThis : self, function moveNetAdapterFactory(protocol, trackingApi, defaultEnvironment) {
+  root.BSOBlazePoseTfjsAdapter = api;
+}(typeof globalThis === 'object' ? globalThis : self, function blazePoseTfjsAdapterFactory(protocol, trackingApi, defaultEnvironment) {
   'use strict';
 
+  // TensorFlow.js graph model for a single person: MediaPipe BlazePose GHUM
+  // landmark regressor. The model family's landmark output (ld_3d) is a
+  // [1, 195] tensor: 39 landmarks x (x, y, z, visibility, presence), where the
+  // first 33 landmarks use the canonical MediaPipe ordering (nose, inner/outer
+  // eyes, ears, then shoulders/elbows/wrists/hips/knees/ankles/feet). The pose
+  // presence flag (output_poseflag, [1, 1]) gates the whole pose. Landmark
+  // coordinates are normalized to the model's 256x256 letterboxed input.
   const MODEL = Object.freeze({
-    schema: 'bso.movenet.model.v1',
-    id: 'movenet-multipose-lightning-v1',
+    schema: 'bso.blazepose.model.v1',
+    id: 'blazepose-tfjs-heavy-v1',
     version: 1,
     kind: 'local-tensorflowjs-graph-model',
-    modelUrl: './vendor/movenet-multipose-lightning/model.json',
-    sourceUrl: 'https://tfhub.dev/google/tfjs-model/movenet/multipose/lightning/1',
-    license: null,
-    licenseStatus: 'not-cleared-for-redistribution',
-    maxPoses: 6,
-    outputShape: [1, 6, 56],
-    inputMaxDimension: 256,
-    inputDimensionDivisor: 32
+    modelUrl: './vendor/blazepose-tfjs/model.json',
+    sourceUrl: 'https://tfhub.dev/mediapipe/tfjs-model/blazepose_3d/landmark/heavy/2',
+    license: 'Apache-2.0',
+    licenseStatus: 'cleared-for-redistribution',
+    maxPoses: 1,
+    outputShape: [1, 195],
+    inputDimension: 256,
+    numLandmarks: 39,
+    numValuesPerLandmark: 5,
+    visibilityValueOffset: 3,
+    presenceValueOffset: 4
   });
+
   const KEYPOINT_NAMES = Object.freeze([
     'nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear',
     'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
     'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
     'left_knee', 'right_knee', 'left_ankle', 'right_ankle'
   ]);
+
+  // COCO's 17 pose names read from BlazePose's canonical 33-landmark order.
+  // The identity table is deliberately not used: BlazePose indices 1-10 are
+  // face landmarks, shoulders live at 11/12, wrists at 15/16, hips at 23/24,
+  // knees at 25/26, and ankles at 27/28.
+  const COCO_TO_BLAZE = Object.freeze([0, 2, 5, 7, 8, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]);
+
   const BACKENDS = Object.freeze(['webgpu', 'webgl', 'wasm']);
   const DEFAULTS = Object.freeze({
     minPoseScore: 0.25,
@@ -47,10 +69,6 @@
     return Math.max(minimum, Math.min(maximum, value));
   }
 
-  function closeFrame(frame) {
-    if (frame && typeof frame.close === 'function') frame.close();
-  }
-
   function disposeTensor(value, seen = new Set()) {
     if (!value || seen.has(value)) return;
     seen.add(value);
@@ -62,10 +80,10 @@
   }
 
   function localModelUrl(url) {
-    if (typeof url !== 'string' || !url.trim()) throw new TypeError('MoveNet model URL must be a non-empty string');
+    if (typeof url !== 'string' || !url.trim()) throw new TypeError('BlazePose model URL must be a non-empty string');
     const value = url.trim();
     if (/^(?:https?:)?\/\//i.test(value) || /^https?:/i.test(value)) {
-      throw new TypeError('MoveNet model URL must resolve to the locally vendored artifact');
+      throw new TypeError('BlazePose model URL must resolve to the locally vendored artifact');
     }
     return value;
   }
@@ -76,7 +94,7 @@
     if (!href || typeof URL !== 'function') return value;
     const resolved = new URL(value, href);
     if (resolved.protocol !== 'chrome-extension:' && resolved.protocol !== 'file:') {
-      throw new TypeError('MoveNet model URL resolved outside the extension package');
+      throw new TypeError('BlazePose model URL resolved outside the extension package');
     }
     return resolved.toString();
   }
@@ -84,7 +102,7 @@
   async function readTensor(tensor) {
     if (tensor && typeof tensor.data === 'function') return tensor.data();
     if (tensor && typeof tensor.dataSync === 'function') return tensor.dataSync();
-    throw new TypeError('MoveNet output tensor cannot be read');
+    throw new TypeError('BlazePose output tensor cannot be read');
   }
 
   /**
@@ -99,7 +117,7 @@
     const width = Number(frame?.width);
     const height = Number(frame?.height);
     if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) {
-      throw new TypeError('MoveNet frame dimensions must be positive integers');
+      throw new TypeError('BlazePose frame dimensions must be positive integers');
     }
     const typed = frame && (frame.data instanceof Uint8Array || frame.data instanceof Uint8ClampedArray);
     if (frame && (Array.isArray(frame.data) || typed)) {
@@ -114,7 +132,7 @@
     if (typeof ImageBitmap !== 'undefined' && frame instanceof ImageBitmap) return frame;
     if (typeof HTMLVideoElement !== 'undefined' && frame instanceof HTMLVideoElement) return frame;
     if (typeof HTMLImageElement !== 'undefined' && frame instanceof HTMLImageElement) return frame;
-    throw new TypeError('MoveNet frame is neither RGBA data nor a drawable image source');
+    throw new TypeError('BlazePose frame is neither RGBA data nor a drawable image source');
   }
 
   /**
@@ -182,47 +200,30 @@
     };
   }
 
-  function dimensionGeometry(width, height, maxDimension = MODEL.inputMaxDimension) {
-    if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) {
-      throw new TypeError('MoveNet frame dimensions must be positive integers');
-    }
-    let resizedWidth;
-    let resizedHeight;
-    if (width >= height) {
-      resizedWidth = maxDimension;
-      resizedHeight = Math.max(1, Math.round(maxDimension * height / width));
-    } else {
-      resizedHeight = maxDimension;
-      resizedWidth = Math.max(1, Math.round(maxDimension * width / height));
-    }
-    const divisor = MODEL.inputDimensionDivisor;
-    const paddedWidth = Math.ceil(resizedWidth / divisor) * divisor;
-    const paddedHeight = Math.ceil(resizedHeight / divisor) * divisor;
-    return { width, height, resizedWidth, resizedHeight, paddedWidth, paddedHeight };
-  }
-
   function normalizedNumber(value) {
     return Number(value.toFixed(6));
   }
 
-  function mapX(value, geometry) {
-    return normalizedNumber(clamp(value * geometry.paddedWidth / geometry.resizedWidth));
+  /**
+   * Decode the BlazePose landmark output (195 values = 39 landmarks x 5
+   * (x, y, z, visibility, presence)) into one normalized COCO-17 pose
+   * observation. Per-keypoint confidence is the sigmoid-activated visibility
+   * channel; the depth channel (z) carries no confidence and is ignored, and
+   * an optional pose-presence score (output_poseflag) gates the pose when the
+   * caller supplies it.
+   */
+  function sigmoid(value) {
+    if (!finite(value)) return 0;
+    return 1 / (1 + Math.exp(-clamp(value, -30, 30)));
   }
 
-  function mapY(value, geometry) {
-    return normalizedNumber(clamp(value * geometry.paddedHeight / geometry.resizedHeight));
-  }
+  function decodeBlazePoseOutput(values, options = {}) {
+    const stride = MODEL.numValuesPerLandmark;
+    const required = MODEL.numLandmarks * stride;
+    if (!values || values.length < required) {
+      throw new Error(`BlazePose output is too short: expected at least ${required} values`);
+    }
 
-  /** Decode the documented [1, instances, 56] MoveNet MultiPose output. */
-  function decodeMoveNetOutput(values, shape, geometry, options = {}) {
-    if (!Array.isArray(shape) || shape.length !== 3 || shape[0] !== 1 || shape[2] !== 56) {
-      throw new Error(`Unexpected MoveNet MultiPose output shape: [${shape || ''}]`);
-    }
-    const instances = shape[1];
-    if (!Number.isInteger(instances) || instances < 0 || instances > MODEL.maxPoses ||
-        !values || values.length < instances * 56) {
-      throw new Error('MoveNet MultiPose output has an invalid instance count');
-    }
     const minPoseScore = options.minPoseScore ?? DEFAULTS.minPoseScore;
     const minPartialPoseScore = options.minPartialPoseScore ?? DEFAULTS.minPartialPoseScore;
     const keypointScoreThreshold = options.keypointScoreThreshold ?? DEFAULTS.keypointScoreThreshold;
@@ -231,52 +232,69 @@
     const requestId = String(options.requestId || 'unknown-request');
     const sessionId = String(options.sessionId || 'unknown-session');
     const mediaTime = options.mediaTime;
-    const observations = [];
-    for (let instance = 0; instance < instances; instance += 1) {
-      const offset = instance * 56;
-      const boxValues = [values[offset + 51], values[offset + 52], values[offset + 53], values[offset + 54]];
-      const score = values[offset + 55];
-      if (!boxValues.every(finite) || !finite(score) || score < minPartialPoseScore) continue;
-      const keypoints = [];
-      let visible = 0;
-      for (let point = 0; point < KEYPOINT_NAMES.length; point += 1) {
-        const pointOffset = offset + point * 3;
-        const y = values[pointOffset];
-        const x = values[pointOffset + 1];
-        const pointScore = values[pointOffset + 2];
-        if (!finite(x) || !finite(y)) continue;
-        const confidence = finite(pointScore) ? clamp(pointScore) : null;
-        if (confidence !== null && confidence >= keypointScoreThreshold) visible += 1;
-        keypoints.push({
-          name: KEYPOINT_NAMES[point],
-          x: mapX(x, geometry),
-          y: mapY(y, geometry),
-          confidence
-        });
-      }
-      const box = {
-        xMin: mapX(boxValues[1], geometry),
-        yMin: mapY(boxValues[0], geometry),
-        xMax: mapX(boxValues[3], geometry),
-        yMax: mapY(boxValues[2], geometry)
-      };
-      if (box.xMax <= box.xMin || box.yMax <= box.yMin) continue;
-      observations.push({
-        observationId: `${requestId}:pose-${instance}`,
-        sessionId,
-        requestId,
-        mediaTime,
-        coordinateSpace: 'normalized',
-        bbox: box,
-        keypoints,
-        confidence: clamp(score),
-        state: score >= minPoseScore && visible >= (options.minVisibleKeypoints ?? DEFAULTS.minVisibleKeypoints)
-          ? 'tracked' : 'partial',
-        detector,
-        source
+
+    const keypoints = [];
+    let visible = 0;
+    let confidenceSum = 0;
+    let confidenceCount = 0;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (let cocoIdx = 0; cocoIdx < KEYPOINT_NAMES.length; cocoIdx += 1) {
+      const blazeIdx = COCO_TO_BLAZE[cocoIdx];
+      const offset = blazeIdx * stride;
+      const x = values[offset];
+      const y = values[offset + 1];
+      const confidence = sigmoid(values[offset + MODEL.visibilityValueOffset]);
+      const normalizedX = clamp(Number(x));
+      const normalizedY = clamp(Number(y));
+      const finitePoint = finite(x) && finite(y) && Number.isFinite(normalizedX) && Number.isFinite(normalizedY);
+      keypoints.push({
+        name: KEYPOINT_NAMES[cocoIdx],
+        x: finitePoint ? normalizedNumber(clamp(x)) : 0,
+        y: finitePoint ? normalizedNumber(clamp(y)) : 0,
+        confidence: finitePoint ? normalizedNumber(confidence) : 0
       });
+      if (!finitePoint) continue;
+      if (confidence >= keypointScoreThreshold) visible += 1;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+      confidenceSum += confidence;
+      confidenceCount += 1;
     }
-    return observations;
+
+    const meanVisibility = confidenceCount > 0 ? confidenceSum / confidenceCount : 0;
+    const posePresence = options.posePresence == null ? null : clamp(Number(options.posePresence));
+    const poseScore = posePresence != null && finite(posePresence)
+      ? posePresence
+      : meanVisibility;
+
+    const bbox = confidenceCount === 0 ? { x: 0, y: 0, width: 0, height: 0 } : {
+      x: normalizedNumber(clamp(Math.max(0, minX - 0.05))),
+      y: normalizedNumber(clamp(Math.max(0, minY - 0.05))),
+      width: normalizedNumber(clamp(Math.min(1, maxX + 0.05) - Math.max(0, minX - 0.05))),
+      height: normalizedNumber(clamp(Math.min(1, maxY + 0.05) - Math.max(0, minY - 0.05)))
+    };
+
+    return [{
+      observationId: `${requestId}:pose-0`,
+      sessionId,
+      requestId,
+      mediaTime,
+      coordinateSpace: 'normalized',
+      bbox,
+      keypoints,
+      confidence: normalizedNumber(clamp(poseScore)),
+      state: confidenceCount === 0 || poseScore < minPartialPoseScore ? 'unknown'
+        : poseScore >= minPoseScore && visible >= (options.minVisibleKeypoints ?? DEFAULTS.minVisibleKeypoints)
+          ? 'tracked' : 'partial',
+      detector,
+      source
+    }];
   }
 
   function fallbackTracking({ sessionId, requestId, mediaTime, reason }, api = trackingApi) {
@@ -301,7 +319,7 @@
   function unknownResult({ sessionId, requestId, mediaTime, reason, analyzerIdentity }) {
     const tracking = fallbackTracking({ sessionId, requestId, mediaTime, reason });
     const result = {
-      kind: 'movenet-multipose-lightning',
+      kind: 'blazepose',
       state: 'unknown',
       players: [],
       tracking,
@@ -323,7 +341,7 @@
       inferenceAvailable: false, result };
   }
 
-  class MoveNetMultiPoseLightningAnalyzer {
+  class BlazePoseAnalyzer {
     constructor({
       tf = defaultEnvironment.tf,
       tracking = trackingApi,
@@ -333,7 +351,6 @@
       backendOrder = BACKENDS,
       backendProbe = null,
       wasmPath = null,
-      maxDimension = MODEL.inputMaxDimension,
       minPoseScore = DEFAULTS.minPoseScore,
       minPartialPoseScore = DEFAULTS.minPartialPoseScore,
       minVisibleKeypoints = DEFAULTS.minVisibleKeypoints,
@@ -349,7 +366,6 @@
       this.backendOrder = backendOrder;
       this.backendProbe = backendProbe;
       this.wasmPath = wasmPath;
-      this.maxDimension = maxDimension;
       this.minPoseScore = minPoseScore;
       this.minPartialPoseScore = minPartialPoseScore;
       this.minVisibleKeypoints = minVisibleKeypoints;
@@ -369,7 +385,7 @@
         id: MODEL.id,
         version: MODEL.version,
         kind: MODEL.kind,
-        model: 'MoveNet MultiPose Lightning',
+        model: 'BlazePose Heavy',
         modelVersion: MODEL.version,
         localArtifact: MODEL.modelUrl,
         sourceUrl: MODEL.sourceUrl,
@@ -420,7 +436,7 @@
           });
           const resolved = resolveLocalUrl(this.modelUrl, this.environment);
           this.model = await loader(resolved, { fromTFHub: false });
-          if (!this.model || typeof this.model.execute !== 'function') throw new Error('Vendored MoveNet graph model did not load');
+          if (!this.model || typeof this.model.execute !== 'function') throw new Error('Vendored BlazePose graph model did not load');
           this.status({ type: 'model-ready', backend: this.backend, model: MODEL.id });
           return { available: true, backend: this.backend, fallbacks: this.backendReport.fallbacks };
         } catch (error) {
@@ -454,54 +470,57 @@
     }
 
     async inputTensor(frame) {
-      const width = frame?.width;
-      const height = frame?.height;
-      const geometry = dimensionGeometry(width, height, this.maxDimension);
       if (!this.tf?.browser || typeof this.tf.browser.fromPixels !== 'function') {
         throw new Error('TensorFlow.js pixel input is unavailable');
       }
       if (!this.tf.image || typeof this.tf.image.resizeBilinear !== 'function' ||
-          typeof this.tf.pad !== 'function' || typeof this.tf.expandDims !== 'function' ||
-          typeof this.tf.cast !== 'function') {
+          typeof this.tf.expandDims !== 'function' || typeof this.tf.cast !== 'function') {
         throw new Error('TensorFlow.js image operations are unavailable');
       }
+
       const pixels = framePixels(frame, this.environment);
-      if (!pixels) throw new TypeError('MoveNet frame pixels are unavailable');
+      if (!pixels) throw new TypeError('BlazePose frame pixels are unavailable');
       let image = null;
       let expanded = null;
       let resized = null;
-      let padded = null;
       let input = null;
       try {
         image = this.tf.browser.fromPixels(pixels, 3);
         expanded = this.tf.expandDims(image, 0);
-        resized = this.tf.image.resizeBilinear(expanded, [geometry.resizedHeight, geometry.resizedWidth]);
-        padded = this.tf.pad(resized, [[0, 0], [0, geometry.paddedHeight - geometry.resizedHeight],
-          [0, geometry.paddedWidth - geometry.resizedWidth], [0, 0]]);
-        input = this.tf.cast(padded, 'int32');
+        resized = this.tf.image.resizeBilinear(expanded, [MODEL.inputDimension, MODEL.inputDimension]);
+        input = this.tf.cast(resized, 'float32');
         const tensors = new Set();
-        [image, expanded, resized, padded].forEach((tensor) => disposeTensor(tensor, tensors));
+        [image, expanded, resized].forEach((tensor) => disposeTensor(tensor, tensors));
         image = null;
         expanded = null;
         resized = null;
-        padded = null;
-        return { input, geometry };
+        return input;
       } catch (error) {
         const tensors = new Set();
-        [input, padded, resized, expanded, image].forEach((tensor) => disposeTensor(tensor, tensors));
+        [input, resized, expanded, image].forEach((tensor) => disposeTensor(tensor, tensors));
         throw error;
       }
     }
 
     async infer(frame, context = {}) {
-      const { input, geometry } = await this.inputTensor(frame);
+      const input = await this.inputTensor(frame);
       let output = null;
       try {
         output = this.model.execute(input);
-        const tensor = Array.isArray(output) ? output[0] : output;
-        if (!tensor || !Array.isArray(tensor.shape)) throw new Error('MoveNet graph model returned no tensor');
-        const values = await readTensor(tensor);
-        return decodeMoveNetOutput(values, tensor.shape, geometry, {
+        const tensors = Array.isArray(output) ? output : [output];
+        const landmarkTensor = tensors[0];
+        if (!landmarkTensor) throw new Error('BlazePose graph model returned no tensor');
+        const values = await readTensor(landmarkTensor);
+        let posePresence = null;
+        const presenceTensor = tensors[1];
+        if (presenceTensor && Array.isArray(presenceTensor.shape) &&
+            presenceTensor.shape.length === 2 && presenceTensor.shape[0] === 1 && presenceTensor.shape[1] === 1) {
+          const presenceValues = await readTensor(presenceTensor);
+          if (presenceValues && presenceValues.length === 1 && finite(Number(presenceValues[0]))) {
+            posePresence = clamp(Number(presenceValues[0]));
+          }
+        }
+        return decodeBlazePoseOutput(values, {
           sessionId: context.sessionId || 'unknown-session',
           requestId: context.requestId || 'unknown-request',
           mediaTime: context.mediaTime,
@@ -509,6 +528,7 @@
           minPartialPoseScore: this.minPartialPoseScore,
           minVisibleKeypoints: this.minVisibleKeypoints,
           keypointScoreThreshold: this.keypointScoreThreshold,
+          posePresence,
           detector: this.identity,
           source: { id: 'captured-frame', version: 1, kind: 'mv3-offscreen-frame' }
         });
@@ -549,10 +569,8 @@
           sessionId, requestId, mediaTime, status: 'ok', analyzer: MODEL.id,
           analyzerIdentity: this.identity, inferenceAvailable: true,
           result: {
-            kind: 'movenet-multipose-lightning',
+            kind: 'blazepose',
             state: tracking.state,
-            // The existing envelope exposes players directly for the overlay;
-            // the full association evidence remains available under tracking.
             players: tracking.players,
             tracking,
             shuttle: { state: 'unknown', confidence: null },
@@ -588,11 +606,8 @@
     BACKENDS,
     probeBackend,
     selectBackend,
-    dimensionGeometry,
-    framePixels,
-    decodeMoveNetOutput,
-    MoveNetMultiPoseLightningAnalyzer,
-    MoveNetAnalyzer: MoveNetMultiPoseLightningAnalyzer,
-    closeFrame
+    decodeBlazePoseOutput,
+    BlazePoseAnalyzer,
+    BlazePose: BlazePoseAnalyzer
   });
 }));
