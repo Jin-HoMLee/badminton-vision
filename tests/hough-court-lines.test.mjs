@@ -339,6 +339,36 @@ test('regression: centre-anchored merging keeps distinct parallel bands apart', 
   assert.equal(segments.length, 2, `two bands emitted ${segments.length} segments`);
 });
 
+test('regression: mirror-symmetric level lines are not folded into one', () => {
+  // theta ~ 90 is self-complementary under the folded-twin angle check, so
+  // two level rows whose centre offsets anti-match (|o1 + o2| <= 24, e.g.
+  // rows mirrored about the centre row) used to collapse into one group and
+  // the weaker line's segment was silently dropped. The folded comparison
+  // must only apply to pairs straddling the 0/180 wrap seam.
+  const width = 640;
+  const height = 360;
+  const frameDims = { width, height };
+  const countSegments = (rows) => {
+    const edges = new Uint8Array(width * height);
+    for (const y of rows) {
+      for (let x = 40; x < 600; x++) edges[y * width + x] = 255;
+    }
+    const hough = adapter.houghLineTransform({ width, height, edges }, 1, 1, 45);
+    const top = hough.lines.slice().sort((a, b) => b.votes - a.votes).slice(0, 120);
+    const merged = adapter.mergeParallelPeaks(top, 6, 24, frameDims);
+    const clipped = adapter.clipLinesToSupport(merged, { width, height, edges }, 2, 28);
+    return { merged: merged.length, segments: adapter.supportedSegments(clipped, width, height, 28).length };
+  };
+  const mirror = countSegments([80, 280]);
+  assert.equal(mirror.merged, 2, `mirror rows merged to ${mirror.merged} peaks`);
+  assert.equal(mirror.segments, 2, `mirror rows emitted ${mirror.segments} segments`);
+  const court = countSegments([36, 79, 162, 252, 317]);
+  assert.equal(court.merged, 5, `five-level court merged to ${court.merged} peaks`);
+  assert.equal(court.segments, 5, `five-level court emitted ${court.segments} segments`);
+  const shifted = countSegments([40, 85, 175, 265, 310]);
+  assert.equal(shifted.segments, 5, `shifted five-level court emitted ${shifted.segments} segments`);
+});
+
 test('detectCourtLines finds the synthetic court end to end', async () => {
   const frame = syntheticCourtFrame(640, 360);
   const result = await adapter.detectCourtLines(frame);

@@ -295,12 +295,16 @@
    * group, against the folded twin (180 - theta, -rho): wrap-seam
    * duplicates collapse through the folded comparison while the smears of
    * a single stroke merge back into their true peak through the native
-   * one. Distance is measured as the signed offset from the frame centre
-   * along the line normal (or from the corner origin when no frameSize is
-   * given): rho itself grows with distance from the origin, so an
-   * origin-anchored window splits the off-angle smears of long lines off
-   * their head. Peaks within angleGroupTol degrees AND distanceGroupTol
-   * pixels belong to one physical line; the strongest survives.
+   * one. The folded comparison only applies to pairs that straddle the
+   * 0/180 seam (one side within angleGroupTol of 0, the other within
+   * angleGroupTol of 180), so level lines mirror-symmetric about the
+   * frame centre stay distinct. Distance is measured as the signed offset
+   * from the frame centre along the line normal (or from the corner
+   * origin when no frameSize is given): rho itself grows with distance
+   * from the origin, so an origin-anchored window splits the off-angle
+   * smears of long lines off their head. Peaks within angleGroupTol
+   * degrees AND distanceGroupTol pixels belong to one physical line; the
+   * strongest survives.
    */
   function mergeParallelPeaks(lines, angleGroupTol, distanceGroupTol, frameSize) {
     const cx = frameSize ? frameSize.width / 2 : 0;
@@ -323,7 +327,10 @@
           placed = true;
           break;
         }
-        if (Math.abs(180 - item.line.thetaDeg - ref.line.thetaDeg) <= angleGroupTol &&
+        const straddlesSeam =
+          (item.line.thetaDeg <= angleGroupTol && ref.line.thetaDeg >= 180 - angleGroupTol) ||
+          (item.line.thetaDeg >= 180 - angleGroupTol && ref.line.thetaDeg <= angleGroupTol);
+        if (straddlesSeam &&
             Math.abs(item.offset + ref.offset) <= distanceGroupTol) {
           group.push(item);
           placed = true;
