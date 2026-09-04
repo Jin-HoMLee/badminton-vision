@@ -14,6 +14,7 @@
   // so the native player stays fully interactive; callers pass the reserve in
   // per-panel constraints (0 keeps the classic full-area behavior).
   var DEFAULT_CONTROLS_RESERVE = 0;
+  var OVERLAP_EPSILON = 1e-6;
 
   function finite(value, fallback) {
     return Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -178,8 +179,9 @@
       }, viewport, null, constraints || {});
     };
     var intersects = function (rect, other) {
-      return rect.left < other.left + other.width && other.left < rect.left + rect.width &&
-        rect.top < other.top + other.height && other.top < rect.top + rect.height;
+      var widthOverlap = Math.min(rect.left + rect.width, other.left + other.width) - Math.max(rect.left, other.left);
+      var heightOverlap = Math.min(rect.top + rect.height, other.top + other.height) - Math.max(rect.top, other.top);
+      return widthOverlap > OVERLAP_EPSILON && heightOverlap > OVERLAP_EPSILON;
     };
     var overlapsAny = function (rect) {
       for (var index = 0; index < openRects.length; index += 1) {

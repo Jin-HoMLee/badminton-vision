@@ -251,3 +251,50 @@ test("first-open placement never covers a free spot across occupant tops and hei
     }
   }
 });
+
+test("first-open placement takes the zero-slack flush spot between same-column occupants", async () => {
+  const api = await moduleApi("panel-layout.js", "BVPanelLayout");
+  const viewport = { width: 640, height: 560 };
+  const constraints = { minWidth: 240, minHeight: 96, maxWidth: 420, maxHeight: 480, bottomReserve: 72 };
+  const slot = { left: 336, top: 58, width: 288, height: 190 };
+  const overlaps = (a, b) =>
+    Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left) > 1e-6 &&
+    Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top) > 1e-6;
+  const pairOccupants = (left, flushTop) => [
+    { left, top: flushTop - 66, width: 288, height: 66 },
+    { left, top: flushTop + 190, width: 288, height: 60 }
+  ];
+  const blocker = { left: 16, top: 57, width: 288, height: 230 };
+  for (const flushTop of [122, 141, 188]) {
+    const occupants = pairOccupants(336, flushTop).concat([blocker]);
+    const placed = api.firstOpenPanelPlacement(viewport, constraints, slot, occupants, api.PANEL_MARGIN);
+    assert.ok(placed, `flush spot at ${flushTop} still places`);
+    assert.ok(Math.abs(placed.left - 336) < 1e-6, `flush spot at ${flushTop} stays in the default column (left ${placed.left})`);
+    assert.ok(Math.abs(placed.top - flushTop) < 1e-6, `flush spot at ${flushTop} is chosen over the clamped last resort (top ${placed.top})`);
+    for (const occupant of occupants) {
+      assert.equal(overlaps(placed, occupant), false, `flush spot at ${flushTop} covers no occupant`);
+    }
+    assert.ok(placed.top + placed.height <= viewport.height - 12 - 72 + 1e-9, `flush spot at ${flushTop} stays within bounds`);
+  }
+});
+
+test("first-open placement takes the zero-slack flush spot in the mirror column", async () => {
+  const api = await moduleApi("panel-layout.js", "BVPanelLayout");
+  const viewport = { width: 640, height: 560 };
+  const constraints = { minWidth: 240, minHeight: 96, maxWidth: 420, maxHeight: 480, bottomReserve: 72 };
+  const slot = { left: 336, top: 58, width: 288, height: 190 };
+  const overlaps = (a, b) =>
+    Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left) > 1e-6 &&
+    Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top) > 1e-6;
+  const occupants = [
+    { left: 16, top: 122, width: 288, height: 66 },
+    { left: 16, top: 378, width: 288, height: 60 },
+    { left: 336, top: 57, width: 288, height: 230 }
+  ];
+  const placed = api.firstOpenPanelPlacement(viewport, constraints, slot, occupants, api.PANEL_MARGIN);
+  assert.ok(placed, "the mirrored flush spot still places");
+  assert.ok(Math.abs(placed.left - 16) < 1e-6, `the mirrored flush spot uses the mirror column (left ${placed.left})`);
+  assert.ok(Math.abs(placed.top - 188) < 1e-6, `the mirrored flush spot at 188 is chosen over the clamped last resort (top ${placed.top})`);
+  for (const occupant of occupants) assert.equal(overlaps(placed, occupant), false, "the mirrored flush spot covers no occupant");
+  assert.ok(placed.top + placed.height <= viewport.height - 12 - 72 + 1e-9, "the mirrored flush spot stays within bounds");
+});
