@@ -5767,7 +5767,6 @@
       if (placed) return placed;
       return clampAt(startLeft, maxTop);
     }
-  
     return Object.freeze({
       PANEL_MARGIN: PANEL_MARGIN,
       PANEL_NUDGE: PANEL_NUDGE,
