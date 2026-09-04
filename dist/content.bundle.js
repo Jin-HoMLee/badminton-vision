@@ -8875,9 +8875,7 @@
     function seedCornerButton(index, layerMetrics) {
       var spot = markedCornerSpot(index);
       var anchor = { x: spot.x * layerMetrics.width, y: spot.y * layerMetrics.height };
-      var placement = seedCardApi && typeof seedCardApi.placeSeedCornerButton === "function"
-        ? seedCardApi.placeSeedCornerButton(anchor, layerMetrics, { height: SEED_CORNER_BUTTON_HEIGHT, reserve: PLAYER_CONTROLS_RESERVE })
-        : { left: anchor.x, right: null, top: Math.max(0, anchor.y - 25) };
+      var placement = seedCardApi.placeSeedCornerButton(anchor, layerMetrics, { height: SEED_CORNER_BUTTON_HEIGHT, reserve: PLAYER_CONTROLS_RESERVE });
       var style = { top: Math.max(0, Number(placement.top) || 0) + "px" };
       if (placement.left != null) style.left = placement.left + "px";
       else if (placement.right != null) style.right = placement.right + "px";
