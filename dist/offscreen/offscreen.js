@@ -86,9 +86,10 @@ const ShuttleAdapter = globalThis.BSOShuttleTrackingAdapter &&
     globalThis.BSOShuttleTrackingAdapter.ShuttleTrajectoryAdapter);
 // The cleared Apache-2.0 EfficientDet-Lite0 racket detector contributes real
 // COCO tennis-racket boxes to the production composition (see
-// vendor/efficientdet-lite0/MODEL-NOTICE.md). It is optional: when the
-// adapter or its artifact is absent the composition keeps the pose-derived
-// wrist/elbow proxy it used before, and racket failures never affect pose.
+// vendor/efficientdet-lite0/MODEL-NOTICE.md). It is optional: while the
+// adapter or its artifact is absent or cannot initialize (failed fetch or
+// compile) the composition keeps the pose-derived wrist/elbow proxy it used
+// before, and racket failures never affect pose.
 const RacketDetector = globalThis.BSOEfficientDetRacketAdapter &&
   globalThis.BSOEfficientDetRacketAdapter.EfficientDetRacketDetector;
 const OnnxInferenceAnalyzer = globalThis.BSOOnnxInferenceAdapter &&
@@ -288,10 +289,14 @@ class LocalPoseShuttleAnalyzer {
     if (!poseEnvelope) return null;
     this.lastMediaBySession.set(sessionId, mediaTime);
 
-    // Racket detection runs on the same accepted frame after pose. A real
-    // detector result (boxes or an honest unknown) replaces the pose-derived
-    // wrist/elbow proxy whenever the cleared EfficientDet-Lite0 artifact is
-    // available; failures never fail the frame and are surfaced as status.
+    // Racket detection runs on the same accepted frame after pose. The
+    // detector marks an envelope with its detectionMethod only after the
+    // model initialized and ran on the frame, so accepted detector evidence
+    // (real boxes, or an honest unknown when the run found no racket)
+    // replaces the pose-derived wrist/elbow proxy. While the artifact is
+    // absent or cannot initialize the detector emits no marked envelope and
+    // the proxy stays in place; failures never fail the frame and are
+    // surfaced as status.
     let racketResult = null;
     if (this.racketAnalyzer) {
       try {

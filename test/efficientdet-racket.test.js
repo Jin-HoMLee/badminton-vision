@@ -151,3 +151,58 @@ test('decode rejects malformed outputs and out-of-range parameters', () => {
   assert.throws(() => adapter.decodeEfficientDetOutput({ scores: new Float32Array(anchors.count * 90), boxes: new Float32Array(anchors.count * 4), confidenceThreshold: 1.5 }), /confidence threshold/);
   assert.throws(() => adapter.decodeEfficientDetOutput({ scores: new Float32Array(anchors.count * 90), boxes: new Float32Array(anchors.count * 4), classIndex: 90 }), /class index/);
 });
+
+function racketFrame() {
+  return { width: 2, height: 2, channels: 4, data: new Uint8Array(16) };
+}
+
+function emptyOutputs() {
+  // All-zero class logits decode to sigmoid 0.5 scores, below the 0.53
+  // threshold, so a successful run reports a frame without a racket.
+  return [
+    { shape: [1, 19206, 90], toTypedArray: () => new Float32Array(19206 * 90) },
+    { shape: [1, 19206, 4], toTypedArray: () => new Float32Array(19206 * 4) }
+  ];
+}
+
+test('a failed racket-model compile never marks detector output as a completed run', async () => {
+  const runtime = {
+    loaded: true,
+    async loadAndCompile() { throw new Error('model-compile-failed'); }
+  };
+  const detector = new adapter.EfficientDetRacketDetector({ runtime, backendOrder: ['wasm'], onStatus: () => {} });
+  const initialized = await detector.initialize();
+  assert.equal(initialized.available, false);
+  assert.match(initialized.reason, /model-compile-failed/);
+  // The per-frame envelope for an artifact that cannot run must not carry the
+  // detectionMethod marker: the composition keeps the wrist/elbow proxy for
+  // such frames instead of mistaking the failure for an honest empty run.
+  const envelope = await detector.analyze({ sessionId: 'init-failure', requestId: 'init-failure:1', mediaTime: 1, frame: racketFrame() });
+  assert.equal(envelope.state, 'unknown');
+  assert.equal(envelope.detectionMethod, null);
+  assert.deepEqual(envelope.detections, []);
+  assert.match(envelope.reason, /model-compile-failed/);
+  detector.dispose();
+});
+
+test('a completed run without racket boxes keeps the authoritative marker', async () => {
+  class FakeTensor {
+    constructor(data, shape) { this.data = data; this.shape = shape; }
+  }
+  const runtime = {
+    loaded: true,
+    Tensor: FakeTensor,
+    async loadAndCompile() {
+      return { async run() { return emptyOutputs(); } };
+    }
+  };
+  const detector = new adapter.EfficientDetRacketDetector({ runtime, backendOrder: ['wasm'], onStatus: () => {} });
+  const envelope = await detector.analyze({ sessionId: 'empty-run', requestId: 'empty-run:1', mediaTime: 1, frame: racketFrame() });
+  // The model initialized and the frame ran; an empty result is honest
+  // detector evidence, distinct from an unavailable model.
+  assert.equal(envelope.state, 'unknown');
+  assert.equal(envelope.detectionMethod, 'efficientdet-lite0-tennis-racket');
+  assert.deepEqual(envelope.detections, []);
+  assert.equal(envelope.reason, 'no-tennis-racket-detection');
+  detector.dispose();
+});

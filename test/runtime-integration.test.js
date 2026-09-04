@@ -310,6 +310,45 @@ test('composition keeps the pose proxy only when no racket analyzer runs, and ne
   assert.ok(Array.isArray(proxyResult.result.racket.hands) && proxyResult.result.racket.hands.length === 1, 'degraded fallback keeps the wrist/elbow proxy');
 });
 
+test('composition keeps the pose proxy when the racket artifact is present but cannot initialize', async () => {
+  const context = loadOffscreen({ runtime: {} }, { withProduction: true });
+  const poseIdentity = { id: 'lightweight-openpose-lite-256-v1', version: 1, kind: 'local-litert-tflite-multipose', productionModel: true };
+  const shuttleIdentity = { id: 'local-shuttle-frame-difference-v1', version: 1, kind: 'bounded-temporal-pixel-heuristic', productionModel: false };
+  const pose = {
+    identity: poseIdentity,
+    async initialize() { return { available: true, backend: 'wasm' }; },
+    async analyze(sample) {
+      const players = [{
+        trackId: 1,
+        state: 'tracked',
+        bbox: { x: .1, y: .2, width: .2, height: .4 },
+        keypoints: [{ name: 'right_wrist', x: .31, y: .28, confidence: .9 }, { name: 'right_elbow', x: .4, y: .3, confidence: .9 }]
+      }];
+      return protocol.createAnalyzerResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, analyzer: poseIdentity.id, analyzerIdentity: poseIdentity, inferenceAvailable: true, result: { kind: 'lightweight-openpose', productionModel: true, state: 'tracked', players, tracking: { state: 'tracked', accepted: true, players } } });
+    }
+  };
+  const shuttle = { identity: shuttleIdentity, async analyze() { return null; } };
+  // A racket detector whose artifact cannot start (fetch/compile failure)
+  // emits no detectionMethod-marked envelope, exactly like the adapter on
+  // initialize() failure; the composition must keep the wrist/elbow proxy.
+  const stuckRacket = {
+    identity: { id: 'efficientdet-lite0-racket-v1', version: 1, kind: 'local-litert-tflite-racket-detector' },
+    async initialize() { return { available: false, reason: 'model-compile-failed', fallbacks: ['backend-wasm-unavailable'] }; },
+    async analyze(sample) {
+      return { state: 'unknown', confidence: null, detections: [], detectionMethod: null, reason: 'model-compile-failed', sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime };
+    }
+  };
+  const composite = new context.BSOOffscreenAnalyzer.LocalPoseShuttleAnalyzer({ poseAnalyzer: pose, shuttleAnalyzer: shuttle, racketAnalyzer: stuckRacket });
+  const initialized = await composite.initialize();
+  assert.equal(initialized.available, true, 'pose availability is unaffected by a racket init failure');
+  assert.equal(initialized.racketAvailable, false);
+  const envelope = await composite.analyze({ sessionId: 'proxy-init-failure', requestId: 'r1', mediaTime: 1, frame: frame() });
+  assert.equal(envelope.result.racket.state, 'partial');
+  assert.equal(envelope.result.racket.detectionMethod, undefined, 'no authoritative detector envelope replaces the proxy');
+  assert.ok(Array.isArray(envelope.result.racket.hands) && envelope.result.racket.hands.length === 1, 'the wrist/elbow proxy stays while the artifact cannot run');
+  assert.equal(envelope.result.evidence.racket.available, false);
+});
+
 test('composition survives a failing racket analyzer without failing the frame', async () => {
   const context = loadOffscreen({ runtime: {} }, { withProduction: true });
   const poseIdentity = { id: 'lightweight-openpose-lite-256-v1', version: 1, kind: 'local-litert-tflite-multipose', productionModel: true };
