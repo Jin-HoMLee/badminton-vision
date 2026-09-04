@@ -5712,6 +5712,8 @@
       var startLeft = finite(slot.left, 0);
       var startTop = finite(slot.top, 0);
       var stepGap = Math.max(0, finite(gap, PANEL_MARGIN));
+      var area = bounds(viewport, constraints || {});
+      var maxTop = Math.max(area.margin, area.height - height - area.margin - area.bottomReserve);
       var openRects = [];
       (occupants || []).forEach(function (occupant) {
         if (!occupant) return;
@@ -5733,27 +5735,35 @@
         return rect.left < other.left + other.width && other.left < rect.left + rect.width &&
           rect.top < other.top + other.height && other.top < rect.top + rect.height;
       };
-      var attempt = function (left) {
-        var rect = clampAt(left, startTop);
-        var best = rect;
-        for (var guard = 0; guard < 6; guard += 1) {
-          var below = -1;
-          for (var index = 0; index < openRects.length; index += 1) {
-            if (intersects(rect, openRects[index])) below = Math.max(below, openRects[index].top + openRects[index].height);
-          }
-          if (below < rect.top) return { placed: rect };
-          var next = clampAt(left, below + stepGap);
-          if (next.top <= rect.top) return { blocked: best };
-          rect = next;
-          best = rect;
+      var overlapsAny = function (rect) {
+        for (var index = 0; index < openRects.length; index += 1) {
+          if (intersects(rect, openRects[index])) return true;
         }
-        return { blocked: best };
+        return false;
       };
-      var primary = attempt(startLeft);
-      if (primary.placed) return primary.placed;
-      var mirrored = attempt(areaWidth - (startLeft + width));
-      if (mirrored.placed) return mirrored.placed;
-      return primary.blocked || { left: startLeft, top: startTop, width: width, height: height };
+      var clippedTop = function (top) { return Math.min(maxTop, Math.max(area.margin, top)); };
+      var boundaryTops = function (withGap) {
+        var tops = [];
+        for (var index = 0; index < openRects.length; index += 1) {
+          var occupant = openRects[index];
+          tops.push(clippedTop(occupant.top + occupant.height + (withGap ? stepGap : 0)));
+          tops.push(clippedTop(occupant.top - height - (withGap ? stepGap : 0)));
+        }
+        return tops.sort(function (a, b) { return a - b; });
+      };
+      var search = function (left, tops) {
+        for (var index = 0; index < tops.length; index += 1) {
+          var rect = clampAt(left, tops[index]);
+          if (!overlapsAny(rect)) return rect;
+        }
+        return null;
+      };
+      var gapPass = [startTop, area.margin].concat(boundaryTops(true), [maxTop]);
+      var flushPass = boundaryTops(false);
+      var mirrorLeft = areaWidth - (startLeft + width);
+      var placed = search(startLeft, gapPass) || search(mirrorLeft, gapPass) || search(startLeft, flushPass) || search(mirrorLeft, flushPass);
+      if (placed) return placed;
+      return clampAt(startLeft, maxTop);
     }
   
     return Object.freeze({

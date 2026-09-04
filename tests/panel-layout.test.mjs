@@ -187,3 +187,67 @@ test("first-open placement never covers an occupant while any free spot exists",
     }
   }
 });
+
+test("first-open placement searches the free region above a mid-column occupant", async () => {
+  const api = await moduleApi("panel-layout.js", "BVPanelLayout");
+  const viewport = { width: 640, height: 560 };
+  const constraints = { minWidth: 240, minHeight: 96, maxWidth: 420, maxHeight: 480, bottomReserve: 72 };
+  const slot = { left: 336, top: 58, width: 288, height: 190 };
+  const intersects = (a, b) => a.left < b.left + b.width && b.left < a.left + a.width && a.top < b.top + b.height && b.top < a.top + a.height;
+  // The default column's feed is dragged mid-column and the left column is
+  // fully blocked: the only free spot is above the feed, at the top margin.
+  const feed = { left: 336, top: 210, width: 288, height: 160 };
+  const stats = { left: 16, top: 58, width: 288, height: 230 };
+  const placed = api.firstOpenPanelPlacement(viewport, constraints, slot, [feed, stats], api.PANEL_MARGIN);
+  assert.ok(placed, "a mid-column occupant still places");
+  assert.ok(Math.abs(placed.left - 336) < 1e-6, `settings stays in the default column above the feed (left ${placed.left})`);
+  assert.ok(Math.abs(placed.top - 12) < 1e-6, `settings opens at the top margin (top ${placed.top})`);
+  assert.equal(intersects(placed, feed), false, "the above-occupant spot never covers the dragged feed");
+  assert.equal(intersects(placed, stats), false, "the above-occupant spot never covers the stats panel");
+  assert.ok(placed.top + placed.height <= viewport.height - 12 - 72 + 1e-9, "the above-occupant spot stays within bounds");
+  // Mirrored: the left column's stats are dragged mid-column and the default
+  // column is blocked, so the free spot is above stats at the top margin.
+  const draggedStats = { left: 16, top: 210, width: 288, height: 160 };
+  const defaultFeed = { left: 336, top: 16, width: 288, height: 330 };
+  const mirrored = api.firstOpenPanelPlacement(viewport, constraints, slot, [defaultFeed, draggedStats], api.PANEL_MARGIN);
+  assert.ok(mirrored, "the mirrored mid-column occupant still places");
+  assert.ok(Math.abs(mirrored.left - 16) < 1e-6, `settings uses the opposite column above the occupant (left ${mirrored.left})`);
+  assert.ok(Math.abs(mirrored.top - 12) < 1e-6, `the mirrored above-occupant spot sits at the top margin (top ${mirrored.top})`);
+  assert.equal(intersects(mirrored, draggedStats), false, "the mirrored spot never covers the dragged stats panel");
+  assert.equal(intersects(mirrored, defaultFeed), false, "the mirrored spot never covers the feed panel");
+});
+
+test("first-open placement never covers a free spot across occupant tops and heights", async () => {
+  const api = await moduleApi("panel-layout.js", "BVPanelLayout");
+  const viewport = { width: 640, height: 560 };
+  const constraints = { minWidth: 240, minHeight: 96, maxWidth: 420, maxHeight: 480, bottomReserve: 72 };
+  const slot = { left: 336, top: 58, width: 288, height: 190 };
+  const intersects = (a, b) => a.left < b.left + b.width && b.left < a.left + a.width && a.top < b.top + b.height && b.top < a.top + a.height;
+  const freeSpotExists = (occupants) => {
+    for (const left of [336, 16]) {
+      for (let top = 12; top <= 286; top += 1) {
+        const rect = { left, top, width: 288, height: 190 };
+        if (!occupants.some((occupant) => intersects(rect, occupant))) return true;
+      }
+    }
+    return false;
+  };
+  // Sweep both occupants' tops (dragged positions included) and heights.
+  for (const feedTop of [16, 120, 210]) {
+    for (const feedHeight of [160, 240, 330]) {
+      for (const statsTop of [58, 150, 240]) {
+        for (const statsHeight of [160, 210, 240]) {
+          const feed = { left: 336, top: feedTop, width: 288, height: feedHeight };
+          const stats = { left: 16, top: statsTop, width: 288, height: statsHeight };
+          const placed = api.firstOpenPanelPlacement(viewport, constraints, slot, [feed, stats], api.PANEL_MARGIN);
+          assert.ok(placed, `feed t=${feedTop} h=${feedHeight}, stats t=${statsTop} h=${statsHeight} always places`);
+          assert.ok(placed.top + placed.height <= viewport.height - 12 - 72 + 1e-9, `bounds hold for feed t=${feedTop} h=${feedHeight}, stats t=${statsTop} h=${statsHeight}`);
+          if (freeSpotExists([feed, stats])) {
+            assert.equal(intersects(placed, feed) || intersects(placed, stats), false,
+              `free spot exists for feed t=${feedTop} h=${feedHeight}, stats t=${statsTop} h=${statsHeight} but the placement overlaps`);
+          }
+        }
+      }
+    }
+  }
+});

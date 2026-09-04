@@ -40,12 +40,15 @@ camera-cut reseed (`!(state.seeding && state.cameraCut)` in `render()`).
 - First-open placement ladder: a settings panel with **no saved layout** for
   the video is placed by `BVPanelLayout.firstOpenPanelPlacement()` (the pure
   geometry search in `src/panel-layout.js`, fed the open-panel rects by
-  `settingsFirstOpenPlacement()` in `src/content.js`): (1) its CSS default
-  slot (right edge, `top: 58px`); (2) stacked below the occupant (occupant
-  bottom + a 12px gap, clamped to the overlay bounds; a clamped spot is
-  accepted whenever it clears the occupant); (3) the opposite column, trying
-  its default slot and then the same below-occupant stacking; (4) only then
-  the clamped last-resort placement of the default column. The placement is
+  `settingsFirstOpenPlacement()` in `src/content.js`). For each column
+  (default, then the opposite) it evaluates a boundary-derived candidate set
+  — the CSS top slot, the top margin, the lower bound, and for every open
+  panel the spot just below it (occupant bottom + a 12px gap) and just above
+  it (occupant top − panel height − the gap) — each clipped to the overlay
+  bounds and checked on its effective rect against every open panel, so a
+  dragged mid-column panel is never covered when the region above or below
+  it is free. The clamped last-resort placement of the default column is used
+  only when no candidate is overlap-free in either column. The placement is
   recomputed deterministically per render and is never persisted (no
   `SET_PANEL_LAYOUT` write), so a saved drag always wins and a later open
   with the slot free returns to the CSS default. When no free placement
