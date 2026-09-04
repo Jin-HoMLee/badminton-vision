@@ -217,6 +217,25 @@ visibility as per-keypoint confidence; z is never treated as a confidence
 score. The TF.js adapters accept the serializable RGBA frame transport
 (stable Chrome) as well as ImageBitmap frames.
 
+### One WebGPU device per offscreen document
+
+LiteOpenPose re-initializes on a fresh analyzer every time the user switches
+back to it, because the switcher disposes the previous LiteOpenPose analyzer
+when a TF.js model takes over. Chrome returns a distinct `GPUDevice` object for
+every `requestDevice()` call, and LiteRT's wasm GPU session keeps resources
+bound to the first environment's device, so a re-init that requests a second
+device straddles two devices: every `model.run` then submits invalid command
+buffers (`[Buffer] is associated with [Device], and cannot be used with
+[Device]` during `CreateBindGroup`) and silently decodes zero poses - no
+exception, no failed initialize, an `ok:true` switch that simply stops
+detecting. The adapter therefore requests exactly ONE WebGPU device per
+`navigator.gpu` object (cached, promise-safe, cleared when the device is
+lost) and reuses it across analyzer instances; each analyzer still compiles
+its own model. `test/lite-openpose-adapter.test.js` pins the round trip
+(init -> dispose -> init must not call `requestDevice` twice); the live
+extension verified the cross-device validation errors vanish and pose
+observations resume after the switch-back.
+
 ## Shuttle candidate composition
 
 `offscreen/shuttle-tracking-adapter.js` is the bounded model-neutral shuttle

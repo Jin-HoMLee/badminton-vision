@@ -333,12 +333,44 @@
       .sort((a, b) => a.bbox.x - b.bbox.x || a.bbox.y - b.bbox.y);
   }
 
+  // LiteRT keeps one GPU environment per document and its wasm delegate binds
+  // GPU buffers to the environment's device. Chrome returns a distinct
+  // GPUDevice object on every requestDevice() call, so requesting a second
+  // device after a pose-model switch leaves buffers and bind-group layouts
+  // straddling two devices: every run then submits invalid command buffers
+  // and silently decodes zero poses (verified in the live extension: "[Buffer]
+  // is associated with [Device], and cannot be used with [Device]" during
+  // CreateBindGroup on re-init). Cache ONE device per GPU object (one per
+  // offscreen document) and reuse it across analyzer instances; a lost device
+  // clears the cache so a genuinely dead GPU can still recover. The cache is
+  // keyed by the gpu object rather than held in a module global so analyzer
+  // instances that share a document (or a test environment) share exactly one
+  // device while independent environments never leak devices into each other.
+  const webGpuDevices = new WeakMap();
+
   async function webGpuDevice(environment) {
     const gpu = environment?.navigator?.gpu;
     if (!gpu || typeof gpu.requestAdapter !== 'function') throw new Error('WebGPU unavailable');
-    const adapter = await gpu.requestAdapter();
-    if (!adapter || typeof adapter.requestDevice !== 'function') throw new Error('WebGPU adapter unavailable');
-    return adapter.requestDevice();
+    const cached = webGpuDevices.get(gpu);
+    if (cached) return cached;
+    const pending = (async () => {
+      const adapter = await gpu.requestAdapter();
+      if (!adapter || typeof adapter.requestDevice !== 'function') throw new Error('WebGPU adapter unavailable');
+      const device = await adapter.requestDevice();
+      if (device && typeof device.lost?.then === 'function') {
+        device.lost.then(() => {
+          if (webGpuDevices.get(gpu) === pending) webGpuDevices.delete(gpu);
+        });
+      }
+      return device;
+    })();
+    webGpuDevices.set(gpu, pending);
+    try {
+      return await pending;
+    } catch (error) {
+      webGpuDevices.delete(gpu);
+      throw error;
+    }
   }
 
   function normalizeBackendResult(name, result) {
