@@ -7969,7 +7969,7 @@
                 stopHoughDetectionLoop();
                 return;
               }
-              console.error("Hough detection error:", chrome.runtime.lastError);
+              console.error("Hough detection error:", errorMsg);
               return;
             }
             if (!response) {
