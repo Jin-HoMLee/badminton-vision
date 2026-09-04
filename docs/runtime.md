@@ -170,8 +170,10 @@ describes the model and output shape but does not state a license, and the
 TensorFlow.js MoveNet repository's Apache-2.0 notice covers its adapter source,
 not necessarily Google's separately distributed weights. Until Google provides
 an explicit weight redistribution grant or a model package with a clear license
-and attribution notice, adding `model.json` or weight shards would violate the
-launch brief's licensing gate. Do not replace this gate with a CDN URL.
+and attribution notice, the extension must not bundle `model.json` or weight
+shards into the package. MoveNet therefore runs by fetching its checkpoint
+from TensorFlow Hub at run time instead of shipping it (see
+`vendor/tfjs/README.md` for that path).
 
 ## Pose model switcher and TensorFlow.js runtime
 
@@ -179,11 +181,15 @@ The offscreen document bundles the Apache-2.0 TensorFlow.js runtime
 (`@tensorflow/tfjs` 4.22.0 `tf.min.js`, with CPU and WebGL backends) under
 `vendor/tfjs/`; provenance, license, and SHA-256 are recorded in
 `vendor/tfjs/README.md`. No model weights are bundled there: LiteOpenPose is
-the only shipped pose checkpoint. MoveNet and BlazePose graph checkpoints
-remain behind the same licensing gate as above (a vendored artifact requires a
-clear redistribution grant plus a recorded source/checksum notice), and both
-adapters report their model as unavailable until an operator vendors the
-cleared artifact beside the others under `vendor/`.
+the only shipped pose checkpoint. MoveNet's graph checkpoint loads directly
+from TensorFlow Hub at run time (`https://tfhub.dev/...`, `fromTFHub: true`)
+when the TF.js runtime is present, so no artifact needs vendoring for it to
+run. BlazePose is **work in progress**: switching to it can freeze pose
+detection (no other model can be re-enabled without reloading the extension or
+the tab). Until that switch-back defect is fixed, its selector entry is marked
+`workInProgress` and every activation path refuses it with the
+`pose-model-work-in-progress` reason instead of loading it; its adapter code
+and tests stay in place for when the wedge is fixed.
 
 `offscreen/pose-model-selector.js` owns the live pose model selection. When
 the production composition (pose + shuttle) is active, the popup's **Pose
@@ -197,13 +203,24 @@ that is mid-frame). A model whose runtime, adapter, or local artifact is
 missing is refused with `ok:false` and never displaces the active analyzer.
 Availability is reported per model (analyzer namespace + LiteRT loader or
 TensorFlow.js presence + a reachable local `model.json`), and the popup
-disables unavailable options instead of advertising models that cannot run.
+disables unavailable options instead of advertising models that cannot run
+(remote `https://` artifact URLs skip the fetch reachability test). The
+BlazePose entry is special: its availability probe short-circuits with the
+work-in-progress reason before any adapter, runtime, or artifact check, so no
+environment state can make it look selectable. The popup renders that entry
+grayed out with a "(work in progress)" label and a tooltip explaining the
+freeze risk instead of hiding it, so the model stays visible until it is
+fixed.
 
 The committed model id is stored under the `bvSelectedPoseModel` key and is
 only written when a switch actually activates. The preference is re-applied at
 every `session.start` (the service worker can recreate the offscreen document
 mid-session), and a stored model that cannot activate falls back to the
-production default and converges the stored key back to it. Switching models
+production default and converges the stored key back to it. That includes any
+stored BlazePose preference: it is refused with the work-in-progress reason
+even when its checkpoint would load, so a reload can never re-wedge pose
+detection by re-selecting BlazePose. The popup applies the same fallback when
+it hydrates a stored `bvSelectedPoseModel`. Switching models
 mid-session starts a fresh player-association timeline for the new model
 (identity continuity is per-model); the media-time watermark and shuttle
 component are model-neutral and continue uninterrupted. Results carry the

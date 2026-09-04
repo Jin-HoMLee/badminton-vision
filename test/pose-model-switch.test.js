@@ -198,7 +198,7 @@ test('a popup model switch swaps the analyzer serving live frames mid-session', 
 
 test('a switch to a model whose artifact is not bundled is refused and keeps the active model', async () => {
   const harness = createHarness(); // every artifact probe 404s
-  const response = await sendAction(harness, 'switchPoseModel', 'blazepose-tfjs-heavy-v1');
+  const response = await sendAction(harness, 'switchPoseModel', 'movenet-multipose-lightning-v1');
   assert.equal(response.ok, false);
   assert.equal(response.reason, 'pose-model-artifacts-not-bundled');
   assert.equal(harness.storage.bvSelectedPoseModel, null);
@@ -207,6 +207,21 @@ test('a switch to a model whose artifact is not bundled is refused and keeps the
   harness.onMessage.emit(frameSample('switch-refused', 'switch-refused:1', 1), {}, () => {});
   await flush();
   const result = harness.sent.find((message) => message.type === protocol.TYPES.ANALYZER_RESULT && message.requestId === 'switch-refused:1');
+  assert.equal(result.analyzer, 'lightweight-openpose-lite-256-v1');
+});
+
+test('a switch to the work-in-progress BlazePose model is refused even when its artifact loads', async () => {
+  const harness = createHarness({ fetchImpl: async () => ({ ok: true, status: 200 }) });
+  const response = await sendAction(harness, 'switchPoseModel', 'blazepose-tfjs-heavy-v1');
+  assert.equal(response.ok, false);
+  assert.equal(response.reason, 'pose-model-work-in-progress');
+  assert.equal(response.modelId, 'blazepose-tfjs-heavy-v1');
+  assert.equal(harness.storage.bvSelectedPoseModel, null);
+  harness.onMessage.emit(sessionStart('wip-refused'), {}, () => {});
+  await flush();
+  harness.onMessage.emit(frameSample('wip-refused', 'wip-refused:1', 1), {}, () => {});
+  await flush();
+  const result = harness.sent.find((message) => message.type === protocol.TYPES.ANALYZER_RESULT && message.requestId === 'wip-refused:1');
   assert.equal(result.analyzer, 'lightweight-openpose-lite-256-v1');
 });
 
@@ -227,9 +242,25 @@ test('the stored pose-model preference is re-applied when a session starts', asy
   assert.equal(harness.storage.bvSelectedPoseModel, 'movenet-multipose-lightning-v1');
 });
 
-test('an unavailable stored preference converges back to the production default at session start', async () => {
-  const harness = createHarness({ storedModel: 'blazepose-tfjs-heavy-v1' }); // artifact probe 404s
+test('an unavailable stored pose-model preference converges back to the production default at session start', async () => {
+  const harness = createHarness({ storedModel: 'movenet-multipose-lightning-v1' }); // artifact probe 404s
   harness.onMessage.emit(sessionStart('converged'), {}, () => {});
+  await flush();
+  const report = harness.sent.find((message) => message.type === protocol.TYPES.CAPABILITY_REPORT);
+  assert.equal(report.capabilities.analyzer, 'lightweight-openpose-lite-256-v1');
+  assert.equal(harness.storage.bvSelectedPoseModel, 'lightweight-openpose-lite-256-v1');
+});
+
+test('a stored work-in-progress preference is refused and converges to the production default at session start', async () => {
+  // BlazePose's artifact loads (fetch all-200), so without the work-in-progress
+  // gate this stored preference would re-activate BlazePose on every reload
+  // and re-wedge pose detection. The gate must refuse it and converge the
+  // stored key back to the production default.
+  const harness = createHarness({
+    storedModel: 'blazepose-tfjs-heavy-v1',
+    fetchImpl: async () => ({ ok: true, status: 200 })
+  });
+  harness.onMessage.emit(sessionStart('wip-converged'), {}, () => {});
   await flush();
   const report = harness.sent.find((message) => message.type === protocol.TYPES.CAPABILITY_REPORT);
   assert.equal(report.capabilities.analyzer, 'lightweight-openpose-lite-256-v1');
@@ -250,5 +281,5 @@ test('getAvailablePoseModels reports per-model availability and the active model
   assert.equal(byId['lightweight-openpose-lite-256-v1'].available, true);
   assert.equal(byId['movenet-multipose-lightning-v1'].available, true);
   assert.equal(byId['blazepose-tfjs-heavy-v1'].available, false);
-  assert.equal(byId['blazepose-tfjs-heavy-v1'].reason, 'pose-model-artifacts-not-bundled');
+  assert.equal(byId['blazepose-tfjs-heavy-v1'].reason, 'pose-model-work-in-progress');
 });

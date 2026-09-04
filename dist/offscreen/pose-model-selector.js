@@ -8,10 +8,13 @@
 
   /**
    * Available pose models. The production model is LiteOpenPose (cleared for
-   * redistribution and bundled). MoveNet and BlazePose are additional options
-   * whose TensorFlow.js graph checkpoints are not bundled (see the artifact
-   * release gates in docs/runtime.md); their adapters report the models as
-   * unavailable until cleared, licensed artifacts are vendored locally.
+   * redistribution and bundled). MoveNet is an additional TensorFlow.js
+   * option whose graph checkpoint loads from TensorFlow Hub (not bundled).
+   * BlazePose is marked work-in-progress: its menu entry stays listed and its
+   * adapter stays loadable for later testing, but availability probes, model
+   * switches, and stored preferences all refuse it until the freeze-on-switch
+   * defect is fixed, because activating it can wedge pose detection until the
+   * extension or the tab is reloaded.
    */
   const AVAILABLE_MODELS = Object.freeze({
     'lightweight-openpose-lite-256-v1': {
@@ -42,11 +45,29 @@
       analyzerClass: 'BlazePoseAnalyzer',
       licenseStatus: 'cleared-for-redistribution',
       runtimeKind: 'tensorflowjs',
-      isProduction: false
+      isProduction: false,
+      // Work in progress: switching to BlazePose can freeze pose detection
+      // until the extension or the tab is reloaded, so it must never become
+      // the active analyzer. The entry stays listed (the UI renders it grayed
+      // out with this reason) and the adapter stays loadable for testing
+      // once the switch-back wedge is fixed.
+      workInProgress: true
     }
   });
 
   const DEFAULT_MODEL = 'lightweight-openpose-lite-256-v1';
+
+  /**
+   * Availability reason shared by every refusal path for work-in-progress
+   * models. The UI renders such an entry as a disabled option carrying a
+   * "work in progress" explanation instead of hiding it.
+   */
+  const WORK_IN_PROGRESS_REASON = 'pose-model-work-in-progress';
+
+  function isWorkInProgress(modelId) {
+    const config = AVAILABLE_MODELS[modelId];
+    return Boolean(config && config.workInProgress);
+  }
 
   /**
    * Each adapter installs one analyzer namespace under a distinct global key.
@@ -144,6 +165,11 @@
    * UI lists: adapter-class presence alone never marks a model usable.
    */
   async function probePoseModelAvailability(modelId, environment = defaultEnvironment) {
+    if (isWorkInProgress(modelId)) {
+      // Work-in-progress models are refused before any adapter, runtime, or
+      // artifact check, so no environment state can make them look selectable.
+      return { modelId, available: false, reason: WORK_IN_PROGRESS_REASON };
+    }
     const binding = adapterBinding(modelId, environment);
     if (!binding) {
       return { modelId, available: false, reason: 'pose-analyzer-not-loaded' };
@@ -193,8 +219,10 @@
       const runtime = runtimeAvailableFor(config, environment);
       models.push({
         ...config,
-        available: Boolean(analyzerClass) && runtime.available,
-        reason: !analyzerClass ? 'pose-analyzer-not-loaded' : runtime.reason
+        available: !isWorkInProgress(modelId) && Boolean(analyzerClass) && runtime.available,
+        reason: isWorkInProgress(modelId)
+          ? WORK_IN_PROGRESS_REASON
+          : (!analyzerClass ? 'pose-analyzer-not-loaded' : runtime.reason)
       });
     }
     return models;
@@ -289,12 +317,17 @@
 
       try {
         if (!AVAILABLE_MODELS[initialModelId]) throw new Error(`Unknown pose model: ${initialModelId}`);
-        this.currentAnalyzer = this._createAnalyzer(initialModelId);
+        // A work-in-progress model must never boot as the active analyzer,
+        // even when named directly as the initial model: it falls back to the
+        // production default, matching the session-start preference path.
+        const startModelId = isWorkInProgress(initialModelId) ? DEFAULT_MODEL : initialModelId;
+        this.currentAnalyzer = this._createAnalyzer(startModelId);
         this.identity = this.currentAnalyzer?.identity || {
-          id: initialModelId,
+          id: startModelId,
           kind: 'pose-model-switcher',
           version: 1
         };
+        this.modelId = startModelId;
       } catch (error) {
         this.currentAnalyzer = null;
         this.modelId = DEFAULT_MODEL;
@@ -341,6 +374,12 @@
         const reason = `Unknown model: ${modelId}`;
         this.onModelChange({ modelId, ok: false, reason });
         return { ok: false, modelId, reason, prepared: null, alreadyActive: false };
+      }
+      if (isWorkInProgress(modelId)) {
+        // Refuse before creating or initializing anything: a work-in-progress
+        // model must never be prepared while the switch-back wedge is open.
+        this.onModelChange({ modelId, ok: false, reason: WORK_IN_PROGRESS_REASON });
+        return { ok: false, modelId, reason: WORK_IN_PROGRESS_REASON, prepared: null, alreadyActive: false };
       }
       if (modelId === this.modelId && this.currentAnalyzer) {
         return { ok: true, modelId, prepared: null, alreadyActive: true, message: 'Model already active' };
@@ -426,6 +465,11 @@
       }
       if (!AVAILABLE_MODELS[modelId]) {
         return { ok: false, modelId, reason: `Unknown model: ${modelId}` };
+      }
+      if (isWorkInProgress(modelId)) {
+        // Synchronous alias: same gate as prepareModel/activateModel so no
+        // entry point can activate a work-in-progress model.
+        return { ok: false, modelId, reason: WORK_IN_PROGRESS_REASON };
       }
       try {
         const next = this._createAnalyzer(modelId);

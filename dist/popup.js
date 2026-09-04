@@ -34,6 +34,34 @@
     { id: "racket", label: "Racket evidence", health: "unavailable", note: "not in MVP", on: false, disabled: true }
   ];
 
+  // Pose-model selector catalog, mirrored from the offscreen selector's
+  // AVAILABLE_MODELS ids. Entries marked wip stay listed in the menu but are
+  // grayed out and cannot be chosen: switching to them can freeze pose
+  // detection until the extension or the tab is reloaded, so they remain
+  // disabled until that defect is fixed.
+  var POSE_MODEL_ENTRIES = [
+    { value: "lightweight-openpose-lite-256-v1", label: "Lightweight OpenPose (Production)" },
+    { value: "movenet-multipose-lightning-v1", label: "MoveNet MultiPose Lightning" },
+    { value: "blazepose-tfjs-heavy-v1", label: "BlazePose Heavy", wip: true }
+  ];
+  var POSE_MODEL_WIP_REASON = "pose-model-work-in-progress";
+  var DEFAULT_POSE_MODEL = "lightweight-openpose-lite-256-v1";
+  function poseModelEntry(value) {
+    for (var index = 0; index < POSE_MODEL_ENTRIES.length; index += 1) {
+      if (POSE_MODEL_ENTRIES[index].value === value) return POSE_MODEL_ENTRIES[index];
+    }
+    return null;
+  }
+  function isWipPoseModel(value) {
+    var entry = poseModelEntry(value);
+    return Boolean(entry && entry.wip);
+  }
+  // A stored pose-model preference naming a work-in-progress model must never
+  // re-select it; it falls back to the production default model.
+  function selectablePoseModel(value) {
+    return isWipPoseModel(value) ? DEFAULT_POSE_MODEL : value;
+  }
+
   function chromeAvailable() { return typeof chrome !== "undefined"; }
   function persist() {
     if (!chromeAvailable() || !chrome.storage || !chrome.storage.local) return;
@@ -422,9 +450,10 @@
 
     // Model selector section for pose detection
     var modelSelectHandler = function (event) {
-      var previousModel = state.selectedPoseModel || "lightweight-openpose-lite-256-v1";
+      var previousModel = state.selectedPoseModel || DEFAULT_POSE_MODEL;
       var selectedModel = event.target.value;
       if (!selectedModel || selectedModel === previousModel) return;
+      if (isWipPoseModel(selectedModel)) return; // Work-in-progress options are disabled; refuse programmatic selections too.
       state.selectedPoseModel = selectedModel;
       modelSwitchNotice = null;
       persist();
@@ -447,29 +476,35 @@
         });
       }
     };
-    var POSE_MODEL_IDS = [
-      { value: 'lightweight-openpose-lite-256-v1', label: 'Lightweight OpenPose (Production)' },
-      { value: 'movenet-multipose-lightning-v1', label: 'MoveNet MultiPose Lightning' },
-      { value: 'blazepose-tfjs-heavy-v1', label: 'BlazePose Heavy' }
-    ];
     var availabilityById = {};
     if (poseModelReport && Array.isArray(poseModelReport.models)) {
       poseModelReport.models.forEach(function (model) { availabilityById[model.id] = model; });
     }
-    var modelOptions = POSE_MODEL_IDS.map(function (opt) {
+    var modelOptions = POSE_MODEL_ENTRIES.map(function (opt) {
       var known = availabilityById[opt.value];
-      var disabled = Boolean(known && !known.available && state.selectedPoseModel !== opt.value);
-      var title = disabled && known && known.reason ? 'Unavailable: ' + known.reason : null;
-      return ui.el('option', { value: opt.value, disabled: disabled, title: title }, [opt.label]);
+      var wip = isWipPoseModel(opt.value) || Boolean(known && known.reason === POSE_MODEL_WIP_REASON);
+      // Work-in-progress entries are always disabled; otherwise an option is
+      // disabled only when the offscreen probe reports it unavailable (the
+      // currently active model stays selectable).
+      var disabled = wip || Boolean(known && !known.available && state.selectedPoseModel !== opt.value);
+      var title = null;
+      var label = opt.label;
+      if (wip) {
+        label = opt.label + " (work in progress)";
+        title = "Work in progress: switching to " + opt.label + " can freeze pose detection until the extension or the tab is reloaded. Disabled until it is fixed.";
+      } else if (disabled && known && known.reason) {
+        title = "Unavailable: " + known.reason;
+      }
+      return ui.el('option', { value: opt.value, disabled: disabled, title: title }, [label]);
     });
     var modelSelect = ui.el('select', {
       className: 'bv-model-selector',
-      value: state.selectedPoseModel || 'lightweight-openpose-lite-256-v1',
+      value: state.selectedPoseModel || DEFAULT_POSE_MODEL,
       onChange: modelSelectHandler,
       "data-bso-model-selector": "true"
     }, modelOptions);
-    modelSelect.value = state.selectedPoseModel || 'lightweight-openpose-lite-256-v1';
-    var modelHelper = ui.el('p', { className: 'bv-helper' }, ['Select the pose detection model. Lightweight OpenPose is bundled and cleared for redistribution; other models appear only when their local runtime and licensed model artifacts are available in this build.']);
+    modelSelect.value = state.selectedPoseModel || DEFAULT_POSE_MODEL;
+    var modelHelper = ui.el('p', { className: 'bv-helper' }, ['Select the pose detection model. Lightweight OpenPose is the bundled production default. BlazePose is work in progress: switching to it can freeze pose detection until the extension or the tab reloads, so it stays grayed out until fixed.']);
     if (modelSwitchNotice && modelSwitchNotice.error) {
       modelHelper = ui.callout('warn', 'Pose model not switched', 'The selected model could not start here. The reported cause: ' + modelSwitchNotice.error + '. The previous model remains active.', { tooltip: true });
     } else if (poseModelReport && poseModelReport.ok) {
@@ -544,7 +579,11 @@
           videoInfo = result.bvVideoInfo;
           badmintonDetection = typeof videoInfo.badmintonDetected === "boolean" ? videoInfo.badmintonDetected : null;
         }
-        if (result && result.bvSelectedPoseModel) state.selectedPoseModel = result.bvSelectedPoseModel;
+        if (result && result.bvSelectedPoseModel) state.selectedPoseModel = selectablePoseModel(result.bvSelectedPoseModel);
+        // A work-in-progress selection persisted inside bvState (older builds
+        // could store BlazePose before the entry was disabled) must not
+        // re-select it either: the same filter guards both preference stores.
+        state.selectedPoseModel = selectablePoseModel(state.selectedPoseModel);
         stateHydrated = true;
         persist();
         render();
