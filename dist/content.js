@@ -619,13 +619,27 @@
 
       // Send frame to offscreen script for Hough detection
       try {
+        // Check if extension context is still valid before sending
+        if (!chrome.runtime || !chrome.runtime.sendMessage) {
+          console.log("[Hough] Extension context invalidated, stopping Hough detection");
+          stopHoughDetectionLoop();
+          return;
+        }
+
         chrome.runtime.sendMessage({
           action: "detectHoughLines",
           frameData: frameObject,
           width: videoWidth,
           height: videoHeight
         }, function (response) {
+          // Check for extension context errors
           if (chrome.runtime.lastError) {
+            var errorMsg = chrome.runtime.lastError.message || String(chrome.runtime.lastError);
+            if (errorMsg.indexOf("Extension context invalidated") >= 0 || errorMsg.indexOf("context") >= 0) {
+              console.log("[Hough] Extension context error, stopping detection:", errorMsg);
+              stopHoughDetectionLoop();
+              return;
+            }
             console.error("Hough detection error:", chrome.runtime.lastError);
             return;
           }
@@ -662,6 +676,12 @@
           }
         });
       } catch (sendError) {
+        var errMessage = sendError && sendError.message ? String(sendError.message) : String(sendError);
+        if (errMessage.indexOf("Extension context invalidated") >= 0) {
+          console.log("[Hough] Extension context invalidated during sendMessage, stopping Hough detection");
+          stopHoughDetectionLoop();
+          return;
+        }
         console.error("[Hough] Error sending message:", sendError);
       }
     } catch (error) {
