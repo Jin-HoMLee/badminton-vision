@@ -34,9 +34,9 @@ function unknownTracking(sample, reason) {
 
 /**
  * The fixture remains available only to explicit Node plumbing diagnostics.
- * The public browser package selects the cleared local pose + shuttle
- * composition; no UI or capture code knows which analyzer is active. Stable
- * Chrome's serializable RGBA path is accepted by either analyzer.
+ * The public browser package selects the cleared local pose + shuttle +
+ * racket composition; no UI or capture code knows which analyzer is active.
+ * Stable Chrome's serializable RGBA path is accepted by either analyzer.
  */
 class MockAnalyzer {
   async analyze(sample) {
@@ -374,9 +374,10 @@ class LocalPoseShuttleAnalyzer {
 }
 
 // The pose model switcher owns the active pose analyzer when the production
-// composition (cleared LiteRT pose + local shuttle) is selected. It lets the
-// popup swap the pose model mid-session; the deterministic fixture and the
-// explicit ONNX pipeline are separate selections and never route through it.
+// composition (cleared LiteRT pose + local shuttle + EfficientDet racket) is
+// selected. It lets the popup swap the pose model mid-session; the
+// deterministic fixture and the explicit ONNX pipeline are separate
+// selections and never route through it.
 const poseModelSwitcher = Boolean(globalThis.BSoPoseModelSelector) && Boolean(ProductionAnalyzer) && Boolean(ShuttleAdapter) && !onnxInferenceEnabled
   ? (() => {
     try {

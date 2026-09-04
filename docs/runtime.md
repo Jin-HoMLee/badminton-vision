@@ -1,9 +1,10 @@
 # Runtime contract and local integration slice
 
 This repository contains the public local-first Chrome MV3 runtime and the
-MVP pose/shuttle composition. The canonical offscreen analyzer is the bundled
-Apache-2.0 Lightweight OpenPose LiteRT conversion composed with the bounded
-local shuttle candidate/trajectory adapter; their local artifacts and runtime
+MVP pose/shuttle/racket composition. The canonical offscreen analyzer is the
+bundled Apache-2.0 Lightweight OpenPose LiteRT conversion composed with the
+bounded local shuttle candidate/trajectory adapter and the cleared Apache-2.0
+EfficientDet-Lite0 tennis-racket detector; their local artifacts and runtime
 are versioned under `src/extension/offscreen/vendor/`. Stroke, rally, and
 winner computer vision remain unknown until a later event adapter or manual
 review supplies evidence. The committed deterministic fixture remains only an
@@ -126,9 +127,9 @@ synchronous and local to the offscreen analyzer; it never blocks or mutates
 playback.
 
 The offscreen HTML loads this contract before the vendored TensorFlow.js
-runtime, LiteRT runtime loader, Lightweight OpenPose adapter, TF.js pose
-adapters (MoveNet and BlazePose), the pose model selector, local shuttle
-adapter, and fixture analyzer. `offscreen/lite-openpose-adapter.js` decodes the
+runtime, LiteRT runtime loader, Lightweight OpenPose adapter, EfficientDet
+racket adapter, TF.js pose adapters (MoveNet and BlazePose), the pose model
+selector, local shuttle adapter, and fixture analyzer. `offscreen/lite-openpose-adapter.js` decodes the
 cleared model's
 `[1, 32, 32, 19]` heatmap output, groups torso-anchored local peaks into up to
 four normalized candidates, and feeds them to `SessionPlayerTracker`; its
@@ -192,9 +193,9 @@ the tab). Until that switch-back defect is fixed, its selector entry is marked
 and tests stay in place for when the wedge is fixed.
 
 `offscreen/pose-model-selector.js` owns the live pose model selection. When
-the production composition (pose + shuttle) is active, the popup's **Pose
-Detection Model** selector talks to the offscreen document through two non-
-protocol actions: `switchPoseModel` (with `modelId`) and
+the production composition (pose + shuttle + racket) is active, the popup's
+**Pose Detection Model** selector talks to the offscreen document through two
+non-protocol actions: `switchPoseModel` (with `modelId`) and
 `getAvailablePoseModels`. The switcher prepares and initializes the target
 analyzer while the current model keeps serving frames; only after the target
 reports itself available does it dispose the previous analyzer (the offscreen

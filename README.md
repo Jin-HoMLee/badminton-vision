@@ -250,6 +250,16 @@ hit, stroke, landing, line call, rally end, or winner. Unknown values stay
 editable through the existing manual labeling and CSV surfaces. Its limitations
 and evidence contract are documented in [`docs/shuttle-tracking.md`](docs/shuttle-tracking.md).
 
+The same offscreen session composes the Apache-2.0 MediaPipe
+EfficientDet-Lite0 tennis-racket detector with pose and shuttle results.
+COCO tennis-racket detections that clear its confidence gate are drawn as
+real racket boxes (other COCO classes are never upgraded into rackets), and
+the historical wrist/elbow pose proxy is kept only as degraded evidence while
+the cleared racket artifact cannot run; racket failures never fail the frame
+or the pose capability. Provenance, the strict class filter, and the
+fallback contract are in [`docs/runtime.md`](docs/runtime.md) and the vendored
+`MODEL-NOTICE.md` under `src/extension/offscreen/vendor/efficientdet-lite0/`.
+
 `src/runtime.js` is the read-only playback boundary and UI seam. It reads
 `currentTime`, frame metadata, dimensions, and playback state; it does not
 assign playback properties, call player controls, or style the video.
