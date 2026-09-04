@@ -31,7 +31,7 @@
     { id: "body", label: "Pose keypoints + skeleton", health: "degraded", note: "starting · local pose model", on: true, disabled: false },
     { id: "shuttle", label: "Shuttle path + candidate", health: "degraded", note: "unknown · awaiting local runtime", on: true },
     { id: "score", label: "Score OCR", health: "degraded", note: "partial", on: true },
-    { id: "racket", label: "Racket evidence", health: "unavailable", note: "not in MVP", on: false, disabled: true }
+    { id: "racket", label: "Racket evidence", health: "unavailable", note: "unavailable · awaiting runtime racket output", on: false, disabled: true }
   ];
 
   // Pose-model selector catalog, mirrored from the offscreen selector's

@@ -1,4 +1,4 @@
-/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter, BSOLiteOpenPoseAdapter, BSOBlazePoseTfjsAdapter, BSoPoseModelSelector, BSOShuttleTrackingAdapter, BSOOnnxInferenceAdapter */
+/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter, BSOLiteOpenPoseAdapter, BSOBlazePoseTfjsAdapter, BSoPoseModelSelector, BSOShuttleTrackingAdapter, BSOOnnxInferenceAdapter, BSOEfficientDetRacketAdapter */
 'use strict';
 
 const ANALYZER_FALLBACK = 'fixture-probe-v1';
@@ -34,9 +34,9 @@ function unknownTracking(sample, reason) {
 
 /**
  * The fixture remains available only to explicit Node plumbing diagnostics.
- * The public browser package selects the cleared local pose + shuttle
- * composition; no UI or capture code knows which analyzer is active. Stable
- * Chrome's serializable RGBA path is accepted by either analyzer.
+ * The public browser package selects the cleared local pose + shuttle +
+ * racket composition; no UI or capture code knows which analyzer is active.
+ * Stable Chrome's serializable RGBA path is accepted by either analyzer.
  */
 class MockAnalyzer {
   async analyze(sample) {
@@ -84,6 +84,14 @@ const FixtureAnalyzer = globalThis.BSOFixtureAnalyzer && globalThis.BSOFixtureAn
 const ShuttleAdapter = globalThis.BSOShuttleTrackingAdapter &&
   (globalThis.BSOShuttleTrackingAdapter.LocalShuttleTrajectoryAdapter ||
     globalThis.BSOShuttleTrackingAdapter.ShuttleTrajectoryAdapter);
+// The cleared Apache-2.0 EfficientDet-Lite0 racket detector contributes real
+// COCO tennis-racket boxes to the production composition (see
+// vendor/efficientdet-lite0/MODEL-NOTICE.md). It is optional: while the
+// adapter or its artifact is absent or cannot initialize (failed fetch or
+// compile) the composition keeps the pose-derived wrist/elbow proxy it used
+// before, and racket failures never affect pose.
+const RacketDetector = globalThis.BSOEfficientDetRacketAdapter &&
+  globalThis.BSOEfficientDetRacketAdapter.EfficientDetRacketDetector;
 const OnnxInferenceAnalyzer = globalThis.BSOOnnxInferenceAdapter &&
   globalThis.BSOOnnxInferenceAdapter.OnnxInferenceAnalyzer;
 const onnxInferenceConfig = globalThis.BSO_ONNX_INFERENCE_CONFIG;
@@ -131,15 +139,18 @@ function racketEvidence(players) {
  * it never switches to the fixture probe.
  */
 class LocalPoseShuttleAnalyzer {
-  constructor({ environment = globalThis, poseAnalyzer, shuttleAnalyzer, onStatus = () => {} } = {}) {
+  constructor({ environment = globalThis, poseAnalyzer, shuttleAnalyzer, racketAnalyzer, onStatus = () => {} } = {}) {
     const resolvedPose = poseAnalyzer || (ProductionAnalyzer ? new ProductionAnalyzer({ environment }) : null);
     if (!resolvedPose || typeof resolvedPose.analyze !== 'function') throw new TypeError('A production pose analyzer is required');
     this.shuttleAnalyzer = shuttleAnalyzer || (ShuttleAdapter ? new ShuttleAdapter({ environment }) : null);
     if (!this.shuttleAnalyzer || typeof this.shuttleAnalyzer.analyze !== 'function') throw new TypeError('A local shuttle analyzer is required');
+    this.racketAnalyzer = racketAnalyzer !== undefined ? racketAnalyzer : (RacketDetector ? new RacketDetector({ environment }) : null);
+    if (this.racketAnalyzer && typeof this.racketAnalyzer.analyze !== 'function') throw new TypeError('A racket analyzer must expose analyze(frameSample)');
     this.onStatus = typeof onStatus === 'function' ? onStatus : () => {};
     // Forward backend and reset transitions without allowing status observers
     // to affect inference. The adapters retain their own resource ownership.
     if (Object.hasOwn(this.shuttleAnalyzer, 'onStatus')) this.shuttleAnalyzer.onStatus = (value) => this.status({ component: 'shuttle', ...value });
+    if (this.racketAnalyzer && Object.hasOwn(this.racketAnalyzer, 'onStatus')) this.racketAnalyzer.onStatus = (value) => this.status({ component: 'racket', ...value });
     this.lastMediaBySession = new Map();
     this.setPoseAnalyzer(resolvedPose);
   }
@@ -158,7 +169,8 @@ class LocalPoseShuttleAnalyzer {
       composition: 'pose-plus-shuttle-v1',
       components: {
         pose: this.poseAnalyzer.identity || null,
-        shuttle: this.shuttleAnalyzer.identity || null
+        shuttle: this.shuttleAnalyzer.identity || null,
+        racket: this.racketAnalyzer ? (this.racketAnalyzer.identity || null) : null
       }
     });
     this.initialization = null;
@@ -166,7 +178,8 @@ class LocalPoseShuttleAnalyzer {
     this.capabilityDetails = {
       backend: this.poseAnalyzer.backend || null,
       fallbacks: Array.isArray(this.poseAnalyzer.backendReport?.fallbacks) ? this.poseAnalyzer.backendReport.fallbacks.slice() : [],
-      shuttle: this.shuttleAnalyzer.identity?.id || 'local-shuttle-frame-difference-v1'
+      shuttle: this.shuttleAnalyzer.identity?.id || 'local-shuttle-frame-difference-v1',
+      racket: this.racketAnalyzer?.identity?.id || null
     };
     return this;
   }
@@ -179,32 +192,41 @@ class LocalPoseShuttleAnalyzer {
     if (this.initialization) return this.initialization;
     this.initialization = (async () => {
       try {
-        const initialized = typeof this.poseAnalyzer.initialize === 'function'
-          ? await this.poseAnalyzer.initialize()
-          : { available: true };
+        const poseInitialized = typeof this.poseAnalyzer.initialize === 'function'
+          ? this.poseAnalyzer.initialize()
+          : Promise.resolve({ available: true });
+        const racketInitialized = this.racketAnalyzer && typeof this.racketAnalyzer.initialize === 'function'
+          ? this.racketAnalyzer.initialize()
+          : Promise.resolve({ available: false, reason: 'racket-detector-not-present' });
+        const [poseResult, racketResult] = await Promise.all([poseInitialized, racketInitialized]);
+        const initialized = poseResult || {};
         const available = initialized?.available !== false;
-        this.initializationState = { ...(initialized || {}), available };
+        const racketState = racketResult || { available: false, reason: 'racket-detector-initialization-failed' };
+        this.initializationState = { ...initialized, available, racketAvailable: racketState.available === true };
         this.capabilityDetails = {
           backend: initialized?.backend || this.poseAnalyzer.backend || null,
           fallbacks: Array.from(new Set(initialized?.fallbacks || [])),
-          shuttle: this.shuttleAnalyzer.identity?.id || 'local-shuttle-frame-difference-v1'
+          shuttle: this.shuttleAnalyzer.identity?.id || 'local-shuttle-frame-difference-v1',
+          racket: this.racketAnalyzer?.identity?.id || null
         };
         this.status({
           type: available ? 'composition-ready' : 'composition-pose-unavailable',
           pose: available,
           shuttle: this.capabilityDetails.shuttle,
+          racket: racketState.available === true,
           backend: this.capabilityDetails.backend,
           fallbacks: this.capabilityDetails.fallbacks,
-          reason: initialized?.reason || ''
+          reason: racketState.available !== true && racketState.reason ? racketState.reason : (initialized?.reason || '')
         });
         return {
           ...(initialized || {}), available, poseAvailable: available, shuttleAvailable: true,
+          racketAvailable: racketState.available === true,
           backend: this.capabilityDetails.backend, fallbacks: this.capabilityDetails.fallbacks
         };
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         this.initializationState = { available: false, reason, fallbacks: ['local-pose-initialization-failed'] };
-        this.capabilityDetails = { backend: null, fallbacks: this.initializationState.fallbacks, shuttle: this.shuttleAnalyzer.identity?.id || 'local-shuttle-frame-difference-v1' };
+        this.capabilityDetails = { backend: null, fallbacks: this.initializationState.fallbacks, shuttle: this.shuttleAnalyzer.identity?.id || 'local-shuttle-frame-difference-v1', racket: this.racketAnalyzer?.identity?.id || null };
         this.status({ type: 'composition-pose-unavailable', pose: false, shuttle: this.capabilityDetails.shuttle, reason, fallbacks: this.capabilityDetails.fallbacks });
         return { available: false, poseAvailable: false, shuttleAvailable: true, reason, fallbacks: this.capabilityDetails.fallbacks };
       }
@@ -216,6 +238,7 @@ class LocalPoseShuttleAnalyzer {
     const id = sessionId == null ? null : String(sessionId);
     if (id !== null && typeof this.poseAnalyzer.resetSession === 'function') this.poseAnalyzer.resetSession(id, reason);
     if (id !== null && typeof this.shuttleAnalyzer.resetSession === 'function') this.shuttleAnalyzer.resetSession(id, reason);
+    if (id !== null && this.racketAnalyzer && typeof this.racketAnalyzer.resetSession === 'function') this.racketAnalyzer.resetSession(id, reason);
     if (id !== null) this.lastMediaBySession.delete(id);
     return { sessionId: id, reason };
   }
@@ -226,6 +249,8 @@ class LocalPoseShuttleAnalyzer {
     else if (id !== null && typeof this.poseAnalyzer.resetSession === 'function') this.poseAnalyzer.resetSession(id, reason);
     if (id !== null && typeof this.shuttleAnalyzer.endSession === 'function') this.shuttleAnalyzer.endSession(id, reason);
     else if (id !== null && typeof this.shuttleAnalyzer.resetSession === 'function') this.shuttleAnalyzer.resetSession(id, reason);
+    if (id !== null && this.racketAnalyzer && typeof this.racketAnalyzer.endSession === 'function') this.racketAnalyzer.endSession(id, reason);
+    else if (id !== null && this.racketAnalyzer && typeof this.racketAnalyzer.resetSession === 'function') this.racketAnalyzer.resetSession(id, reason);
     if (id !== null) this.lastMediaBySession.delete(id);
     return { sessionId: id, reason };
   }
@@ -264,6 +289,26 @@ class LocalPoseShuttleAnalyzer {
     if (!poseEnvelope) return null;
     this.lastMediaBySession.set(sessionId, mediaTime);
 
+    // Racket detection runs on the same accepted frame after pose. The
+    // detector marks an envelope with its detectionMethod only after the
+    // model initialized and ran on the frame, so accepted detector evidence
+    // (real boxes, or an honest unknown when the run found no racket)
+    // replaces the pose-derived wrist/elbow proxy. While the artifact is
+    // absent or cannot initialize the detector emits no marked envelope and
+    // the proxy stays in place; failures never fail the frame and are
+    // surfaced as status.
+    let racketResult = null;
+    if (this.racketAnalyzer) {
+      try {
+        racketResult = await this.racketAnalyzer.analyze(sample);
+      } catch (error) {
+        this.status({ component: 'racket', type: 'detection-failed', sessionId, reason: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    const racketEvidenceFromDetector = racketResult && typeof racketResult === 'object' && racketResult.detectionMethod === 'efficientdet-lite0-tennis-racket'
+      ? racketResult
+      : null;
+
     const poseResult = poseEnvelope.result || {};
     const tracking = poseResult.tracking || null;
     const players = Array.isArray(poseResult.players) ? poseResult.players : tracking?.players || [];
@@ -281,7 +326,7 @@ class LocalPoseShuttleAnalyzer {
       players,
       tracking,
       shuttle,
-      racket: poseResult.racket || racketEvidence(players),
+      racket: racketEvidenceFromDetector || poseResult.racket || racketEvidence(players),
       temporal: {
         state: Array.isArray(shuttle.trajectory) && shuttle.trajectory.length ? 'partial' : 'unknown',
         trajectory: Array.isArray(shuttle.trajectory) ? shuttle.trajectory : [],
@@ -302,7 +347,10 @@ class LocalPoseShuttleAnalyzer {
       reason: poseResult.reason || (poseAvailable ? '' : 'local-pose-inference-unavailable'),
       evidence: {
         pose: { available: poseAvailable, analyzer: poseEnvelope.analyzer || this.identity.id },
-        shuttle: shuttleEnvelope?.analyzerIdentity || this.shuttleAnalyzer.identity || null
+        shuttle: shuttleEnvelope?.analyzerIdentity || this.shuttleAnalyzer.identity || null,
+        racket: racketEvidenceFromDetector
+          ? { available: true, analyzer: this.racketAnalyzer.identity?.id || 'efficientdet-lite0-racket-v1', detections: racketEvidenceFromDetector.detections || [] }
+          : { available: false, analyzer: null, detections: [] }
       }
     };
     return BSOProtocol.createAnalyzerResult({
@@ -320,14 +368,16 @@ class LocalPoseShuttleAnalyzer {
   dispose() {
     if (typeof this.poseAnalyzer.dispose === 'function') this.poseAnalyzer.dispose();
     if (typeof this.shuttleAnalyzer.dispose === 'function') this.shuttleAnalyzer.dispose();
+    if (this.racketAnalyzer && typeof this.racketAnalyzer.dispose === 'function') this.racketAnalyzer.dispose();
     this.lastMediaBySession.clear();
   }
 }
 
 // The pose model switcher owns the active pose analyzer when the production
-// composition (cleared LiteRT pose + local shuttle) is selected. It lets the
-// popup swap the pose model mid-session; the deterministic fixture and the
-// explicit ONNX pipeline are separate selections and never route through it.
+// composition (cleared LiteRT pose + local shuttle + EfficientDet racket) is
+// selected. It lets the popup swap the pose model mid-session; the
+// deterministic fixture and the explicit ONNX pipeline are separate
+// selections and never route through it.
 const poseModelSwitcher = Boolean(globalThis.BSoPoseModelSelector) && Boolean(ProductionAnalyzer) && Boolean(ShuttleAdapter) && !onnxInferenceEnabled
   ? (() => {
     try {
@@ -376,16 +426,41 @@ const sessionQueues = new Map();
 const frameStates = new Map();
 
 function analyzerStatus(value) {
-  const session = analyzerStatusSessionId && sessions.get(analyzerStatusSessionId);
+  // Status events raised while analyzing a frame carry that frame's
+  // sessionId; initialization events fall back to the session currently
+  // being started.
+  const sessionId = (value && value.sessionId) || analyzerStatusSessionId;
+  const session = sessionId ? sessions.get(sessionId) : null;
   // Per-frame shuttle observations are evidence on the result envelope, not
-  // runtime capability transitions. Forwarding them as global status would
-  // make a healthy pose backend appear to restart every sampled frame.
+  // runtime capability transitions: forwarding them as global status would
+  // make a healthy shuttle appear to restart every sampled frame. Racket
+  // events are filtered the same way except genuine detector failures
+  // (initialization failure or a run that could not complete), which
+  // surface as status while the pose capability stays unchanged.
   if (!session || !value || value.component === 'shuttle') return;
+  const details = activeAnalyzer.capabilityDetails || {};
+  if (value.component === 'racket') {
+    if (value.type !== 'model-failure' && value.type !== 'inference-failure' && value.type !== 'detection-failed') return;
+    const poseReady = activeAnalyzer.initializationState?.available !== false;
+    void send(BSOProtocol.createRuntimeStatus({
+      sessionId: session.sessionId,
+      phase: poseReady ? 'ready' : 'fallback',
+      message: poseReady ? 'Racket detection is unavailable; pose and shuttle analysis continue.' : 'Racket detection is unavailable; playback is unaffected.',
+      capabilities: capabilityState(session.capabilities, {
+        inference: poseReady,
+        analyzer: poseReady ? (activeAnalyzer.identity?.id || analyzerId()) : 'none',
+        backend: details.backend || null,
+        fallbacks: details.fallbacks || [],
+        shuttle: details.shuttle || null
+      }),
+      reason: value.reason ? `racket-${value.type}:${value.reason}` : `racket-${value.type}`
+    }));
+    return;
+  }
   const isFailure = value.type === 'model-failure' || value.type === 'composition-pose-unavailable' ||
     value.type === 'inference-failure' || value.type === 'pose-failure';
   const isReady = value.type === 'model-ready' || value.type === 'composition-ready';
   const phase = isFailure ? 'fallback' : isReady ? 'ready' : 'starting';
-  const details = activeAnalyzer.capabilityDetails || {};
   void send(BSOProtocol.createRuntimeStatus({
     sessionId: session.sessionId,
     phase,

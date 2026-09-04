@@ -1288,7 +1288,7 @@ test("CSV import restores exported labels with an identical round trip and de-du
   assert.equal(restored.storageWrites.at(-1).bvState.manualLabelsByVideo["youtube:real-match"].length, 2, "a rejected import leaves the store untouched");
 });
 
-function evidenceResult({ mediaTime = 12, keypointOffset = 0, includeRacket = true, includeRacketHands = false, includeBox = true, unknown = false } = {}) {
+function evidenceResult({ mediaTime = 12, keypointOffset = 0, includeRacket = true, includeRacketHands = false, includeRacketDetections = false, includeBox = true, unknown = false } = {}) {
   const names = ["nose", "neck", "left_shoulder", "left_elbow", "left_wrist", "right_shoulder", "right_elbow", "right_wrist", "left_hip", "left_knee", "left_ankle", "right_hip", "right_knee", "right_ankle", "left_eye", "right_eye", "left_ear", "right_ear"];
   const keypoints = unknown ? [] : names.map((name, index) => ({
     name,
@@ -1315,9 +1315,14 @@ function evidenceResult({ mediaTime = 12, keypointOffset = 0, includeRacket = tr
   };
   if (includeRacket) result.racket = unknown
     ? { state: "unknown", confidence: null }
-    : includeRacketHands
-      ? { state: "partial", confidence: 0.8, hands: [{ side: "right", wrist: { x: 0.39, y: 0.28 }, elbow: { x: 0.31, y: 0.33 }, confidence: 0.8 }] }
-      : { state: "tracked", confidence: 0.8, segment: { start: { x: 0.31, y: 0.33 }, end: { x: 0.39, y: 0.28 } } };
+    : includeRacketDetections
+      ? { state: "tracked", confidence: 0.71, detections: [
+        { bbox: { x: 0.31, y: 0.28, width: 0.2, height: 0.3 }, confidence: 0.71, class: "tennis racket", classIndex: 42, state: "tracked" },
+        { bbox: { x: 0.6, y: 0.1, width: 0.12, height: 0.18 }, confidence: 0.58, class: "tennis racket", classIndex: 42, state: "tracked" }
+      ], detectionMethod: "efficientdet-lite0-tennis-racket", reason: "coco-tennis-racket-detections" }
+      : includeRacketHands
+        ? { state: "partial", confidence: 0.8, hands: [{ side: "right", wrist: { x: 0.39, y: 0.28 }, elbow: { x: 0.31, y: 0.33 }, confidence: 0.8 }] }
+        : { state: "tracked", confidence: 0.8, segment: { start: { x: 0.31, y: 0.33 }, end: { x: 0.39, y: 0.28 } } };
   return result;
 }
 
@@ -1499,6 +1504,24 @@ test("live result updates redraw accepted pose, shuttle, and supplied racket evi
   assert.ok(Math.abs(Number(nose.getAttribute("cx")) - 0.2) < 1e-9, "a newer accepted result replaces the rendered pose");
   const box = drawing.querySelectorAll(".bv-player-box").find((node) => node.getAttribute("data-box-source") === "runtime");
   assert.equal(box.getAttribute("data-player-state"), "tracked");
+});
+
+test("live racket detections render as runtime racket boxes, not pose proxy lines", async () => {
+  const session = await createLiveEvidenceSession();
+  session.publishRuntimeView(resultView(evidenceResult({ mediaTime: 12, includeRacketDetections: true })));
+  let drawing = session.overlayRoot().querySelector(".bv-runtime-evidence");
+  const boxes = drawing.querySelectorAll(".bv-racket-box");
+  assert.equal(boxes.length, 2, "each emitted tennis-racket detection is drawn as a box");
+  assert.equal(drawing.querySelectorAll(".bv-racket-signal").length, 0, "no orange wrist/elbow proxy lines for real detector output");
+  boxes.forEach((node) => {
+    assert.equal(node.getAttribute("data-box-source"), "runtime");
+    assert.equal(node.getAttribute("data-racket-state"), "tracked");
+  });
+  // The racket visibility toggle applies to detection boxes like any other
+  // racket evidence layer.
+  session.onMessage({ type: "SET_TRACKER", tracker: "racket", value: false, requestId: "racket-detections-off" });
+  drawing = session.overlayRoot().querySelector(".bv-runtime-evidence");
+  assert.equal(drawing.querySelectorAll(".bv-racket-box").length, 0, "racket boxes respect the evidence visibility toggle");
 });
 
 

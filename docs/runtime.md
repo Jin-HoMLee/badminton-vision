@@ -1,9 +1,10 @@
 # Runtime contract and local integration slice
 
 This repository contains the public local-first Chrome MV3 runtime and the
-MVP pose/shuttle composition. The canonical offscreen analyzer is the bundled
-Apache-2.0 Lightweight OpenPose LiteRT conversion composed with the bounded
-local shuttle candidate/trajectory adapter; their local artifacts and runtime
+MVP pose/shuttle/racket composition. The canonical offscreen analyzer is the
+bundled Apache-2.0 Lightweight OpenPose LiteRT conversion composed with the
+bounded local shuttle candidate/trajectory adapter and the cleared Apache-2.0
+EfficientDet-Lite0 tennis-racket detector; their local artifacts and runtime
 are versioned under `src/extension/offscreen/vendor/`. Stroke, rally, and
 winner computer vision remain unknown until a later event adapter or manual
 review supplies evidence. The committed deterministic fixture remains only an
@@ -126,9 +127,9 @@ synchronous and local to the offscreen analyzer; it never blocks or mutates
 playback.
 
 The offscreen HTML loads this contract before the vendored TensorFlow.js
-runtime, LiteRT runtime loader, Lightweight OpenPose adapter, TF.js pose
-adapters (MoveNet and BlazePose), the pose model selector, local shuttle
-adapter, and fixture analyzer. `offscreen/lite-openpose-adapter.js` decodes the
+runtime, LiteRT runtime loader, Lightweight OpenPose adapter, EfficientDet
+racket adapter, TF.js pose adapters (MoveNet and BlazePose), the pose model
+selector, local shuttle adapter, and fixture analyzer. `offscreen/lite-openpose-adapter.js` decodes the
 cleared model's
 `[1, 32, 32, 19]` heatmap output, groups torso-anchored local peaks into up to
 four normalized candidates, and feeds them to `SessionPlayerTracker`; its
@@ -192,9 +193,9 @@ the tab). Until that switch-back defect is fixed, its selector entry is marked
 and tests stay in place for when the wedge is fixed.
 
 `offscreen/pose-model-selector.js` owns the live pose model selection. When
-the production composition (pose + shuttle) is active, the popup's **Pose
-Detection Model** selector talks to the offscreen document through two non-
-protocol actions: `switchPoseModel` (with `modelId`) and
+the production composition (pose + shuttle + racket) is active, the popup's
+**Pose Detection Model** selector talks to the offscreen document through two
+non-protocol actions: `switchPoseModel` (with `modelId`) and
 `getAvailablePoseModels`. The switcher prepares and initializes the target
 analyzer while the current model keeps serving frames; only after the target
 reports itself available does it dispose the previous analyzer (the offscreen
@@ -245,13 +246,18 @@ device straddles two devices: every `model.run` then submits invalid command
 buffers (`[Buffer] is associated with [Device], and cannot be used with
 [Device]` during `CreateBindGroup`) and silently decodes zero poses - no
 exception, no failed initialize, an `ok:true` switch that simply stops
-detecting. The adapter therefore requests exactly ONE WebGPU device per
-`navigator.gpu` object (cached, promise-safe, cleared when the device is
-lost) and reuses it across analyzer instances; each analyzer still compiles
-its own model. `test/lite-openpose-adapter.test.js` pins the round trip
-(init -> dispose -> init must not call `requestDevice` twice); the live
-extension verified the cross-device validation errors vanish and pose
-observations resume after the switch-back.
+detecting. The LiteOpenPose adapter therefore requests exactly ONE WebGPU
+device per `navigator.gpu` object (cached, promise-safe, cleared when the
+device is lost) and reuses it across analyzer instances; each analyzer still
+compiles its own model. The EfficientDet racket detector compiles through that
+same exported per-document device and never calls `requestAdapter`/
+`requestDevice` itself, so concurrent pose + racket initialization at session
+start and the racket detector's run-failure re-initialization reuse the one
+device instead of creating a second one. `test/lite-openpose-adapter.test.js`
+pins the round trip (init -> dispose -> init must not call `requestDevice`
+twice) and the pose + racket sharing; the live extension verified the
+cross-device validation errors vanish and pose observations resume after the
+switch-back.
 
 ## Shuttle candidate composition
 
@@ -339,10 +345,15 @@ The live evidence SVG is rebuilt on each newly selected synchronized result:
 accepted runtime player keypoints are drawn with a named skeleton, a player box
 is drawn only when the runtime supplies a valid box, and explicit shuttle
 trajectory/candidate and racket fields are consumed without creating detections
-or confidence. Pose, player-box, racket, shuttle, and court-projection
-visibility switches are independent persisted UI state; court projection is
-additionally guarded by a committed calibration, while the raw pose/shuttle/
-racket layers remain available uncalibrated. Missing fields remain
+or confidence. Real racket detections arrive as `racket.detections` entries
+(each a normalized `bbox` with a confidence for the COCO tennis-racket class)
+and are drawn as `bv-racket-box` rects; the retired wrist/elbow pose proxy is
+used only as degraded evidence while the racket detector cannot run (absent
+artifact or failed model initialization) and is never drawn alongside real
+boxes. Pose, player-box, racket, shuttle, and
+court-projection visibility switches are independent persisted UI state; court
+projection is additionally guarded by a committed calibration, while the raw
+pose/shuttle/racket layers remain available uncalibrated. Missing fields remain
 `unknown` or `unavailable`; the SVG and every child use `pointer-events: none`
 so court seeding and playback remain safe.
 
@@ -376,14 +387,34 @@ make the offscreen frame unreadable. A channel that explicitly reports
 existing `transferables` contract. The service-worker relay preserves
 the message shape across the offscreen boundary. The canonical offscreen
 analyzer is the local `lightweight-openpose-lite-256-v1` pose path composed
-with `local-shuttle-frame-difference-v1`. It reads the local frame pixels,
-creates the model's bounded 256x256 RGB input, runs LiteRT locally, and returns
-normalized two-player-capable pose observations plus the shuttle adapter's
-accepted candidate/trajectory. Its result identifies `productionModel: true`
+with `local-shuttle-frame-difference-v1` and the Apache-2.0
+`efficientdet-lite0-racket-v1` tennis-racket detector. It reads the local
+frame pixels, creates the model's bounded 256x256 RGB input, runs LiteRT
+locally, and returns normalized two-player-capable pose observations plus the
+shuttle adapter's accepted candidate/trajectory plus real tennis-racket
+bounding boxes when the COCO racket class clears the detector's confidence
+gate, but never a stroke or rally claim. Its result identifies
+`productionModel: true`
 only when pose inference succeeds; an artifact/backend failure returns unknown
 pose observations and `inferenceAvailable: false` without selecting the
 fixture. The shuttle may still return a separately accepted bounded candidate,
-but never a stroke or rally claim. The explicit `fixture-probe-v1` diagnostic
+and the racket detector contributes only its class-42 tennis-racket boxes:
+it never upgrades other COCO detections into rackets (the strict class filter
+is regression-tested against the real artifact), never fails the frame, and
+is optional: while its artifact is absent or cannot initialize (failed fetch
+or compile) the composition keeps the historical wrist/elbow pose proxy, and
+once the detector initializes its per-frame results are authoritative - real
+detections replace the proxy and racket state stays `unknown` when the
+detector runs but finds no racket. A run that throws did not complete, so
+that frame keeps the proxy while the detector drops the failed model and
+re-initializes on a later frame; a transient backend failure (for example GPU
+device loss) therefore recovers instead of suppressing evidence for the rest
+of the session, and genuine racket failures surface as runtime status without
+changing the pose capability. Artifact provenance, the input/decode
+contract, and the real-model fixtures are recorded in
+`offscreen/vendor/efficientdet-lite0/MODEL-NOTICE.md` and gated by
+`test/efficientdet-racket.test.js` and
+`test/efficientdet-racket-real-model.test.js`. The explicit `fixture-probe-v1` diagnostic
 reads local pixels only to prove plumbing, identifies itself as
 `runtime-integration-probe`, and never produces player/shuttle/shot claims.
 It is not selected when production initialization or inference fails.

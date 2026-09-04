@@ -37,7 +37,7 @@ function frame() {
   };
 }
 
-function loadOffscreen(chrome, { withProduction = false } = {}) {
+function loadOffscreen(chrome, { withProduction = false, runtimeReady = null } = {}) {
   const context = vm.createContext({
     console,
     Promise,
@@ -53,7 +53,7 @@ function loadOffscreen(chrome, { withProduction = false } = {}) {
   vm.runInContext(modelSource, context, { filename: 'fixture-model.js' });
   vm.runInContext(moveNetSource, context, { filename: 'movenet-adapter.js' });
   if (withProduction) {
-    context.BSOLiteRuntimeReady = Promise.resolve({ loaded: true });
+    context.BSOLiteRuntimeReady = Promise.resolve(runtimeReady || { loaded: true });
     vm.runInContext(liteOpenPoseSource, context, { filename: 'lite-openpose-adapter.js' });
     vm.runInContext(shuttleSource, context, { filename: 'shuttle-tracking-adapter.js' });
   }
@@ -140,6 +140,13 @@ test('packed source includes a local offscreen document and fixture analyzer', (
   assert.match(modelNotice, /Apache-2\.0/);
   assert.match(modelNotice, /SHA-256/);
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/vendor/litert/LICENSE'), 'utf8'), /Apache License/);
+  assert.match(html, /efficientdet-racket-adapter\.js/);
+  const racketModelPath = path.join(__dirname, '..', 'src/extension/offscreen/vendor/efficientdet-lite0/efficientdet_lite0.tflite');
+  const racketNotice = fs.readFileSync(path.join(__dirname, '..', 'src/extension/offscreen/vendor/efficientdet-lite0/MODEL-NOTICE.md'), 'utf8');
+  assert.ok(fs.statSync(racketModelPath).size > 5000000);
+  assert.equal(crypto.createHash('sha256').update(fs.readFileSync(racketModelPath)).digest('hex'), '4b59100025bea1235a84c1038879a6cccc9f6c49f5e41144e91e74d99e780993');
+  assert.match(racketNotice, /Apache-2\.0/);
+  assert.match(racketNotice, /SHA-256/);
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'manifest.json'), 'utf8'));
   assert.equal(manifest.background.service_worker, 'background/service-worker.js');
   assert.equal(manifest.permissions.includes('offscreen'), true);
@@ -152,10 +159,14 @@ test('packed source includes a local offscreen document and fixture analyzer', (
     assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /fixture-model\.js/);
     assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /movenet-adapter\.js/);
     assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /lite-openpose-adapter\.js/);
+    assert.match(fs.readFileSync(packedHtmlPath, 'utf8'), /efficientdet-racket-adapter\.js/);
     assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/analyzer.js')), true);
     assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/movenet-adapter.js')), true);
     assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/lite-openpose-adapter.js')), true);
+    assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/efficientdet-racket-adapter.js')), true);
     assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/vendor/lite-openpose/pose_256.tflite')), true);
+    assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/vendor/efficientdet-lite0/efficientdet_lite0.tflite')), true);
+    assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/vendor/efficientdet-lite0/MODEL-NOTICE.md')), true);
     assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/offscreen/vendor/litert/litert_wasm_internal.wasm')), true);
     assert.equal(fs.existsSync(path.join(__dirname, '..', 'dist/background/service-worker.js')), true);
   }
@@ -210,6 +221,250 @@ test('offscreen composes production pose tracks with accepted shuttle evidence w
   const afterJump = await composite.analyze({ sessionId: 'composition', requestId: 'r3', mediaTime: 1, frame: frame() });
   assert.equal(afterJump.result.players.length, 2);
   assert.ok(resets.some((entry) => entry[2] === 'media-time-reset'));
+});
+
+test('composition emits real racket detections when a racket analyzer is present', async () => {
+  const context = loadOffscreen({ runtime: {} }, { withProduction: true });
+  const poseIdentity = { id: 'lightweight-openpose-lite-256-v1', version: 1, kind: 'local-litert-tflite-multipose', productionModel: true };
+  const shuttleIdentity = { id: 'local-shuttle-frame-difference-v1', version: 1, kind: 'bounded-temporal-pixel-heuristic', productionModel: false };
+  const racketIdentity = { id: 'efficientdet-lite0-racket-v1', version: 1, kind: 'local-litert-tflite-racket-detector', productionModel: true };
+  const pose = {
+    identity: poseIdentity,
+    async initialize() { return { available: true, backend: 'wasm' }; },
+    async analyze(sample) {
+      return protocol.createAnalyzerResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, analyzer: poseIdentity.id, analyzerIdentity: poseIdentity, inferenceAvailable: true, result: { kind: 'lightweight-openpose', productionModel: true, state: 'unknown', players: [], tracking: tracking.unknownTrackingResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, detector: poseIdentity, reason: 'no-pose-evidence' }) } });
+    }
+  };
+  const shuttle = { identity: shuttleIdentity, async analyze() { return null; } };
+  const racket = {
+    identity: racketIdentity,
+    async initialize() { return { available: true, backend: 'wasm' }; },
+    detections: [
+      { bbox: { x: 0.31, y: 0.28, width: 0.2, height: 0.3 }, confidence: 0.71, class: 'tennis racket', classIndex: 42, state: 'tracked' }
+    ],
+    async analyze(sample) {
+      return {
+        state: 'tracked',
+        confidence: 0.71,
+        detections: this.detections,
+        detectionMethod: 'efficientdet-lite0-tennis-racket',
+        reason: 'coco-tennis-racket-detections',
+        sessionId: sample.sessionId,
+        requestId: sample.requestId,
+        mediaTime: sample.mediaTime
+      };
+    },
+    resetSession() {},
+    endSession() {},
+    dispose() {}
+  };
+  const composite = new context.BSOOffscreenAnalyzer.LocalPoseShuttleAnalyzer({ poseAnalyzer: pose, shuttleAnalyzer: shuttle, racketAnalyzer: racket });
+  assert.equal((await composite.initialize()).available, true);
+  const envelope = await composite.analyze({ sessionId: 'composition-racket', requestId: 'r1', mediaTime: 1, frame: frame() });
+  assert.equal(envelope.result.racket.state, 'tracked');
+  assert.equal(envelope.result.racket.detectionMethod, 'efficientdet-lite0-tennis-racket');
+  assert.deepEqual(envelope.result.racket.detections, racket.detections);
+  assert.equal(envelope.result.evidence.racket.available, true);
+  assert.equal(envelope.result.evidence.racket.analyzer, 'efficientdet-lite0-racket-v1');
+  assert.equal(composite.identity.components.racket.id, 'efficientdet-lite0-racket-v1');
+});
+
+test('composition keeps the pose proxy only when no racket analyzer runs, and never invents detections', async () => {
+  const context = loadOffscreen({ runtime: {} }, { withProduction: true });
+  const poseIdentity = { id: 'lightweight-openpose-lite-256-v1', version: 1, kind: 'local-litert-tflite-multipose', productionModel: true };
+  const shuttleIdentity = { id: 'local-shuttle-frame-difference-v1', version: 1, kind: 'bounded-temporal-pixel-heuristic', productionModel: false };
+  const poseTracker = new tracking.SessionPlayerTracker({ sessionId: 'proxy' });
+  const pose = {
+    identity: poseIdentity,
+    async initialize() { return { available: true, backend: 'wasm' }; },
+    async analyze(sample) {
+      const players = [{
+        trackId: 1,
+        state: 'tracked',
+        bbox: { x: .1, y: .2, width: .2, height: .4 },
+        keypoints: [{ name: 'right_wrist', x: .31, y: .28, confidence: .9 }, { name: 'right_elbow', x: .4, y: .3, confidence: .9 }]
+      }];
+      void poseTracker;
+      return protocol.createAnalyzerResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, analyzer: poseIdentity.id, analyzerIdentity: poseIdentity, inferenceAvailable: true, result: { kind: 'lightweight-openpose', productionModel: true, state: 'tracked', players, tracking: { state: 'tracked', accepted: true, players } } });
+    }
+  };
+  const shuttle = { identity: shuttleIdentity, async analyze() { return null; } };
+  // A racket analyzer that runs but finds nothing replaces the wrist/elbow
+  // proxy with an honest unknown (no orange keypoint proxy for empty frames).
+  const honestRacket = {
+    identity: { id: 'efficientdet-lite0-racket-v1', version: 1, kind: 'local-litert-tflite-racket-detector' },
+    async initialize() { return { available: true }; },
+    async analyze(sample) {
+      return { state: 'unknown', confidence: null, detections: [], detectionMethod: 'efficientdet-lite0-tennis-racket', reason: 'no-tennis-racket-detection', sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime };
+    }
+  };
+  const withDetector = new context.BSOOffscreenAnalyzer.LocalPoseShuttleAnalyzer({ poseAnalyzer: pose, shuttleAnalyzer: shuttle, racketAnalyzer: honestRacket });
+  const detectedResult = await withDetector.analyze({ sessionId: 'proxy-detector', requestId: 'r1', mediaTime: 1, frame: frame() });
+  assert.equal(detectedResult.result.racket.state, 'unknown');
+  assert.equal(Array.isArray(detectedResult.result.racket.hands), false, 'no pose proxy when the real detector reports no racket');
+  // Without any racket analyzer the composition retains the historical
+  // pose-derived proxy as degraded fallback evidence.
+  const withoutDetector = new context.BSOOffscreenAnalyzer.LocalPoseShuttleAnalyzer({ poseAnalyzer: pose, shuttleAnalyzer: shuttle, racketAnalyzer: null });
+  const proxyResult = await withoutDetector.analyze({ sessionId: 'proxy-only', requestId: 'r1', mediaTime: 1, frame: frame() });
+  assert.equal(proxyResult.result.racket.state, 'partial');
+  assert.ok(Array.isArray(proxyResult.result.racket.hands) && proxyResult.result.racket.hands.length === 1, 'degraded fallback keeps the wrist/elbow proxy');
+});
+
+test('composition keeps the pose proxy when the racket artifact is present but cannot initialize', async () => {
+  const context = loadOffscreen({ runtime: {} }, { withProduction: true });
+  const poseIdentity = { id: 'lightweight-openpose-lite-256-v1', version: 1, kind: 'local-litert-tflite-multipose', productionModel: true };
+  const shuttleIdentity = { id: 'local-shuttle-frame-difference-v1', version: 1, kind: 'bounded-temporal-pixel-heuristic', productionModel: false };
+  const pose = {
+    identity: poseIdentity,
+    async initialize() { return { available: true, backend: 'wasm' }; },
+    async analyze(sample) {
+      const players = [{
+        trackId: 1,
+        state: 'tracked',
+        bbox: { x: .1, y: .2, width: .2, height: .4 },
+        keypoints: [{ name: 'right_wrist', x: .31, y: .28, confidence: .9 }, { name: 'right_elbow', x: .4, y: .3, confidence: .9 }]
+      }];
+      return protocol.createAnalyzerResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, analyzer: poseIdentity.id, analyzerIdentity: poseIdentity, inferenceAvailable: true, result: { kind: 'lightweight-openpose', productionModel: true, state: 'tracked', players, tracking: { state: 'tracked', accepted: true, players } } });
+    }
+  };
+  const shuttle = { identity: shuttleIdentity, async analyze() { return null; } };
+  // A racket detector whose artifact cannot start (fetch/compile failure)
+  // emits no detectionMethod-marked envelope, exactly like the adapter on
+  // initialize() failure; the composition must keep the wrist/elbow proxy.
+  const stuckRacket = {
+    identity: { id: 'efficientdet-lite0-racket-v1', version: 1, kind: 'local-litert-tflite-racket-detector' },
+    async initialize() { return { available: false, reason: 'model-compile-failed', fallbacks: ['backend-wasm-unavailable'] }; },
+    async analyze(sample) {
+      return { state: 'unknown', confidence: null, detections: [], detectionMethod: null, reason: 'model-compile-failed', sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime };
+    }
+  };
+  const composite = new context.BSOOffscreenAnalyzer.LocalPoseShuttleAnalyzer({ poseAnalyzer: pose, shuttleAnalyzer: shuttle, racketAnalyzer: stuckRacket });
+  const initialized = await composite.initialize();
+  assert.equal(initialized.available, true, 'pose availability is unaffected by a racket init failure');
+  assert.equal(initialized.racketAvailable, false);
+  const envelope = await composite.analyze({ sessionId: 'proxy-init-failure', requestId: 'r1', mediaTime: 1, frame: frame() });
+  assert.equal(envelope.result.racket.state, 'partial');
+  assert.equal(envelope.result.racket.detectionMethod, undefined, 'no authoritative detector envelope replaces the proxy');
+  assert.ok(Array.isArray(envelope.result.racket.hands) && envelope.result.racket.hands.length === 1, 'the wrist/elbow proxy stays while the artifact cannot run');
+  assert.equal(envelope.result.evidence.racket.available, false);
+});
+
+test('a racket run exception keeps the pose proxy for that frame and later detections replace it', async () => {
+  const context = loadOffscreen({ runtime: {} }, { withProduction: true });
+  const poseIdentity = { id: 'lightweight-openpose-lite-256-v1', version: 1, kind: 'local-litert-tflite-multipose', productionModel: true };
+  const shuttleIdentity = { id: 'local-shuttle-frame-difference-v1', version: 1, kind: 'bounded-temporal-pixel-heuristic', productionModel: false };
+  const statuses = [];
+  const pose = {
+    identity: poseIdentity,
+    async initialize() { return { available: true, backend: 'wasm' }; },
+    async analyze(sample) {
+      const players = [{
+        trackId: 1,
+        state: 'tracked',
+        bbox: { x: .1, y: .2, width: .2, height: .4 },
+        keypoints: [{ name: 'right_wrist', x: .31, y: .28, confidence: .9 }, { name: 'right_elbow', x: .4, y: .3, confidence: .9 }]
+      }];
+      return protocol.createAnalyzerResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, analyzer: poseIdentity.id, analyzerIdentity: poseIdentity, inferenceAvailable: true, result: { kind: 'lightweight-openpose', productionModel: true, state: 'tracked', players, tracking: { state: 'tracked', accepted: true, players } } });
+    }
+  };
+  const shuttle = { identity: shuttleIdentity, async analyze() { return null; } };
+  let calls = 0;
+  const runFailureRacket = {
+    identity: { id: 'efficientdet-lite0-racket-v1', version: 1, kind: 'local-litert-tflite-racket-detector' },
+    onStatus: () => {},
+    async initialize() { return { available: true, backend: 'wasm' }; },
+    async analyze(sample) {
+      calls += 1;
+      if (calls === 1) {
+        // Exactly the marker-free envelope the adapter returns when its
+        // model.run throws: that frame is not authoritative detector
+        // evidence, so the composition must keep the wrist/elbow proxy.
+        return { state: 'unknown', confidence: null, detections: [], detectionMethod: null, reason: 'device-lost', sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime };
+      }
+      return { state: 'tracked', confidence: 0.71, detections: [{ bbox: { x: 0.31, y: 0.28, width: 0.2, height: 0.3 }, confidence: 0.71, class: 'tennis racket', classIndex: 42, state: 'tracked' }], detectionMethod: 'efficientdet-lite0-tennis-racket', reason: 'coco-tennis-racket-detections', sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime };
+    }
+  };
+  const composite = new context.BSOOffscreenAnalyzer.LocalPoseShuttleAnalyzer({ poseAnalyzer: pose, shuttleAnalyzer: shuttle, racketAnalyzer: runFailureRacket, onStatus: (value) => statuses.push(value) });
+  // A genuine detector failure raised while analyzing a frame is forwarded
+  // with the frame session so the offscreen status router can surface it.
+  runFailureRacket.onStatus({ type: 'inference-failure', sessionId: 'run-exception', requestId: 'r0', mediaTime: 0.5, reason: 'device-lost' });
+  const failedFrame = await composite.analyze({ sessionId: 'run-exception', requestId: 'r1', mediaTime: 1, frame: frame() });
+  assert.equal(failedFrame.result.racket.state, 'partial', 'the proxy stays for a frame whose racket run failed');
+  assert.ok(Array.isArray(failedFrame.result.racket.hands) && failedFrame.result.racket.hands.length === 1);
+  assert.equal(failedFrame.result.racket.detectionMethod, undefined);
+  const recoveredFrame = await composite.analyze({ sessionId: 'run-exception', requestId: 'r2', mediaTime: 2, frame: frame() });
+  assert.equal(recoveredFrame.result.racket.state, 'tracked', 'a later completed run replaces the proxy');
+  assert.equal(recoveredFrame.result.racket.detections.length, 1);
+  const forwarded = statuses.find((value) => value.component === 'racket' && value.type === 'inference-failure');
+  assert.ok(forwarded, 'racket failures are forwarded to the analyzer status router');
+  assert.equal(forwarded.sessionId, 'run-exception');
+  assert.equal(forwarded.reason, 'device-lost');
+});
+
+test('offscreen surfaces genuine racket failures as status without flipping the pose capability', async () => {
+  const sent = [];
+  const onMessage = event();
+  const runtimeReady = {
+    loaded: true,
+    async loadAndCompile() {
+      return { async run() { throw new Error('no-frame-in-this-test'); } };
+    }
+  };
+  const context = loadOffscreen({
+    runtime: {
+      onMessage,
+      sendMessage: async (message) => { sent.push(message); }
+    }
+  }, { withProduction: true, runtimeReady });
+  onMessage.emit(protocol.createSessionStart({ sessionId: 'racket-status', capabilities: { capture: 'timer-fallback', frameTransport: 'rgba-array-v1' } }));
+  await waitForWork();
+  await waitForWork();
+  const analyzer = context.BSOOffscreenAnalyzer.getActiveAnalyzer();
+  assert.equal(analyzer.initializationState.available, true, 'the pose backend must be healthy for the capability-preservation assertion');
+  const countStatuses = () => sent.filter((message) => message.type === protocol.TYPES.RUNTIME_STATUS).length;
+  const before = countStatuses();
+  analyzer.status({ component: 'racket', type: 'inference-status', status: 'backpressure', sessionId: 'racket-status', requestId: 'x', mediaTime: 1, inFlightMediaTime: 1 });
+  analyzer.status({ component: 'shuttle', type: 'shuttle-failure', sessionId: 'racket-status', reason: 'shuttle-noise' });
+  assert.equal(countStatuses(), before, 'per-frame racket/shuttle noise stays off the status channel');
+  analyzer.status({ component: 'racket', type: 'inference-failure', sessionId: 'racket-status', requestId: 'r1', mediaTime: 1, reason: 'device-lost' });
+  const surfaced = sent.filter((message) => message.type === protocol.TYPES.RUNTIME_STATUS && String(message.reason || '').indexOf('racket-inference-failure') === 0).pop();
+  assert.ok(surfaced, 'a genuine run failure surfaces as runtime status');
+  assert.equal(surfaced.sessionId, 'racket-status');
+  assert.equal(surfaced.phase, 'ready', 'a racket failure must not flip the global pose phase');
+  assert.equal(surfaced.capabilities.inference, true);
+  assert.equal(surfaced.capabilities.analyzer, 'lightweight-openpose-lite-256-v1');
+  assert.equal(surfaced.capabilities.backend, 'wasm');
+  assert.match(surfaced.message, /Racket detection is unavailable/);
+  assert.match(surfaced.reason, /^racket-inference-failure:/);
+  analyzer.status({ component: 'racket', type: 'model-failure', sessionId: 'racket-status', reason: 'model-compile-failed' });
+  const initFailure = sent.filter((message) => message.type === protocol.TYPES.RUNTIME_STATUS && String(message.reason || '').indexOf('racket-model-failure') === 0).pop();
+  assert.ok(initFailure, 'a racket initialization failure surfaces the same way');
+  assert.equal(initFailure.phase, 'ready');
+  assert.equal(initFailure.capabilities.inference, true);
+});
+
+test('composition survives a failing racket analyzer without failing the frame', async () => {
+  const context = loadOffscreen({ runtime: {} }, { withProduction: true });
+  const poseIdentity = { id: 'lightweight-openpose-lite-256-v1', version: 1, kind: 'local-litert-tflite-multipose', productionModel: true };
+  const shuttleIdentity = { id: 'local-shuttle-frame-difference-v1', version: 1, kind: 'bounded-temporal-pixel-heuristic', productionModel: false };
+  const pose = {
+    identity: poseIdentity,
+    async initialize() { return { available: true, backend: 'wasm' }; },
+    async analyze(sample) {
+      return protocol.createAnalyzerResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, analyzer: poseIdentity.id, analyzerIdentity: poseIdentity, inferenceAvailable: true, result: { kind: 'lightweight-openpose', productionModel: true, state: 'unknown', players: [], tracking: tracking.unknownTrackingResult({ sessionId: sample.sessionId, requestId: sample.requestId, mediaTime: sample.mediaTime, detector: poseIdentity, reason: 'no-pose-evidence' }) } });
+    }
+  };
+  const shuttle = { identity: shuttleIdentity, async analyze() { return null; } };
+  const failingRacket = {
+    identity: { id: 'efficientdet-lite0-racket-v1', version: 1, kind: 'local-litert-tflite-racket-detector' },
+    async initialize() { return { available: true }; },
+    async analyze() { throw new Error('racket-runtime-failure'); }
+  };
+  const composite = new context.BSOOffscreenAnalyzer.LocalPoseShuttleAnalyzer({ poseAnalyzer: pose, shuttleAnalyzer: shuttle, racketAnalyzer: failingRacket });
+  const envelope = await composite.analyze({ sessionId: 'composition-racket-fail', requestId: 'r1', mediaTime: 1, frame: frame() });
+  assert.ok(envelope, 'the frame still produces a result');
+  assert.equal(envelope.inferenceAvailable, true, 'pose inference remains available');
+  assert.equal(envelope.result.racket.state, 'unknown');
 });
 
 test('production composition stays unknown and never switches to fixture on pose initialization failure', async () => {
