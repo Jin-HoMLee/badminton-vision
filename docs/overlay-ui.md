@@ -149,13 +149,22 @@ the point exactly at the marked spot, so calibration works on small players
 and from the keyboard; direct clicks on the layer still place points
 anywhere for precise mouse placement, and the keyboard tip is documented in
 the seed card itself (`data-bso-seed-shortcuts`). Only the next corner in
-the fixed seed order accepts these shortcuts, and a focused control always
-yields to native keys. The Hough guidance overlay and the existing layer
-click contract are untouched. The focused gates are
+the fixed seed order accepts these shortcuts. A focused control otherwise
+yields to native keys — with one deliberate exception: the current step's
+own floating button advertises its digit in `aria-keyshortcuts` and its
+title ("Press N for the same action"), so that digit places the corner even
+while the button itself is focused, exactly as advertised. The ring and the
+pill are re-derived on every layout pass while seeding (`refreshSeedMarkers`
+at the end of `refreshPanelLayouts` in `src/content.js`), so a mid-seeding
+fullscreen toggle or resize can never strand the pill off-host or pull it
+away from the marked spot. The Hough guidance overlay and the existing
+layer click contract are untouched. The focused gates are
 tests/panel-layout.test.mjs (reserve geometry and the height cap),
-tests/seed-card.test.mjs (button geometry) and tests/live-onboarding.test.mjs
-(strip control points, seed guide clamp, layer pass-through, the
-pill/keyboard placement flow, and the drag/resize/collapse regression).
+tests/seed-card.test.mjs (button geometry plus the styles.css press-pin
+cascade contract) and tests/live-onboarding.test.mjs (strip control points,
+seed guide clamp, layer pass-through, the pill/keyboard placement flow, the
+focused-pill digit and marker re-anchor cases, and the drag/resize/collapse
+regression).
 
 ## Panel collapse, close, and evidence visibility
 

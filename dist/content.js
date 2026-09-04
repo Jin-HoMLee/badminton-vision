@@ -2147,7 +2147,8 @@
     // Court setup is keyboard-accessible: 1-4 name the corner to place, and
     // the key works only when that corner is the next one in the seed order.
     // The point goes to the marked spot (the visible ring), exactly like the
-    // floating corner button. Number keys yield to any focused control above.
+    // floating corner button. Other focused controls already yielded in the
+    // guard above; only the current pill's own digit fires from focus.
     if (state.seeding && seedPoints.length < 4 && key >= "1" && key <= "4") {
       if (Number(key) - 1 === seedPoints.length) {
         event.preventDefault();
