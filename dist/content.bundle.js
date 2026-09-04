@@ -8522,29 +8522,27 @@
         }
         return below;
       };
-      var box = { left: result.left, top: result.top, width: result.width, height: result.height };
-      if (!overlapsAny(box)) return result;
-      var placed = result;
-      var cascadeFits = false;
-      for (var guard = 0; guard < 6; guard += 1) {
-        var below = lowestOccupantBottom(box);
-        if (below < box.top) {
-          cascadeFits = true;
-          break;
+      var fallback = result;
+      var placeInColumn = function (left) {
+        var box = { left: left, top: result.top, width: result.width, height: result.height };
+        for (var guard = 0; guard < 6; guard += 1) {
+          if (!overlapsAny(box)) return panelLayoutApi.pixelPanelLayout(layoutFor(box), viewport, rendered, panelConstraints("settings"));
+          var below = lowestOccupantBottom(box);
+          var stacked = panelLayoutApi.pixelPanelLayout(layoutFor({ left: box.left, top: below + gap, width: box.width, height: box.height }), viewport, rendered, panelConstraints("settings"));
+          if (!stacked) return null;
+          if (stacked.top < below + gap - 0.5) {
+            if (left === result.left && stacked.top > box.top) fallback = stacked;
+            return null;
+          }
+          box = { left: stacked.left, top: stacked.top, width: stacked.width, height: stacked.height };
         }
-        var stacked = panelLayoutApi.pixelPanelLayout(layoutFor({ left: box.left, top: below + gap, width: box.width, height: box.height }), viewport, rendered, panelConstraints("settings"));
-        if (!stacked) break;
-        if (stacked.top < below + gap - 0.5) {
-          if (stacked.top > box.top) placed = stacked;
-          break;
-        }
-        placed = stacked;
-        box = { left: stacked.left, top: stacked.top, width: stacked.width, height: stacked.height };
-      }
-      if (cascadeFits) return placed;
-      var mirror = panelLayoutApi.pixelPanelLayout(layoutFor({ left: areaWidth - (result.left + result.width), top: result.top, width: result.width, height: result.height }), viewport, rendered, panelConstraints("settings"));
-      if (mirror && !overlapsAny({ left: mirror.left, top: mirror.top, width: mirror.width, height: mirror.height })) return mirror;
-      return placed;
+        return null;
+      };
+      var placed = placeInColumn(result.left);
+      if (placed) return placed;
+      placed = placeInColumn(areaWidth - (result.left + result.width));
+      if (placed) return placed;
+      return fallback;
     }
     function applyPanelLayout(container, panel, panelId, layout) {
       if (!panel || !panelLayoutApi || typeof panelLayoutApi.pixelPanelLayout !== "function") return null;

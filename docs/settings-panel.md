@@ -40,15 +40,16 @@ camera-cut reseed (`!(state.seeding && state.cameraCut)` in `render()`).
 - First-open placement ladder: a settings panel with **no saved layout** for
   the video is placed by `settingsFirstOpenPlacement()` in `src/content.js`:
   (1) its CSS default slot (right edge, `top: 58px`); (2) stacked below the
-  occupant when that fits inside the overlay bounds; (3) the opposite
-  column's default slot when it is free of every open panel; (4) only then
-  the clamped last-resort placement. The placement is recomputed
+  occupant when that fits inside the overlay bounds; (3) the opposite column,
+  trying its default slot and then stacking below its occupant the same way;
+  (4) only then the clamped last-resort placement. The placement is recomputed
   deterministically per render and is never persisted (no `SET_PANEL_LAYOUT`
   write), so a saved drag always wins and a later open with the slot free
-  returns to the CSS default. When no free placement exists — the full-height
-  manual labeling form on a narrow player, or very small video areas — the
-  last resort may overlap an open panel: the overlay panels are movable
-  furniture, and a header drag or the close action always recovers.
+  returns to the CSS default. When no free placement exists in either column
+  — the full-height manual labeling form on a narrow player, or very small
+  video areas — the last resort may overlap an open panel: the overlay panels
+  are movable furniture, and a header drag or the close action always
+  recovers.
 - Panel-body hit testing stays conservative: the panel background passes
   pointer events through; only the header/footer/resize surface and the About
   links (`a` elements, already covered by the `.bv-panel-body a` rule) opt in.
