@@ -670,11 +670,9 @@
 
   function startHoughDetectionLoop() {
     if (houghDetectionInterval !== null || typeof setInterval !== "function") return;
-    console.log("[Hough] Starting detection loop");
     // Request Hough detection every 500ms during calibration
     houghDetectionInterval = setInterval(function () {
       if (state && state.seeding && video) {
-        console.log("[Hough] Running detection iteration");
         requestHoughDetection();
       }
     }, 500);
@@ -1270,7 +1268,6 @@
     return svg;
   }
   function startCourtSetup() {
-    console.log("[Hough] startCourtSetup called");
     state = window.BVState.reduceExtensionState(state, { type: "START_SEED" });
     state.videoKey = activeVideoKey || currentVideoKey();
     panelGesture = null;
@@ -1279,7 +1276,6 @@
     persist();
     render();
     // Start periodic Hough detection during calibration
-    console.log("[Hough] About to start detection loop, seeding:", state.seeding);
     startHoughDetectionLoop();
   }
   function undoSeedPoint() {
@@ -1583,9 +1579,6 @@
     if (overlayCanvas) {
       overlayCanvas.setAttribute("data-bso-overlay-canvas", "true");
       overlay.appendChild(overlayCanvas);
-      console.log("[Hough] Canvas appended to overlay. Canvas width/height:", overlayCanvas.width, overlayCanvas.height);
-    } else {
-      console.log("[Hough] overlayCanvas is null!");
     }
     // Evidence is drawn in normalized video coordinates and never intercepts
     // pointer input, so player/shuttle rendering cannot block playback or seed clicks.
