@@ -124,3 +124,47 @@ test("seed-card rendering exposes readable contrast and accessible movement hook
   assert.match(styles, /\.bv-seed-card-handle[^\{]*\{[^}]*cursor: grab/s);
   assert.match(styles, /\.bv-seed-card[^\{]*\{[^}]*z-index: 3/s);
 });
+
+test("the pressed corner pill keeps its translateY(-100%) placement above the generic button press-nudge", async () => {
+  const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
+  const declarationsOf = (selector) => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rule = styles.match(new RegExp("(?:^|\\n)\\s*" + escaped + "\\s*\\{([^}]*)\\}"));
+    assert.ok(rule, `${selector} must declare its own rule in src/styles.css`);
+    const declarations = new Map();
+    for (const part of rule[1].split(";")) {
+      const colon = part.indexOf(":");
+      if (colon > 0) declarations.set(part.slice(0, colon).trim(), part.slice(colon + 1).trim());
+    }
+    return declarations;
+  };
+  const pill = declarationsOf(".bv-seed-corner-button");
+  const pressedPill = declarationsOf(".bv-seed-layer .bv-seed-corner-button:active");
+  const pressNudge = declarationsOf("button:active:not(:disabled)");
+  assert.equal(pill.get("transform"), "translateY(-100%)", "the resting pill must hover above its marked spot");
+  assert.equal(pressedPill.get("transform"), "translateY(-100%)", "the pressed pill must stay pinned at its resting placement");
+  assert.ok(pressNudge.has("transform"), "the generic button press-nudge must still target transform so the two rules conflict");
+  const specificityOf = (selector) => {
+    const counts = [0, 0, 0];
+    const rest = selector.replace(/:not\(\s*([^)]*?)\s*\)/g, (whole, argument) => {
+      const nested = specificityOf(argument);
+      counts[0] += nested[0];
+      counts[1] += nested[1];
+      counts[2] += nested[2];
+      return " ";
+    });
+    counts[0] += (rest.match(/#[\w-]+/g) || []).length;
+    counts[1] += (rest.match(/\.[\w-]+/g) || []).length;
+    counts[1] += (rest.match(/\[[^\]]+\]/g) || []).length;
+    counts[2] += (rest.match(/::[\w-]+/g) || []).length;
+    counts[1] += (rest.match(/:(?!:)[\w-]+/g) || []).length;
+    counts[2] += (rest.match(/(?:^|[\s>+~])([a-zA-Z][\w-]*)/g) || []).length;
+    return counts;
+  };
+  const compare = (left, right) => left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
+  const pinned = specificityOf(".bv-seed-layer .bv-seed-corner-button:active");
+  const nudged = specificityOf("button:active:not(:disabled)");
+  assert.ok(compare(pinned, nudged) > 0, "the press-pin rule must out-specify the generic press-nudge or a pressed pill slides off its marked spot");
+  const card = declarationsOf(".bv-seed-card");
+  assert.ok(Number(pill.get("z-index")) > Number(card.get("z-index")), "the pill declares a higher stacking level than the instruction card it paints above");
+});

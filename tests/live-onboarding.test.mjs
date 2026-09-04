@@ -1889,7 +1889,8 @@ test("the corner pill's advertised digit fires while the pill itself is focused"
 test("the floating corner pill paints above the seed card on small players", async () => {
   // At the default layout on the 640x360 player the setup card is clamped
   // against the control-strip reserve, so its opaque box covers the pill's
-  // marked-spot band; the pill's stacking level keeps it visible/tappable.
+  // marked-spot band; the pill needs the higher stacking level (a declared
+  // z-index contract, pinned in seed-card.test.mjs) to stay visible there.
   const live = await createSession();
   live.flushStorage();
   live.onMessage({ type: "START_SEED", requestId: "pill-above-card-1" });
@@ -1910,16 +1911,6 @@ test("the floating corner pill paints above the seed card on small players", asy
   assert.ok(pillTop - 40 >= cardTop - 1e-9, "the pill's visual band starts inside the card");
   assert.ok(pillTop <= cardBottom + 1e-9, "the pill's visual band ends inside the card");
   assert.ok(pillLeft >= cardLeft - 1e-9 && pillLeft <= cardRight + 1e-9, "the pill's corner column crosses the card");
-  const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
-  const zIndexOf = (selector) => {
-    const rule = styles.match(new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\{([^}]*)\\}"));
-    assert.ok(rule, `${selector} declares a rule`);
-    const declared = rule[1].match(/z-index:\s*(\d+)/);
-    return declared ? Number(declared[1]) : null;
-  };
-  const pillZ = zIndexOf(".bv-seed-corner-button");
-  const cardZ = zIndexOf(".bv-seed-card");
-  assert.ok(pillZ != null && cardZ != null && pillZ > cardZ, "the pill stacks above the opaque card inside the seed layer");
   // The pill is overlapped by the card but still receives the click that
   // seeds the corner at its marked spot.
   pill.dispatchEvent({ type: "click", target: pill });
