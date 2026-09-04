@@ -203,7 +203,35 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-callout.warn .bv-callout-icon { color: var(--signal-warn); }
 .bv-callout-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .bv-callout-copy strong { font: var(--type-ui); color: var(--text-primary); }
-.bv-callout-copy span { font: var(--type-ui-sm); font-size: var(--fs-12); color: var(--text-muted); }
+.bv-callout-copy .bv-callout-body { font: var(--type-ui-sm); font-size: var(--fs-12); color: var(--text-muted); }
+/* Compact callouts (ui.callout opts.tooltip) collapse their copy to the first
+   sentence; the full body opens in a tooltip on hover or keyboard focus so
+   popup boxes stop carrying long persistent text. The summary line is the
+   focusable trigger (tabindex 0 + aria-describedby to the role="tooltip"
+   node) and ellipsis clamps it to one line on narrow widths, so the callout
+   never overflows its layout. */
+.bv-callout[data-bso-callout-compact] .bv-callout-copy { position: relative; }
+.bv-callout[data-bso-callout-compact] .bv-callout-copy .bv-callout-body {
+  display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  cursor: help;
+}
+.bv-callout[data-bso-callout-compact] .bv-callout-copy:hover .bv-callout-body,
+.bv-callout[data-bso-callout-compact] .bv-callout-copy:focus-within .bv-callout-body {
+  text-decoration: underline dotted var(--border-strong); text-underline-offset: 3px;
+}
+.bv-callout-tooltip {
+  display: none; position: absolute; z-index: 40; left: 50%; bottom: calc(100% + 10px);
+  transform: translateX(-50%); width: 244px; max-width: 70vw; box-sizing: border-box;
+  padding: 9px 11px; border-radius: var(--radius-md); background: var(--ink-800);
+  border: 1px solid var(--border-subtle); box-shadow: var(--shadow-raised);
+  text-align: left; white-space: normal;
+  font: var(--type-ui-sm); font-size: var(--fs-12); line-height: var(--lh-normal);
+  color: var(--text-body);
+}
+.bv-callout[data-bso-callout-compact] .bv-callout-copy:hover > .bv-callout-tooltip,
+.bv-callout[data-bso-callout-compact] .bv-callout-copy:focus-within > .bv-callout-tooltip {
+  display: block;
+}
 .bv-panel { width: 100%; overflow: hidden; border: 1px solid var(--border-hairline); border-radius: var(--radius-lg); background: var(--surface-panel); box-shadow: var(--shadow-panel); }
 .bv-panel.solid { background: var(--surface-panel-solid); }
 .bv-panel-header { display: flex; align-items: center; gap: var(--sp-4); min-height: 32px; padding: 0 var(--sp-3) 0 var(--sp-5); border-bottom: 1px solid var(--border-hairline); background: rgba(255,255,255,.02); }
