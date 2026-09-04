@@ -485,6 +485,11 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 }
 .bv-seed-corner-button:hover:not(:disabled) { color: var(--lime-400); border-color: var(--lime-400); }
 .bv-seed-corner-button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* The pill's translateY(-100%) is its placement contract: it must hover above
+   its marked spot and under the cursor. The generic 1px press-nudge
+   (button:active:not(:disabled)) would displace it ~41px while pressed and
+   make real clicks fall through to the seed layer, so pin it during :active. */
+.bv-seed-layer .bv-seed-corner-button:active { transform: translateY(-100%); }
 .bv-seed-card .bv-seed-shortcuts {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3);
   font: var(--type-ui-sm); color: var(--text-body);
