@@ -60,6 +60,15 @@ function Popup({ state, onEnable, onSeed, onManual, onSummary, density, setDensi
         )}
       </div>
 
+      <Section title="Panels on the video" aside="the video's own Panels button offers these as quick shortcuts">
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <Toggle id="p-feed" label="Shots this rally" description="Every stroke as it happens" checked={panels.feed} onChange={(v) => setPanels({ ...panels, feed: v })} />
+          <Toggle id="p-stats" label="Rally stats" checked={panels.stats} onChange={(v) => setPanels({ ...panels, stats: v })} />
+          <Toggle id="p-map" label="Court map" description="Where players and the shuttle are" checked={panels.map} onChange={(v) => setPanels({ ...panels, map: v })} />
+          <Toggle id="p-pro" label="Compare with the pros" description="Coming later — needs a licensed benchmark" disabled />
+        </div>
+      </Section>
+
       <Section title={<span style={{ display: "flex", alignItems: "center", gap: 8 }}>What's being tracked<span style={{ display: "inline-flex", gap: 2 }}>{trackers.map((t) => <span key={t.id} style={{ width: 10, height: 3, borderRadius: 1, background: t.on ? HEALTH[t.health] : "var(--ink-500)" }} />)}</span></span>}
         aside={<button type="button" onClick={() => setOpen(!open)} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", font: "var(--type-ui-sm)", fontSize: "var(--fs-11)", padding: 0 }}>{active} of {trackers.length} on<Icon name={open ? "chevron-up" : "chevron-down"} size={12} /></button>}>
         {!open ? (
@@ -77,15 +86,6 @@ function Popup({ state, onEnable, onSeed, onManual, onSummary, density, setDensi
 
       <Section title={<span style={{ display: "flex", alignItems: "center", gap: 7 }}>How much to show<InfoTip term="How much to show">Changes only what appears on the video. Everything is still analysed either way.</InfoTip></span>}>
         <SegmentedControl full value={density} onChange={setDensity} options={[{ value: "minimal", label: "Just a chip" }, { value: "balanced", label: "Shots + stats" }, { value: "full", label: "Everything" }]} />
-      </Section>
-
-      <Section title="Panels on the video">
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <Toggle id="p-feed" label="Shots this rally" description="Every stroke as it happens" checked={panels.feed} onChange={(v) => setPanels({ ...panels, feed: v })} />
-          <Toggle id="p-stats" label="Rally stats" checked={panels.stats} onChange={(v) => setPanels({ ...panels, stats: v })} />
-          <Toggle id="p-map" label="Court map" description="Where players and the shuttle are" checked={panels.map} onChange={(v) => setPanels({ ...panels, map: v })} />
-          <Toggle id="p-pro" label="Compare with the pros" description="Coming later — needs a licensed benchmark" disabled />
-        </div>
       </Section>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "14px 16px", borderTop: "1px solid var(--border-hairline)", background: "rgba(0,0,0,.2)" }}>

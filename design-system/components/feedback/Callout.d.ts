@@ -7,6 +7,9 @@ export interface CalloutProps {
   children: React.ReactNode;
   action?: React.ReactNode;
   onDismiss?: () => void;
+  /** Collapses a multi-sentence string body to its first sentence, opening the full body
+   *  in a tooltip on hover/keyboard focus. No effect on single-sentence or non-string bodies. */
+  tooltip?: boolean;
   style?: React.CSSProperties;
 }
 export declare function Callout(props: CalloutProps): JSX.Element;

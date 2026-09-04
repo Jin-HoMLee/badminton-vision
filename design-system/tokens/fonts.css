@@ -1,12 +1,13 @@
 /*
- * Extension-safe font policy.
- *
- * The supplied design system contains no redistributable font binaries. Do not
- * fetch Google Fonts (or any other remote font) from a YouTube page. The named
- * families remain the design-system preference in typography.css; Chrome uses
- * an installed local family when available and the deterministic system-ui /
- * ui-monospace fallbacks otherwise. This sheet is deliberately valid in both
- * a document stylesheet and a shadow-root stylesheet.
+ * Extension-safe font policy (matches upstream: no redistributable font binaries are
+ * supplied, so the extension never fetches a remote font from a YouTube page —
+ * a remote @import is subject to that page's CSP and is ignored inside a shadow
+ * root anyway, since @font-face is document-scoped). Named families are the
+ * design-system preference; the browser uses an installed local copy when
+ * available and falls back to the deterministic system-ui / ui-monospace stacks
+ * otherwise. Valid in both a document stylesheet and a shadow-root stylesheet.
+ * If licensed binaries are supplied later, ship them as extension resources and
+ * register the @font-face from document-level CSS — never restore a remote import.
  */
 :root,:host{
 --font-display:"Space Grotesk","Space Grotesk Fallback",system-ui,sans-serif;

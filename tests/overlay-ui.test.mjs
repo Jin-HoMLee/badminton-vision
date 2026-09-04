@@ -438,10 +438,13 @@ test("the stroke feed renders every entry inside a scrollable bounded body", asy
 
 test("popup font packaging is local-only and records the supplied-system limitation", async () => {
   const fonts = await read("design-system/tokens/fonts.css");
+  // The refreshed upstream policy comment names @import/@font-face in prose;
+  // strip comments so the assertion targets declared mechanisms only.
+  const fontsCss = fonts.replace(/\/\*[\s\S]*?\*\//g, "");
   const typography = await read("design-system/tokens/typography.css");
   const manifest = JSON.parse(await read("manifest.json"));
-  assert.doesNotMatch(fonts, /@import|@font-face|(?:https?:)?\/\//i);
-  assert.match(fonts, /:root\s*,\s*:host\s*\{/);
+  assert.doesNotMatch(fontsCss, /@import|@font-face|(?:https?:)?\/\//i);
+  assert.match(fontsCss, /:root\s*,\s*:host\s*\{/);
   assert.match(typography, /system-ui/);
   assert.match(typography, /ui-monospace/);
   assert.equal(manifest.web_accessible_resources.some((entry) => entry.resources.includes("design-system/tokens/*")), true);

@@ -38,10 +38,6 @@
         "message": "Raw px value — use a design-system spacing token via var()."
       },
       {
-        "selector": "Literal[value=/font-family\\s*:\\s*(?!['\\\"]?(?:Space Grotesk|IBM Plex Sans|IBM Plex Mono))/i]",
-        "message": "Font not provided by the design system. Available: Space Grotesk, IBM Plex Sans, IBM Plex Mono."
-      },
-      {
         "selector": "JSXOpeningElement[name.name='Badge'] > JSXAttribute > JSXIdentifier[name!=/^(?:tone|uppercase|icon|key|ref|className|style|children)$/]",
         "message": "<Badge> doesn't accept that prop. Declared props: tone, uppercase, icon."
       },
@@ -62,8 +58,8 @@
         "message": "<Button> size must be one of 'sm' | 'md' | 'lg'."
       },
       {
-        "selector": "JSXOpeningElement[name.name='Callout'] > JSXAttribute > JSXIdentifier[name!=/^(?:tone|icon|title|children|action|onDismiss|style|key|ref|className|style|children)$/]",
-        "message": "<Callout> doesn't accept that prop. Declared props: tone, icon, title, children, action, onDismiss, style."
+        "selector": "JSXOpeningElement[name.name='Callout'] > JSXAttribute > JSXIdentifier[name!=/^(?:tone|icon|title|children|action|onDismiss|tooltip|style|key|ref|className|style|children)$/]",
+        "message": "<Callout> doesn't accept that prop. Declared props: tone, icon, title, children, action, onDismiss, tooltip, style."
       },
       {
         "selector": "JSXOpeningElement[name.name='Callout'] > JSXAttribute[name.name='tone'] > Literal[value!=/^(?:guide|info|warn|quiet)$/]",
@@ -142,8 +138,8 @@
         "message": "<MixSegment> doesn't accept that prop. Declared props: label, value, color."
       },
       {
-        "selector": "JSXOpeningElement[name.name='Panel'] > JSXAttribute > JSXIdentifier[name!=/^(?:title|icon|mediaTime|stale|actions|collapsed|footer|tone|bodyStyle|key|ref|className|style|children)$/]",
-        "message": "<Panel> doesn't accept that prop. Declared props: title, icon, mediaTime, stale, actions, collapsed, footer, tone, bodyStyle."
+        "selector": "JSXOpeningElement[name.name='Panel'] > JSXAttribute > JSXIdentifier[name!=/^(?:title|icon|mediaTime|stale|actions|collapsed|onToggleCollapse|collapsible|resizable|footer|tone|bodyStyle|draggable|key|ref|className|style|children)$/]",
+        "message": "<Panel> doesn't accept that prop. Declared props: title, icon, mediaTime, stale, actions, collapsed, onToggleCollapse, collapsible, resizable, footer, tone, bodyStyle, draggable."
       },
       {
         "selector": "JSXOpeningElement[name.name='Panel'] > JSXAttribute[name.name='tone'] > Literal[value!=/^(?:glass|solid)$/]",
@@ -443,6 +439,9 @@
       "--type-ui-sm"
     ],
     "tokenKinds": {
+      "--font-display": "font",
+      "--font-sans": "font",
+      "--font-mono": "font",
       "--ink-900": "color",
       "--ink-800": "color",
       "--ink-700": "color",
@@ -502,9 +501,6 @@
       "--conf-medium": "color",
       "--conf-low": "color",
       "--conf-unknown": "color",
-      "--font-display": "font",
-      "--font-sans": "font",
-      "--font-mono": "font",
       "--fs-10": "spacing",
       "--fs-11": "spacing",
       "--fs-12": "spacing",
@@ -584,10 +580,6 @@
       "--transition-control": "color",
       "--transition-panel": "other"
     },
-    "fontFamilies": [
-      "IBM Plex Mono",
-      "IBM Plex Sans",
-      "Space Grotesk"
-    ]
+    "fontFamilies": []
   }
 }
