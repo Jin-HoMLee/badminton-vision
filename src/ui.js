@@ -171,12 +171,36 @@
     return section;
   }
 
+  // Compact callouts (opts.tooltip) keep the standing copy to the body's first
+  // sentence and open the full body in a tooltip on hover or keyboard focus,
+  // so info boxes stop carrying long persistent text. Nothing is lost: the
+  // summary line is keyboard-focusable and its aria-describedby points at the
+  // role="tooltip" sibling that always carries the whole body. Single-sentence
+  // bodies have nothing to collapse and keep the plain rendering.
+  var calloutTooltipSeq = 0;
+  function calloutFirstSentence(text) {
+    var match = /^([\s\S]*?\.)\s+[\s\S]+$/.exec(String(text == null ? "" : text));
+    return match ? match[1] : null;
+  }
   function callout(tone, title, body, opts) {
     opts = opts || {};
     var iconName = tone === "warn" ? "triangle-alert" : tone === "info" ? "info" : "help";
-    var content = [el("span", { className: "bv-callout-icon" }, [icon(iconName, 14)]), el("span", { className: "bv-callout-copy" }, [title ? el("strong", {}, [title]) : null, el("span", {}, [body])])];
+    var fullText = String(body == null ? "" : body);
+    var summary = opts.tooltip ? calloutFirstSentence(fullText) : null;
+    var compact = summary !== null && summary.length < fullText.length;
+    var copyChildren = [title ? el("strong", {}, [title]) : null];
+    if (compact) {
+      var tooltipId = "bv-callout-tooltip-" + (++calloutTooltipSeq);
+      copyChildren.push(el("span", { className: "bv-callout-body", tabindex: "0", "aria-describedby": tooltipId }, [summary]));
+      copyChildren.push(el("span", { className: "bv-callout-tooltip", id: tooltipId, role: "tooltip" }, [fullText]));
+    } else {
+      copyChildren.push(el("span", { className: "bv-callout-body" }, [body]));
+    }
+    var content = [el("span", { className: "bv-callout-icon" }, [icon(iconName, 14)]), el("span", { className: "bv-callout-copy" }, copyChildren)];
     if (opts.onDismiss) content.push(iconButton("x", "Dismiss", { size: "sm", onClick: opts.onDismiss }));
-    return el("div", { className: "bv-callout " + (tone || "guide"), role: tone === "warn" ? "status" : null }, content);
+    var attrs = { className: "bv-callout " + (tone || "guide"), role: tone === "warn" ? "status" : null };
+    if (compact) attrs["data-bso-callout-compact"] = "true";
+    return el("div", attrs, content);
   }
 
   function stepDots(current, labels) {

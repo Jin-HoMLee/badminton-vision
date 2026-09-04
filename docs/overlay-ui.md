@@ -229,6 +229,24 @@ installed. If licensed binaries are supplied later, they must be added as
 extension resources and registered from document-level CSS; do not restore a
 remote import inside the shadow tree.
 
+## Popup info callout tooltips
+
+The popup intro boxes (`ui.callout` with `tooltip: true` - the five status
+callouts for runtime, inference, court, camera cut, and action errors) no
+longer carry long persistent body text: the standing copy collapses to the
+body's first sentence and the full body opens in a tooltip on hover or
+keyboard focus. The summary line is the keyboard-focusable trigger
+(`tabindex="0"`) and its `aria-describedby` points at the sibling
+`role="tooltip"` node that always holds the whole body, so no information is
+lost for keyboard or screen-reader users. Ellipsis clamping on the summary
+line (`overflow: hidden; text-overflow: ellipsis`) guarantees the callout
+never overflows its layout on the 360px popup width. The stylesheet shows the
+tooltip on `.bv-callout-copy:hover` / `:focus-within`; the contract markers
+are `data-bso-callout-compact`, `.bv-callout-body`, and `.bv-callout-tooltip`
+in `src/styles.css` and `src/ui.js`. Single-sentence bodies and callouts
+outside the popup intro are untouched; regression gates are in
+`tests/overlay-ui.test.mjs`.
+
 ## Toolbar icon packaging
 
 [Chrome manifest icons use raster image formats, not SVG](https://developer.chrome.com/docs/extensions/develop/ui/configure-icons).

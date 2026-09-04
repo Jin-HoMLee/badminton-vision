@@ -403,3 +403,50 @@ test("popup font packaging is local-only and records the supplied-system limitat
   assert.match(await read("docs/overlay-ui.md"), /no redistributable font binaries/);
   assert.match(await read("docs/overlay-ui.md"), /does not fetch Google Fonts/);
 });
+
+test("popup intro callouts collapse to a sentence summary with an accessible full-text tooltip", async () => {
+  const css = await read("src/styles.css");
+  const ui = await read("src/ui.js");
+  // Compact mode is an explicit ui.callout opt-in with the tooltip contract.
+  assert.match(ui, /data-bso-callout-compact/);
+  assert.match(ui, /role: "tooltip"/);
+  assert.match(ui, /tabindex: "0", "aria-describedby": tooltipId/);
+  // The stylesheet clamps the summary to one line (no layout overflow) and
+  // opens the tooltip on hover or keyboard focus of the copy.
+  assert.match(css, /\.bv-callout\[data-bso-callout-compact\][^{]*\{[^}]*text-overflow:\s*ellipsis/s);
+  assert.match(css, /\.bv-callout-tooltip\s*\{[^}]*display:\s*none/s);
+  assert.match(css, /\.bv-callout-copy:hover > \.bv-callout-tooltip,[^}]*:focus-within > \.bv-callout-tooltip \{\s*display:\s*block/s);
+  assert.match(css, /\.bv-callout-copy .bv-callout-body \{[^}]*font: var\(--type-ui-sm\)/s);
+
+  // The default popup session (watch page found, inference off) renders the
+  // runtime-pending notice and the "Inference starts independently" guide
+  // box; both collapse to their first sentence.
+  const popup = await createPopupSession();
+  const compact = popup.app.querySelectorAll("[data-bso-callout-compact]");
+  assert.ok(compact.length >= 2, "intro callouts render in compact mode");
+  for (const box of compact) {
+    assert.ok(box.className.includes("bv-callout"));
+    const body = box.querySelector(".bv-callout-body");
+    assert.ok(body, "compact callout keeps a summary body line");
+    assert.equal(body.getAttribute("tabindex"), "0", "summary line is the keyboard trigger");
+    const tipId = body.getAttribute("aria-describedby");
+    assert.ok(tipId && /^bv-callout-tooltip-/.test(tipId), "summary references its tooltip");
+    const tip = box.querySelector(`[id="${tipId}"]`);
+    assert.ok(tip, "described tooltip exists in the same callout");
+    assert.equal(tip.getAttribute("role"), "tooltip");
+    const summaryText = body.children[0].textContent;
+    const fullText = tip.children[0].textContent;
+    assert.ok(summaryText.length < fullText.length, "standing copy is only the first sentence");
+    assert.ok(fullText.startsWith(summaryText), "tooltip carries the full body starting at the summary");
+  }
+  // Known first instance: the runtime-pending notice keeps its first sentence
+  // standing and its whole body in the tooltip.
+  const runtimeNotice = compact[0].querySelector("strong");
+  assert.ok(runtimeNotice && runtimeNotice.children[0].textContent.includes("Local runtime pending"));
+  assert.equal(compact[0].querySelector(".bv-callout-body").children[0].textContent, "The local pose model is starting.");
+  const runtimeTooltip = compact[0].querySelector(".bv-callout-tooltip");
+  assert.equal(runtimeTooltip.children[0].textContent, "The local pose model is starting. Until evidence arrives, player, shuttle, shot, rally-end, and winner fields remain unknown.");
+  // The docs carry the shipping contract.
+  assert.match(await read("docs/overlay-ui.md"), /Popup info callout tooltips/);
+  assert.match(await read("docs/overlay-ui.md"), /data-bso-callout-compact/);
+});
