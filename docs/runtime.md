@@ -213,6 +213,9 @@ pose envelope (`lightweight-openpose-pose-shuttle`,
 BlazePose TF.js adapter decodes the landmark tensor of the cited MediaPipe
 model family (`[1, 195]` = 39 landmarks x (x, y, z, visibility, presence)) with
 the canonical 33-landmark ordering mapped onto COCO's 17 names and sigmoid
+visibility as per-keypoint confidence; z is never treated as a confidence
+score. The TF.js adapters accept the serializable RGBA frame transport
+(stable Chrome) as well as ImageBitmap frames.
 
 ### One WebGPU device per offscreen document
 
@@ -232,9 +235,6 @@ its own model. `test/lite-openpose-adapter.test.js` pins the round trip
 (init -> dispose -> init must not call `requestDevice` twice); the live
 extension verified the cross-device validation errors vanish and pose
 observations resume after the switch-back.
-visibility as per-keypoint confidence; z is never treated as a confidence
-score. The TF.js adapters accept the serializable RGBA frame transport
-(stable Chrome) as well as ImageBitmap frames.
 
 ## Shuttle candidate composition
 
