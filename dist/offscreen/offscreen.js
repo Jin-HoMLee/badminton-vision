@@ -975,9 +975,11 @@ if (typeof chrome !== 'object' || !chrome.runtime || !chrome.runtime.onMessage |
   // MV3 offscreen context is required for message handling.
 } else {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // Handle Hough line detection for calibration
-  if (message && message.action === 'detectHoughLines') {
-    console.log("[Hough-Offscreen] Received detectHoughLines message");
+  // Handle Hough line detection for calibration (only via relay from service-worker)
+  // The service worker relays the original 'detectHoughLines' message as 'detectHoughLinesRelay'
+  // to avoid listener collision where both service-worker and offscreen would respond to the same message
+  if (message && message.action === 'detectHoughLinesRelay') {
+    console.log("[Hough-Offscreen] Received detectHoughLinesRelay message");
     Promise.resolve(handleHoughDetection(message)).then((result) => {
       console.log("[Hough-Offscreen] Sending response with", result.lines ? result.lines.length : 0, "lines");
       sendResponse(result);
