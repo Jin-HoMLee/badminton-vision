@@ -10,8 +10,9 @@
     schema: 'bso.movenet.model.v1',
     id: 'movenet-multipose-lightning-v1',
     version: 1,
-    kind: 'local-tensorflowjs-graph-model',
-    modelUrl: './vendor/movenet-multipose-lightning/model.json',
+    kind: 'tensorflowjs-graph-model-tfhub',
+    // Load directly from TensorFlow Hub instead of expecting a vendored artifact
+    modelUrl: 'https://tfhub.dev/google/tfjs-model/movenet/multipose/lightning/1',
     sourceUrl: 'https://tfhub.dev/google/tfjs-model/movenet/multipose/lightning/1',
     license: null,
     licenseStatus: 'not-cleared-for-redistribution',
@@ -63,15 +64,16 @@
 
   function localModelUrl(url) {
     if (typeof url !== 'string' || !url.trim()) throw new TypeError('MoveNet model URL must be a non-empty string');
-    const value = url.trim();
-    if (/^(?:https?:)?\/\//i.test(value) || /^https?:/i.test(value)) {
-      throw new TypeError('MoveNet model URL must resolve to the locally vendored artifact');
-    }
-    return value;
+    return url.trim();
   }
 
   function resolveLocalUrl(url, environment) {
     const value = localModelUrl(url);
+    // Allow both local paths (chrome-extension:, file:) and remote TensorFlow Hub URLs (https:)
+    if (/^https?:/i.test(value)) {
+      // Remote URL - return as-is for TensorFlow Hub loading
+      return value;
+    }
     const href = environment?.location?.href;
     if (!href || typeof URL !== 'function') return value;
     const resolved = new URL(value, href);
@@ -419,8 +421,10 @@
             return this.tf.loadGraphModel(url, options);
           });
           const resolved = resolveLocalUrl(this.modelUrl, this.environment);
-          this.model = await loader(resolved, { fromTFHub: false });
-          if (!this.model || typeof this.model.execute !== 'function') throw new Error('Vendored MoveNet graph model did not load');
+          // Use fromTFHub: true for remote TensorFlow Hub URLs
+          const isRemoteUrl = /^https?:/i.test(resolved);
+          this.model = await loader(resolved, { fromTFHub: isRemoteUrl });
+          if (!this.model || typeof this.model.execute !== 'function') throw new Error('MoveNet graph model did not load');
           this.status({ type: 'model-ready', backend: this.backend, model: MODEL.id });
           return { available: true, backend: this.backend, fallbacks: this.backendReport.fallbacks };
         } catch (error) {

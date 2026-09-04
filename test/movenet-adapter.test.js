@@ -121,7 +121,7 @@ test('adapter runs a local graph-model input pipeline and disposes tensors after
   const initialized = await analyzer.initialize();
   assert.equal(initialized.available, true);
   assert.equal(initialized.backend, 'webgpu');
-  assert.match(modelUrl, /vendor\/movenet-multipose-lightning\/model\.json$/);
+  assert.match(modelUrl, /tfhub\.dev.*movenet.*multipose.*lightning/i);
   const result = await analyzer.analyze(sample('pipeline', 'r1', 1));
   assert.equal(result.inferenceAvailable, true);
   assert.equal(result.result.players.length, 2);
