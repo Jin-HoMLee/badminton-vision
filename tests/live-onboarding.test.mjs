@@ -288,7 +288,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
   };
 }
 
-async function createPopupSession({ deferStorage = false, failInjection = false, tabUrl = "https://www.youtube.com/watch?v=real-match", tabTitle = "Real Match Title - YouTube", videoInfo = null, initialVideoKey = "youtube:real-match" } = {}) {
+async function createPopupSession({ deferStorage = false, failInjection = false, tabUrl = "https://www.youtube.com/watch?v=real-match", tabTitle = "Real Match Title - YouTube", videoInfo = null, initialVideoKey = "youtube:real-match", runtimeStatus = null, storedState = null } = {}) {
   const documentRef = new FakeDocument();
   const app = new FakeNode("main");
   app.setAttribute("id", "app");
@@ -298,6 +298,7 @@ async function createPopupSession({ deferStorage = false, failInjection = false,
   let injection = null;
   let closed = false;
   const storageReads = [];
+  const stored = Object.assign({ bvState: storedState || { videoKey: initialVideoKey, enabled: false, seeded: false }, bvVideoInfo: videoInfo }, runtimeStatus ? { bvRuntimeStatus: runtimeStatus } : {});
   const runtime = {
     lastError: null,
     getURL: (path) => `chrome-extension://test/${path}`,
@@ -326,7 +327,7 @@ async function createPopupSession({ deferStorage = false, failInjection = false,
     storage: { local: {
       get: (_keys, callback) => {
         if (deferStorage) storageReads.push(callback);
-        else callback({ bvState: { videoKey: initialVideoKey, enabled: false, seeded: false }, bvVideoInfo: videoInfo });
+        else callback(stored);
       },
       set: (_value, callback) => callback?.()
     } }
@@ -351,7 +352,7 @@ async function createPopupSession({ deferStorage = false, failInjection = false,
   }
   return {
     app, context, sent, storageReads,
-    flushStorage() { storageReads.shift()({ bvState: { videoKey: initialVideoKey, enabled: false, seeded: false }, bvVideoInfo: videoInfo }); },
+    flushStorage() { storageReads.shift()(stored); },
     get injection() { return injection; }, get closed() { return closed; }
   };
 }
@@ -541,6 +542,56 @@ test("popup mode and panel controls are single-activation and visibly stateful",
   disclosureToggle.dispatchEvent({ type: "click" });
   assert.equal(popup.app.querySelector("[data-bso-evidence-disclosure-toggle]").getAttribute("aria-expanded"), "false");
   assert.equal(popup.app.querySelector("[data-bso-evidence-disclosure-toggle]").focused, true, "closing the disclosure returns focus to its trigger");
+});
+
+test("popup quick wins: Panel Controls lead, live labels stay honest, Close stays explicit", async () => {
+  const popup = await createPopupSession({
+    storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false },
+    runtimeStatus: {
+      phase: "live", inference: true, analyzer: "lightweight-openpose-lite-256-v1",
+      backend: "wasm", stale: false, frameTransport: "request-video-frame-callback",
+      result: { kind: "tracking", state: "tracked", rally: { state: "unknown", reason: "rally-segmentation-not-available" } }
+    }
+  });
+  // Section flow follows containers-before-content: Panel Controls renders
+  // above Evidence visibility, with density and pose model below both.
+  const sectionOf = (selector) => popup.app.children.findIndex((child) => child.querySelector(selector));
+  assert.ok(sectionOf("[data-bso-panel-controls-toggle]") >= 0, "Panel Controls renders its section");
+  assert.ok(
+    sectionOf("[data-bso-panel-controls-toggle]") < sectionOf("[data-bso-evidence-disclosure-toggle]"),
+    "Panel Controls renders above Evidence visibility"
+  );
+  assert.ok(sectionOf("[data-bso-evidence-disclosure-toggle]") < sectionOf("[data-bso-model-selector]"), "Evidence visibility renders above the pose model section");
+  // The fixture-era default rally count never passes as live match state: a
+  // production session without rally segmentation reads as live analysis and
+  // the accelerator token is spelled out as a capability.
+  const chip = popup.app.querySelector(".bv-status-chip");
+  assert.equal(textOf(chip.querySelector(".bv-status-label")).trim(), "Live analysis", "a live session without a runtime rally id does not fake a count");
+  assert.equal(textOf(chip.querySelector(".bv-status-detail")).trim(), "WASM (software)", "backend tokens are shown as user-facing capabilities");
+  assert.doesNotMatch(textOf(chip), /Rally\s*\d+/, "the fixture-era count is absent from the live chip");
+  assert.ok(textOf(popup.app).includes("local pose + bounded shuttle candidate · WASM (software)"), "tracker summary uses the same capability label");
+  // Panel Controls help text names its role next to the overlay quick surface.
+  popup.app.querySelector("[data-bso-panel-controls-toggle]").dispatchEvent({ type: "click" });
+  const panelCopy = textOf(popup.app);
+  assert.ok(panelCopy.includes("saved for this video"), "panel choices stay per-video");
+  assert.ok(panelCopy.includes("the Panels button over the video offers the same panels as quick shortcuts"), "help text distinguishes the popup setup role from the overlay quick shortcuts");
+  // The header keeps its explicit, accessible Close affordance (audit: keep).
+  const closeButton = popup.app.querySelectorAll("button").find((button) => button.getAttribute("aria-label") === "Close");
+  assert.ok(closeButton, "the header keeps a labeled Close button");
+  assert.equal(closeButton.getAttribute("title"), "Close");
+  closeButton.dispatchEvent({ type: "click" });
+  assert.equal(popup.closed, true, "Close still closes the popup");
+  // A runtime-reported rally id is the one case the count label appears.
+  const tracked = await createPopupSession({
+    storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false },
+    runtimeStatus: {
+      phase: "live", inference: true, analyzer: "lightweight-openpose-lite-256-v1",
+      backend: "webgpu", stale: false,
+      result: { kind: "tracking", state: "tracked", rally: { state: "tracked", id: 7 } }
+    }
+  });
+  assert.equal(textOf(tracked.app.querySelector(".bv-status-label")).trim(), "Rally #7", "a runtime-reported rally id is shown as the count");
+  assert.equal(textOf(tracked.app.querySelector(".bv-status-detail")).trim(), "WebGPU acceleration");
 });
 
 test("minimal live overlay keeps only detection evidence and one on-demand access point", async () => {

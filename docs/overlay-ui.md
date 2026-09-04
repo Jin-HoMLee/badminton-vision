@@ -166,6 +166,22 @@ Panel and detection-layer visibility choices are stored per video. The manual
 labeling panel rebuilds its body content only when expanded; nothing is lost by
 collapsing because the form is rebuilt on expand.
 
+The popup's section order is containers-before-content: **Panel Controls**
+renders above **Evidence visibility**, with **How much to show** and the pose
+model selector below (order is asserted in
+`tests/live-onboarding.test.mjs`). Panel Controls' helper copy names its role
+next to the overlay quick surface: the popup sets which panels appear over the
+video (saved per video) while the video's **Panels** button offers the same
+panels as quick shortcuts during playback.
+
+The popup status chip never passes the fixture-era `state.rally` default off
+as live state: nothing in the live path writes it (rally segmentation reports
+unavailable), so a production session reads **Live analysis** with the
+accelerator spelled out as a capability (WebGPU acceleration / WebGL
+(fallback) / WASM (software)) unless the runtime reports a known rally id,
+which renders as **Rally #N**. The chrome-less fixture demo and the
+fixture-probe analyzer keep the demo count.
+
 ## Court projection
 
 The court map distinguishes its video-local configuration state. Before any
