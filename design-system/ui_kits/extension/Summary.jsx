@@ -1,5 +1,5 @@
 const NS = window.BadmintonVisionDesignSystem_0ab536;
-const { Button, IconButton, Icon, Badge, StatTile, MixBar, RallyRow, Chip, SegmentedControl, CourtDiagram } = NS;
+const { Button, IconButton, Icon, Badge, StatTile, MixBar, RallyRow, Chip, SegmentedControl, CourtDiagram, Legend, Callout, InfoTip } = NS;
 
 const Block = ({ title, meta, children }) => (
   <section style={{ borderRadius: "var(--radius-lg)", border: "1px solid var(--border-hairline)", background: "var(--surface-panel-solid)", padding: 16 }}>
@@ -33,7 +33,11 @@ function Summary({ onBack }) {
           </span>
         </header>
 
-        <Block title="Overview" meta="42 rallies · 249 shots · analysed locally">
+        <Callout tone="guide" title="Everything below came from this one video">
+          Nothing was uploaded and nothing is compared against other matches yet. Where the system could not tell, it says so rather than filling the gap.
+        </Callout>
+
+        <Block title="At a glance" meta="42 rallies · 249 shots · analysed on your machine">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 20 }}>
             <StatTile label="Match duration" value="1:12:40" />
             <StatTile label="Rallies" value="42" />
@@ -50,7 +54,7 @@ function Summary({ onBack }) {
               {["All", "Player A", "Player B"].map((l) => <Chip key={l} selected={filter === l.toLowerCase()} onClick={() => setFilter(l.toLowerCase())}>{l}</Chip>)}
             </div>
           </Block>
-          <Block title="Winner / error attribution" meta="12 unclassified">
+          <Block title="How points ended" meta="12 could not be told">
             <MixBar segments={d.outcomeMix} height={10} />
             <p style={{ font: "var(--type-ui-sm)", fontSize: "var(--fs-11)", color: "var(--text-faint)", margin: "16px 0 0" }}>
               Attribution needs a known final landing and player identity. Where either is missing the rally stays unclassified rather than being guessed.
@@ -58,14 +62,14 @@ function Summary({ onBack }) {
           </Block>
         </div>
 
-        <Block title="Top rallies" meta="highlights index · deterministic · 42-rally sample">
+        <Block title="Best rallies" meta="ranked from this match only">
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {d.rallies.map((r) => <RallyRow key={r.rallyId} {...r} />)}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border-hairline)" }}>
             <Badge tone="warn">*partial</Badge>
             <span style={{ font: "var(--type-ui-sm)", fontSize: "var(--fs-11)", color: "var(--text-faint)" }}>
-              index = 0.40 length percentile + 0.25 variety + 0.20 outcome pressure + 0.15 mean tracking confidence. Score OCR unavailable on starred rallies, so outcome pressure used the ordinary-state value.
+              Score = 0.40 length percentile + 0.25 variety + 0.20 outcome pressure + 0.15 mean tracking confidence. Score OCR unavailable on starred rallies, so outcome pressure used the ordinary-state value.
             </span>
           </div>
         </Block>
@@ -78,17 +82,9 @@ function Summary({ onBack }) {
               <p style={{ font: "var(--type-body-sm)", color: "var(--text-body)", margin: 0, maxWidth: "58ch", textWrap: "pretty" }}>
                 One dot per shot: the point on the court where the shuttle came down, for every rally in this match. Dots are projected through the court seed onto the canonical 13.40 × 6.10 m court, so they are comparable across camera angles and across videos.
               </p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 20px" }}>
-                {(mapMode === "player"
-                  ? [["var(--player-a)", "Player A hit it", n((p) => p.side === "a")], ["var(--player-b)", "Player B hit it", n((p) => p.side === "b")]]
-                  : [["var(--signal-in)", "Landed in", n((p) => p.call === "IN")], ["var(--signal-out)", "Landed out", n((p) => p.call === "OUT")], ["var(--signal-unknown)", "Not located", n((p) => p.call === "UNKNOWN"), true]]
-                ).map(([c, label, count, dashed]) => (
-                  <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 7, font: "var(--type-ui-sm)", color: "var(--text-muted)" }}>
-                    <span style={{ width: 9, height: 9, borderRadius: 999, background: dashed ? "transparent" : c, border: `1px ${dashed ? "dashed" : "solid"} ${c}` }} />
-                    {label}<span style={{ font: "var(--type-mono)", fontSize: "var(--fs-10)", color: "var(--text-faint)" }}>{count}</span>
-                  </span>
-                ))}
-              </div>
+              <Legend items={mapMode === "player"
+                ? [{ color: "var(--player-a)", label: "Player A hit it", value: n((p) => p.side === "a") }, { color: "var(--player-b)", label: "Player B hit it", value: n((p) => p.side === "b") }]
+                : [{ color: "var(--signal-in)", label: "Landed in", value: n((p) => p.call === "IN") }, { color: "var(--signal-out)", label: "Landed out", value: n((p) => p.call === "OUT") }, { color: "var(--signal-unknown)", label: "Not located", value: n((p) => p.call === "UNKNOWN"), dashed: true }]} />
               <p style={{ font: "var(--type-ui-sm)", fontSize: "var(--fs-11)", color: "var(--text-faint)", margin: 0, maxWidth: "58ch" }}>
                 A 40 mm line belongs to the area it bounds (BWF Law 1.3), so a shuttle touching the line reads IN. Shots the shuttle tracker could not locate stay dashed and are never placed on the court — they are excluded from the counts above, not spread across them.
               </p>

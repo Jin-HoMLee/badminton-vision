@@ -93,9 +93,48 @@ The source repository contains no mark, so one was **designed here** at the user
 | `assets/icon.svg` | Vector source for the full extension tile at 128 / 48 |
 | `assets/icon-32.svg` | Vector source with simplified detail for 32 |
 | `assets/icon-16.svg` | Vector source with a solid shuttle for 16 |
-| `assets/icon-{16,32,48,128}.png` | Exact-size local raster derivatives used by the Chrome manifest |
+| `assets/icon-{16,32,48,128}.png` | Exact-size local raster derivatives — Chrome's manifest icon surfaces reject SVG, so these are what the manifest actually references |
 
 Lockup: mark at cap-height × 1.35, 14px gap, name in Space Grotesk Bold `-0.03em` in `--lime-500`. The in-product toolbar badge stays the two letters **BV** in a pill where a 16px mark would be too dense.
+
+---
+
+## Self-explaining by default
+
+Badminton analysis has a vocabulary — *seeding*, *attribution*, *confidence*, *unclassified* — and the audience is enthusiasts, not analysts. Every surface must be readable by someone who has never opened the extension before. Four rules:
+
+1. **Name things in the user's words, not the system's.** "What's being tracked", not "Tracker pipeline". "How points ended", not "Winner / error attribution". "Which stroke was it?", not "Shot family". "Best rallies", not "Highlights index".
+2. **Every screen opens with a `Callout tone="guide"`** saying what you're looking at and what to do next — one sentence, dismissible, never a tour. Example, on the summary: "Everything below came from this one video."
+3. **Every term the product invented gets an `InfoTip`.** If a label is a coinage ("Best rallies score", "How much to show"), the definition is one tap away in plain English, with no jargon inside the definition either.
+4. **Every coloured mark gets a `Legend`.** A dot, a bar segment, a player rule in the feed — if colour carries meaning, a legend names it in the same view. Never make the user infer a colour key.
+
+Confidence is stated in words before numbers — *sure / fairly sure / not sure / could not tell* — because a bare `0.56` means nothing to a viewer. And the honesty rule from Content fundamentals holds throughout: where the system could not tell, it says **"could not tell"** and leaves the value blank rather than guessing.
+
+---
+
+## Consuming these tokens inside a shadow DOM
+
+The extension's overlay mounts in a shadow root, and a shadow tree changes two CSS rules that
+silently break a design system:
+
+1. **`:root` never matches inside a shadow tree.** Every token file therefore declares
+   `:root,:host{…}`, so the same stylesheet works whether it is linked into a document or into
+   a shadow root. Do not drop the `:host` half. Without it every `var(--…)` is undefined, and
+   because an undefined `var()` makes the whole declaration *invalid at computed-value time*,
+   panels lose their background (transparent), their border (`none`) and their shadow, while
+   `color` and `font` fall back to whatever the host page inherits. The result looks like a
+   faint, unstyled ghost of the design rather than an obviously broken layout.
+2. **`@font-face` declared inside a shadow root is ignored.** Font faces are document-scoped,
+   and a remote font URL is additionally subject to a third-party page's CSP. This system ships
+   no redistributable font binaries, so `tokens/fonts.css` no longer imports Google Fonts at
+   all — it only declares the family names, and the browser falls back to an installed local
+   copy or `system-ui` / `ui-monospace`. If licensed binaries are added later, ship them as
+   extension resources and register `@font-face` from document-level CSS, never a remote
+   `@import` inside the shadow tree.
+
+The same applies to any `position:absolute` element whose offsets are tokens
+(`left: var(--overlay-gutter)`): an undefined token becomes `auto`, the element falls back to
+its static position, and independently-anchored panels silently pile up on top of each other.
 
 ---
 

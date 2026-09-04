@@ -26,9 +26,9 @@ function VideoStage({ children, playing = true, onToggleBadge, badgeActive, time
         <span style={{ width: 26, height: 26, borderRadius: 999, background: "rgba(255,255,255,.12)" }} />
       </header>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 300px", gap: 24, padding: "20px", maxWidth: 1280, margin: "0 auto" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1280px minmax(0,300px)", gap: 24, padding: "20px", minWidth: 1320, margin: "0 auto" }}>
         <div>
-          <div style={{ position: "relative", aspectRatio: "16 / 9", borderRadius: "var(--radius-lg)", overflow: "hidden", background: "#07110f" }}>
+          <div style={{ position: "relative", width: 1280, height: 720, borderRadius: "var(--radius-lg)", overflow: "hidden", background: "#07110f" }}>
             <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 50% 12%,#1b4a3c 0%,#123830 42%,#0a1f1d 78%,#07110f 100%)" }} />
             <div style={{ position: "absolute", left: "50%", top: "18%", width: "78%", height: "68%", transform: "translateX(-50%) perspective(700px) rotateX(52deg)", background: "linear-gradient(#1f6b52,#17513f)", border: "2px solid rgba(233,245,240,.55)", boxShadow: "inset 0 0 0 1px rgba(233,245,240,.18)" }}>
               <div style={{ position: "absolute", inset: 0, borderTop: "2px solid rgba(233,245,240,.4)", borderBottom: "2px solid rgba(233,245,240,.4)", top: "35%", height: "30%" }} />

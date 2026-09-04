@@ -61,14 +61,14 @@ function App() {
       )}
 
       {state.enabled && !seeding && (
-        <div style={{ position: "absolute", right: "var(--overlay-gutter)", bottom: 84, display: "flex", gap: 8, pointerEvents: "auto" }}>
-          <Button size="sm" variant="secondary" icon={<Icon name="sliders-horizontal" size={13} />} onClick={() => setDensity(density === "minimal" ? "balanced" : density === "balanced" ? "full" : "minimal")}>
+        <div style={{ position: "absolute", right: "var(--overlay-gutter)", bottom: 56, display: "flex", gap: 8, pointerEvents: "auto", zIndex: 2 }}>
+          <Button size="sm" variant="secondary" icon={<Icon name="sliders-horizontal" size={13} />} style={window.OVER_VIDEO_BUTTON} onClick={() => setDensity(density === "minimal" ? "balanced" : density === "balanced" ? "full" : "minimal")}>
             Density: {density}
           </Button>
-          <Button size="sm" variant="secondary" icon={<Icon name="clock" size={13} />} onClick={() => setState({ ...state, stale: !state.stale })}>
+          <Button size="sm" variant="secondary" icon={<Icon name="clock" size={13} />} style={window.OVER_VIDEO_BUTTON} onClick={() => setState({ ...state, stale: !state.stale })}>
             {state.stale ? "Caught up" : "Simulate lag"}
           </Button>
-          <Button size="sm" variant="secondary" icon={<Icon name="table" size={13} />} onClick={() => setView("summary")}>Summary</Button>
+          <Button size="sm" variant="secondary" icon={<Icon name="table" size={13} />} style={window.OVER_VIDEO_BUTTON} onClick={() => setView("summary")}>Summary</Button>
         </div>
       )}
     </VideoStage>

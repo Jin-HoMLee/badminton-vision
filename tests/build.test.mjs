@@ -204,8 +204,11 @@ test("production build contains only local runtime design-system assets", async 
   assert.equal((await listFiles(dist)).includes("manifest.runtime.json"), false);
   assert.equal((await listFiles(dist)).includes("content/overlay.js"), false);
   assert.match(await readFile(join(dist, "design-system/tokens/typography.css"), "utf8"), /Space Grotesk/);
-  assert.match(await readFile(join(dist, "design-system/tokens/fonts.css"), "utf8"), /system-ui/);
-  assert.doesNotMatch(await readFile(join(dist, "design-system/tokens/fonts.css"), "utf8"), /(?:@import|@font-face|https?:\/\/)/i);
+  // The refreshed upstream policy comment in fonts.css names @import/@font-face
+  // in prose; strip comments so these assertions target declared mechanisms only.
+  const fontsCss = (await readFile(join(dist, "design-system/tokens/fonts.css"), "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(fontsCss, /system-ui/);
+  assert.doesNotMatch(fontsCss, /(?:@import|@font-face|https?:\/\/)/i);
   assert.doesNotMatch(await readFile(join(dist, "design-system/tokens/typography.css"), "utf8"), /@import/i);
   assert.match(await readFile(join(dist, "content.js"), "utf8"), /data-bso-frame-transport/);
   assert.match(await readFile(join(dist, "content.js"), "utf8"), /data-bso-court-seeding/);
