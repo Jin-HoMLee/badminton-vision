@@ -14,6 +14,7 @@
   // so the native player stays fully interactive; callers pass the reserve in
   // per-panel constraints (0 keeps the classic full-area behavior).
   var DEFAULT_CONTROLS_RESERVE = 0;
+  var OVERLAP_EPSILON = 1e-6;
 
   function finite(value, fallback) {
     return Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -149,12 +150,76 @@
       pixels.height >= Math.min(area.minHeight, area.maxHeight) - 1e-9;
   }
 
+  function firstOpenPanelPlacement(viewport, constraints, slot, occupants, gap) {
+    var areaWidth = dimension(viewport && viewport.width);
+    var areaHeight = dimension(viewport && viewport.height);
+    var width = dimension(slot && slot.width);
+    var height = dimension(slot && slot.height);
+    if (!(areaWidth > 0 && areaHeight > 0 && width > 0 && height > 0)) return null;
+    var startLeft = finite(slot.left, 0);
+    var startTop = finite(slot.top, 0);
+    var stepGap = Math.max(0, finite(gap, PANEL_MARGIN));
+    var area = bounds(viewport, constraints || {});
+    var maxTop = Math.max(area.margin, area.height - height - area.margin - area.bottomReserve);
+    var openRects = [];
+    (occupants || []).forEach(function (occupant) {
+      if (!occupant) return;
+      var occupantWidth = dimension(occupant.width);
+      var occupantHeight = dimension(occupant.height);
+      if (occupantWidth > 0 && occupantHeight > 0) {
+        openRects.push({ left: finite(occupant.left, 0), top: finite(occupant.top, 0), width: occupantWidth, height: occupantHeight });
+      }
+    });
+    var clampAt = function (left, top) {
+      return pixelPanelLayout({
+        x: left / areaWidth,
+        y: top / areaHeight,
+        width: width / areaWidth,
+        height: height / areaHeight
+      }, viewport, null, constraints || {});
+    };
+    var intersects = function (rect, other) {
+      var widthOverlap = Math.min(rect.left + rect.width, other.left + other.width) - Math.max(rect.left, other.left);
+      var heightOverlap = Math.min(rect.top + rect.height, other.top + other.height) - Math.max(rect.top, other.top);
+      return widthOverlap > OVERLAP_EPSILON && heightOverlap > OVERLAP_EPSILON;
+    };
+    var overlapsAny = function (rect) {
+      for (var index = 0; index < openRects.length; index += 1) {
+        if (intersects(rect, openRects[index])) return true;
+      }
+      return false;
+    };
+    var clippedTop = function (top) { return Math.min(maxTop, Math.max(area.margin, top)); };
+    var boundaryTops = function (withGap) {
+      var tops = [];
+      for (var index = 0; index < openRects.length; index += 1) {
+        var occupant = openRects[index];
+        tops.push(clippedTop(occupant.top + occupant.height + (withGap ? stepGap : 0)));
+        tops.push(clippedTop(occupant.top - height - (withGap ? stepGap : 0)));
+      }
+      return tops.sort(function (a, b) { return a - b; });
+    };
+    var search = function (left, tops) {
+      for (var index = 0; index < tops.length; index += 1) {
+        var rect = clampAt(left, tops[index]);
+        if (!overlapsAny(rect)) return rect;
+      }
+      return null;
+    };
+    var gapPass = [startTop, area.margin].concat(boundaryTops(true), [maxTop]);
+    var flushPass = boundaryTops(false);
+    var mirrorLeft = areaWidth - (startLeft + width);
+    var placed = search(startLeft, gapPass) || search(mirrorLeft, gapPass) || search(startLeft, flushPass) || search(mirrorLeft, flushPass);
+    if (placed) return placed;
+    return clampAt(startLeft, maxTop);
+  }
   return Object.freeze({
     PANEL_MARGIN: PANEL_MARGIN,
     PANEL_NUDGE: PANEL_NUDGE,
     PANEL_RESIZE_NUDGE: PANEL_RESIZE_NUDGE,
     normalizeLayout: normalizeLayout,
     pixelPanelLayout: pixelPanelLayout,
+    firstOpenPanelPlacement: firstOpenPanelPlacement,
     movePanelLayout: movePanelLayout,
     resizePanelLayout: resizePanelLayout,
     nudgePanelLayout: nudgePanelLayout,

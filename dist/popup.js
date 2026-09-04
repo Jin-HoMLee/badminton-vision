@@ -217,6 +217,23 @@
   function panelToggle(label, description, key, disabled) {
     return ui.toggle(label, description, state.panels[key], function (next) { dispatch({ type: "TOGGLE_PANEL", panel: key, value: next }, { type: "SET_PANELS", panels: Object.assign({}, state.panels, { [key]: next }) }); }, { disabled: disabled, id: "panel-" + key });
   }
+  function toggleSettingsPanel() {
+    // The header gear is an accelerator for the same per-video panel toggle as
+    // the Panel Controls disclosure row: it shows/hides the settings panel
+    // over the video instead of swapping the popup into a settings sheet.
+    var next = !state.panels.settings;
+    dispatch({ type: "TOGGLE_PANEL", panel: "settings", value: next }, { type: "SET_PANELS", panels: Object.assign({}, state.panels, { settings: next }) });
+  }
+  function settingsHeaderButton() {
+    var open = Boolean(state.panels.settings);
+    var button = ui.iconButton("settings", open ? "Hide settings panel" : "Show settings panel", { size: "sm", active: open, disabled: !detected, onClick: toggleSettingsPanel });
+    if (!detected) {
+      button.setAttribute("aria-label", "Settings unavailable here");
+      button.setAttribute("title", "Settings open over a YouTube watch page");
+    }
+    button.setAttribute("data-bso-settings-toggle", "true");
+    return button;
+  }
   function evidenceVideoKey() {
     return state.videoKey || window.BVState.videoKeyForUrl(activeTabUrl);
   }
@@ -271,7 +288,7 @@
     } else {
       var disclosure = root.querySelector("[data-bso-panel-controls-disclosure]");
       // Focus on the first visible panel control toggle
-      var panelOrder = ["feed", "stats", "map", "controls"];
+      var panelOrder = ["feed", "stats", "map", "controls", "settings"];
       for (var index = 0; disclosure && index < panelOrder.length; index += 1) {
         var button = disclosure.querySelector("#panel-" + panelOrder[index]);
         if (button && !button.disabled) { target = button; break; }
@@ -390,7 +407,7 @@
     // Keep the explicit Close affordance: the popup also dismisses on an
     // outside click or Esc, but a labeled X keeps dismissal discoverable and
     // is the accessible path (UI audit 2026-09: keep, no code change).
-    var header = ui.el("header", { className: "bv-popup-header" }, [ui.el("span", { className: "bv-logo" }, [ui.el("img", { src: "design-system/assets/logo-mark.svg", alt: "" }), ui.el("strong", { className: "bv-logo-name" }, ["Badminton Vision"])]), ui.el("span", { className: "bv-popup-head-actions" }, [ui.iconButton("settings", "Settings unavailable in local demo", { size: "sm", disabled: true }), ui.iconButton("x", "Close", { size: "sm", onClick: closePopup })])]);
+    var header = ui.el("header", { className: "bv-popup-header" }, [ui.el("span", { className: "bv-logo" }, [ui.el("img", { src: "design-system/assets/logo-mark.svg", alt: "" }), ui.el("strong", { className: "bv-logo-name" }, ["Badminton Vision"])]), ui.el("span", { className: "bv-popup-head-actions" }, [settingsHeaderButton(), ui.iconButton("x", "Close", { size: "sm", onClick: closePopup })])]);
     var statusState = state.enabled ? (runtimeFallback || runtimeStale ? "stale" : "live") : "ready";
     // The local runtime has no rally segmentation (it reports
     // rally-segmentation-not-available) and nothing in the live path writes
@@ -440,11 +457,11 @@
 
     var densitySection = section(ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-3)" } }, ["How much to show", ui.infoTip("How much to show", "Changes only what appears on the video. Everything is still analysed either way.")]), ui.segmented([{ value: "minimal", label: "Minimal" }, { value: "balanced", label: "Balanced" }, { value: "full", label: "Full" }], state.density, function (value) { dispatch({ type: "SET_DENSITY", value: value }, { type: "SET_DENSITY", value: value }); }, true));
 
-    var panelItems = ["feed", "stats", "map", "controls"];
+    var panelItems = ["feed", "stats", "map", "controls", "settings"];
     var visiblePanelCount = panelItems.filter(function (key) { return state.panels[key]; }).length;
     var panelControlHeader = ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-4)" } }, ["Panel Controls"]);
     var panelControlAside = ui.el("button", { className: "bv-link-button", type: "button", "aria-expanded": panelControlsExpanded, "aria-controls": "bv-panel-controls-list", "aria-label": (panelControlsExpanded ? "Collapse" : "Expand") + " Panel Controls", "data-bso-panel-controls-toggle": "true", onClick: togglePanelControlsDisclosure }, [visiblePanelCount + " of " + panelItems.length + " visible", ui.icon(panelControlsExpanded ? "chevron-up" : "chevron-down", 12)]);
-    var panelControlRows = panelControlsExpanded ? [ui.el("p", { className: "bv-helper", style: { marginTop: "0" } }, ["The default video layer is detection-only. This popup sets which panels appear over the video, saved for this video; while watching, the Panels button over the video offers the same panels as quick shortcuts."]), panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), panelToggle("Live controls", "Quick density and summary shortcuts", "controls")] : [];
+    var panelControlRows = panelControlsExpanded ? [ui.el("p", { className: "bv-helper", style: { marginTop: "0" } }, ["The default video layer is detection-only. This popup sets which panels appear over the video, saved for this video; while watching, the Panels button over the video offers the same panels as quick shortcuts."]), panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), panelToggle("Live controls", "Quick density and summary shortcuts", "controls"), panelToggle("Settings", "Version and links; display and inference settings come next", "settings")] : [];
     var panelControlsBody = ui.el("div", { className: "bv-panel-toggles" }, [ui.el("div", { className: "bv-panel-controls-disclosure", id: "bv-panel-controls-list", role: "region", "aria-label": "Panel Controls options", "data-bso-panel-controls-disclosure": "true", hidden: !panelControlsExpanded }, panelControlRows)]);
     var panelSection = section(panelControlHeader, panelControlsBody, panelControlAside);
 

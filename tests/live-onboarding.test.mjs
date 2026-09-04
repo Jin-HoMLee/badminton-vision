@@ -199,6 +199,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
     runtime: {
       lastError: null,
       getURL: (path) => `chrome-extension://test/${path}`,
+      getManifest: () => ({ name: "Badminton Vision", version: "0.1.0" }),
       sendMessage: (_message, callback) => callback?.(),
       onMessage: { addListener: (listener) => { onMessage = listener; messageListeners.push(listener); } }
     },
@@ -631,7 +632,7 @@ test("minimal live overlay keeps only detection evidence and one on-demand acces
   assert.equal(root.querySelectorAll("[data-bso-overlay-access]").length, 1, "minimal mode has one compact access point");
   assert.equal(root.querySelector("[data-bso-overlay-access]").getAttribute("aria-expanded"), "false");
   assert.equal(root.querySelector("[data-bso-overlay-menu]").getAttribute("hidden") !== null, true, "the shortcut menu is on demand");
-  for (const panel of ["stats", "map", "feed", "evidence", "controls"]) {
+  for (const panel of ["stats", "map", "feed", "evidence", "controls", "settings"]) {
     assert.equal(root.querySelector(`[data-bso-panel="${panel}"]`), null, `${panel} stays off the video by default`);
   }
   assert.equal(root.querySelector(".bv-runtime-note"), null);
@@ -2122,4 +2123,425 @@ test("S and E keyboard shortcuts and the Start/End controls both capture the liv
   const controlWindow = root.querySelector("[data-bso-label-window]").textContent;
   assert.ok(controlWindow.includes("01:21.000"), `Start captures the live clock: ${controlWindow}`);
   assert.ok(controlWindow.includes("01:35.250"), `End captures the live clock: ${controlWindow}`);
+});
+
+test("the settings panel mounts without inference and renders version, note, and links", async () => {
+  const session = await createSession();
+  session.flushStorage();
+  assert.equal(session.overlayRoot().querySelector('[data-bso-panel="settings"]'), null, "settings starts closed");
+  session.onMessage({ type: "SET_PANELS", panels: { settings: true }, requestId: "settings-open-1" });
+  const root = session.overlayRoot();
+  const panel = root.querySelector('[data-bso-panel="settings"]');
+  assert.ok(panel, "the settings panel mounts while inference is off (About content needs no runtime)");
+  assert.equal(session.runtimeStarts, 0, "opening settings never starts the analyzer runtime");
+  assert.equal(root.querySelector('[data-bso-panel="feed"]'), null, "no other panel mounts with it");
+  assert.ok(panel.querySelector(".bv-settings-about"), "the About block renders");
+  assert.ok(panel.querySelector(".bv-settings-row"), "the version row renders");
+  const version = panel.querySelector("[data-bso-extension-version]");
+  assert.equal(version.getAttribute("data-bso-extension-version"), "0.1.0", "the version comes from the extension manifest");
+  assert.equal(textOf(version), "0.1.0");
+  assert.match(textOf(panel), /Local-first analysis\./);
+  const link = panel.querySelector(".bv-settings-links").querySelectorAll("a")[0];
+  assert.ok(link, "the About link list renders");
+  assert.equal(link.getAttribute("href"), "https://github.com/Jin-HoMLee/badminton-vision");
+  assert.equal(link.getAttribute("rel"), "noreferrer");
+  assert.equal(link.getAttribute("target"), "_blank");
+  assert.match(textOf(link), /Project source & licenses/);
+
+  // The panel is standard movable furniture with collapse and close affordances.
+  assert.ok(panel.querySelector("[data-bso-panel-drag-handle]"), "settings has a header drag surface");
+  assert.ok(panel.querySelector("[data-bso-panel-resize-handle]"), "settings has a resize affordance");
+  const collapse = panel.querySelector("[data-bso-panel-collapse]");
+  assert.ok(collapse, "settings collapses from its header");
+  assert.equal(collapse.getAttribute("aria-expanded"), "true");
+  assert.equal(panel.getAttribute("data-bso-panel-collapsed"), "false");
+
+  // Close (x) is the distinct hide action and persists per video.
+  const close = panel.querySelector('[aria-label="Hide settings"]');
+  assert.ok(close, "settings has an explicit close action");
+  close.dispatchEvent({ type: "click" });
+  assert.equal(session.overlayRoot().querySelector('[data-bso-panel="settings"]'), null, "closing removes the panel");
+  assert.equal(session.storageWrites.at(-1).bvState.panelsByVideo["youtube:real-match"].settings, false, "the hide is stored for this video");
+});
+
+test("the settings panel stays available during setup and withholds only for a camera-cut reseed", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "SET_PANELS", panels: { settings: true }, requestId: "settings-seed-1" });
+  assert.ok(live.overlayRoot().querySelector('[data-bso-panel="settings"]'), "settings is open before setup");
+
+  // User-initiated court setup is layered over the live surface; furniture
+  // such as settings stays mounted (matching stats/feed during setup).
+  live.onMessage({ type: "START_SEED", requestId: "settings-seed-2" });
+  let root = live.overlayRoot();
+  assert.ok(root.querySelector("[data-bso-court-seeding]"), "the setup surface renders");
+  assert.ok(root.querySelector('[data-bso-panel="settings"]'), "settings stays mounted during user-initiated setup");
+  buttonWithText(root, "Cancel").dispatchEvent({ type: "click", target: buttonWithText(root, "Cancel") });
+  assert.ok(live.overlayRoot().querySelector('[data-bso-panel="settings"]'), "settings remains after cancelling setup");
+
+  // A camera cut invalidates every stale layer over the new camera angle.
+  live.onMessage({ type: "CAMERA_CUT", requestId: "settings-cut-1" });
+  root = live.overlayRoot();
+  assert.ok(root.querySelector("[data-bso-court-seeding]"), "the reseed flow renders after a camera cut");
+  assert.equal(root.querySelector('[data-bso-panel="settings"]'), null, "settings withholds during the camera-cut reseed");
+  assert.equal(root.querySelector(".bv-runtime-evidence"), null, "raw evidence withholds during the reseed too");
+  buttonWithText(root, "Cancel").dispatchEvent({ type: "click", target: buttonWithText(root, "Cancel") });
+  assert.ok(live.overlayRoot().querySelector('[data-bso-panel="settings"]'), "settings returns when the reseed resolves");
+});
+
+test("the overlay access point opens the settings panel from the video", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  let root = live.overlayRoot();
+  root.querySelector("[data-bso-overlay-access]").dispatchEvent({ type: "click" });
+  root = live.overlayRoot();
+  const shortcut = root.querySelector('[data-bso-overlay-shortcut="settings"]');
+  assert.ok(shortcut, "the access point menu lists Settings");
+  shortcut.dispatchEvent({ type: "click" });
+  root = live.overlayRoot();
+  assert.ok(root.querySelector('[data-bso-panel="settings"]'), "the shortcut opens the settings panel");
+  assert.equal(root.querySelector("[data-bso-overlay-access]").getAttribute("aria-expanded"), "false", "opening a panel closes the shortcut menu");
+  assert.equal(live.storageWrites.at(-1).bvState.panelsByVideo["youtube:real-match"].settings, true, "the opened panel preference is saved for this video");
+});
+
+test("the popup settings gear toggles the panel and the Panel Controls row stays wired", async () => {
+  const popup = await createPopupSession();
+  let gear = popup.app.querySelector("[data-bso-settings-toggle]");
+  assert.ok(gear, "the header gear renders");
+  assert.equal(Boolean(gear.disabled), false, "the gear is enabled on a watch page");
+  assert.equal(gear.getAttribute("aria-label"), "Show settings panel");
+  assert.equal(gear.className.includes("active"), false, "the gear is inactive while the panel is closed");
+  gear.dispatchEvent({ type: "click" });
+  assert.equal(popup.sent.at(-1).message.type, "SET_PANELS", "the gear messages the content script");
+  assert.equal(popup.sent.at(-1).message.panels.settings, true, "the gear opens the settings panel");
+  gear = popup.app.querySelector("[data-bso-settings-toggle]");
+  assert.equal(gear.getAttribute("aria-label"), "Hide settings panel");
+  assert.equal(gear.className.includes("active"), true, "the gear reflects the open panel");
+  gear.dispatchEvent({ type: "click" });
+  assert.equal(popup.sent.at(-1).message.panels.settings, false, "the gear closes the panel again");
+  assert.equal(popup.app.querySelector("[data-bso-settings-toggle]").getAttribute("aria-label"), "Show settings panel");
+
+  // The disclosure row is the same per-video toggle as the other panels.
+  const toggle = popup.app.querySelector("[data-bso-panel-controls-toggle]");
+  toggle.dispatchEvent({ type: "click" });
+  const settingsToggle = popup.app.querySelector('[aria-label="Toggle Settings"]');
+  assert.ok(settingsToggle, "Panel Controls lists a Settings toggle");
+  assert.equal(settingsToggle.getAttribute("aria-checked"), "false");
+  settingsToggle.dispatchEvent({ type: "click" });
+  assert.equal(popup.app.querySelector('[aria-label="Toggle Settings"]').getAttribute("aria-checked"), "true", "the disclosure row opens settings");
+  assert.equal(popup.sent.at(-1).message.panels.settings, true);
+
+  // Outside a watch page the gear stays disabled with an honest label.
+  const other = await createPopupSession({ tabUrl: "https://example.com/", tabTitle: "Example", videoInfo: null });
+  const offPageGear = other.app.querySelector("[data-bso-settings-toggle]");
+  assert.equal(Boolean(offPageGear.disabled), true, "settings is disabled without a watch page");
+  assert.equal(offPageGear.getAttribute("aria-label"), "Settings unavailable here");
+});
+
+test("first-open settings placement cascades below an already-open feed panel", async () => {
+  const slotRects = {
+    feed: { left: 336, top: 16, width: 288, height: 180 },
+    stats: { left: 16, top: 58, width: 288, height: 210 },
+    settings: { left: 336, top: 58, width: 288, height: 170 }
+  };
+  const originalAppend = FakeNode.prototype.appendChild;
+  FakeNode.prototype.appendChild = function (child) {
+    originalAppend.call(this, child);
+    if (child && typeof child.getAttribute === "function") {
+      const panelId = child.getAttribute("data-bso-panel");
+      if (panelId && slotRects[panelId]) child.rect = Object.assign({}, slotRects[panelId]);
+      else if (child.getAttribute("data-bso-runtime-phase") != null) child.rect = { left: 0, top: 0, width: 640, height: 560 };
+    }
+    return child;
+  };
+  try {
+    const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+    live.overlayRoot().rect = { left: 0, top: 0, width: 640, height: 560 };
+    live.flushStorage();
+    live.onMessage({ type: "SET_PANELS", panels: { feed: true, settings: true }, requestId: "settings-stack-feed-1" });
+    const root = live.overlayRoot();
+    const settings = root.querySelector('[data-bso-panel="settings"]');
+    const feed = root.querySelector('[data-bso-panel="feed"]');
+    assert.ok(feed, "the stroke feed is open before settings");
+    assert.ok(settings, "the settings panel mounts beside the feed");
+    const rectOf = (node) => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: parseFloat(node.style.width), height: parseFloat(node.style.height) });
+    const intersects = (a, b) => a.left < b.left + b.width - 1e-9 && b.left < a.left + a.width - 1e-9 && a.top < b.top + b.height - 1e-9 && b.top < a.top + a.height - 1e-9;
+    const feedRect = rectOf(feed);
+    const settingsRect = rectOf(settings);
+    assert.ok(settingsRect.top >= feedRect.top + feedRect.height + 12 - 1e-6, `settings stacks below the feed (settings top ${settingsRect.top}, feed bottom ${feedRect.top + feedRect.height})`);
+    assert.equal(intersects(settingsRect, feedRect), false, "the first-open settings panel never covers the feed content");
+    assert.ok(settingsRect.top + settingsRect.height <= 560 - 72 + 1e-9, "the stacked settings panel clears the player control strip");
+    const stored = live.storageWrites.at(-1).bvState;
+    assert.equal(stored.panelLayouts.settings, undefined, "the cascade never persists a settings layout");
+    assert.ok(!stored.panelLayoutsByVideo["youtube:real-match"] || !stored.panelLayoutsByVideo["youtube:real-match"].settings, "the cascade writes no per-video settings layout");
+
+    // The placement is deterministic per render while the feed stays open.
+    live.onMessage({ type: "SET_PANELS", panels: { feed: true, settings: true }, requestId: "settings-stack-feed-2" });
+    const rerendered = rectOf(live.overlayRoot().querySelector('[data-bso-panel="settings"]'));
+    assert.equal(rerendered.top, settingsRect.top, "a rerender lands the settings panel at the same stacked spot");
+    assert.equal(live.storageWrites.at(-1).bvState.panelLayouts.settings, undefined, "rerenders never persist the stacked offset either");
+  } finally {
+    FakeNode.prototype.appendChild = originalAppend;
+  }
+});
+
+test("first-open settings placement stays in its own slot beside the open stats panel", async () => {
+  const slotRects = {
+    stats: { left: 16, top: 58, width: 288, height: 210 },
+    settings: { left: 336, top: 58, width: 288, height: 170 }
+  };
+  const originalAppend = FakeNode.prototype.appendChild;
+  FakeNode.prototype.appendChild = function (child) {
+    originalAppend.call(this, child);
+    if (child && typeof child.getAttribute === "function") {
+      const panelId = child.getAttribute("data-bso-panel");
+      if (panelId && slotRects[panelId]) child.rect = Object.assign({}, slotRects[panelId]);
+      else if (child.getAttribute("data-bso-runtime-phase") != null) child.rect = { left: 0, top: 0, width: 640, height: 560 };
+    }
+    return child;
+  };
+  try {
+    const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+    live.overlayRoot().rect = { left: 0, top: 0, width: 640, height: 560 };
+    live.flushStorage();
+    live.onMessage({ type: "SET_PANELS", panels: { stats: true, settings: true }, requestId: "settings-stack-stats-1" });
+    const root = live.overlayRoot();
+    const settings = root.querySelector('[data-bso-panel="settings"]');
+    const stats = root.querySelector('[data-bso-panel="stats"]');
+    assert.ok(stats, "the rally stats panel is open first");
+    assert.ok(settings, "the settings panel mounts beside the stats panel");
+    const rectOf = (node) => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: parseFloat(node.style.width), height: parseFloat(node.style.height) });
+    const intersects = (a, b) => a.left < b.left + b.width - 1e-9 && b.left < a.left + a.width - 1e-9 && a.top < b.top + b.height - 1e-9 && b.top < a.top + a.height - 1e-9;
+    const settingsRect = rectOf(settings);
+    assert.equal(intersects(settingsRect, rectOf(stats)), false, "settings first-opens clear of the stats panel");
+    assert.ok(Math.abs(settingsRect.top - 58) < 1e-6, "settings keeps its default slot when nothing occupies it");
+    assert.ok(settingsRect.top + settingsRect.height <= 560 - 72 + 1e-9, "the slotted settings panel clears the player control strip");
+    assert.equal(live.storageWrites.at(-1).bvState.panelLayouts.settings, undefined, "an unstacked first open persists no layout either");
+  } finally {
+    FakeNode.prototype.appendChild = originalAppend;
+  }
+});
+
+test("first-open settings placement falls through to the free column when the below-occupant cascade cannot fit", async () => {
+  const emulation = { width: 640, height: 560, feed: null, stats: null, manual: null };
+  const originalAppend = FakeNode.prototype.appendChild;
+  FakeNode.prototype.appendChild = function (child) {
+    originalAppend.call(this, child);
+    if (child && typeof child.getAttribute === "function") {
+      const panelId = child.getAttribute("data-bso-panel");
+      const rightColumnLeft = emulation.width - 16 - 288;
+      let rect = null;
+      if (panelId === "settings") rect = { left: rightColumnLeft, top: 58, width: 288, height: 190 };
+      else if (panelId === "feed" && emulation.feed) rect = { left: rightColumnLeft, top: 16, width: 288, height: emulation.feed };
+      else if (panelId === "stats" && emulation.stats) rect = { left: 16, top: 58, width: 288, height: emulation.stats };
+      else if (panelId === "manual" && emulation.manual) rect = { left: emulation.width - 16 - 380, top: 16, width: 380, height: emulation.manual };
+      if (rect) child.rect = Object.assign({}, rect);
+      else if (child.getAttribute("data-bso-runtime-phase") != null) child.rect = { left: 0, top: 0, width: emulation.width, height: emulation.height };
+    }
+    return child;
+  };
+  const rectOf = (node) => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: parseFloat(node.style.width), height: parseFloat(node.style.height) });
+  const intersects = (a, b) => a.left < b.left + b.width - 1e-9 && b.left < a.left + a.width - 1e-9 && a.top < b.top + b.height - 1e-9 && b.top < a.top + a.height - 1e-9;
+  const openWith = async ({ width, height, feed = null, stats = null, manual = null }) => {
+    Object.assign(emulation, { width, height, feed, stats, manual });
+    const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+    live.overlayRoot().rect = { left: 0, top: 0, width, height };
+    live.flushStorage();
+    if (manual) live.onMessage({ type: "OPEN_LABELING", requestId: "settings-ladder-manual-1" });
+    live.onMessage({ type: "SET_PANELS", panels: { feed: !!feed, stats: !!stats, settings: true }, requestId: "settings-ladder-open-1" });
+    return live;
+  };
+  try {
+    // A tall stroke feed on a mid-height player leaves no room below it, so
+    // first-open settings must seed into the free left column instead.
+    const mid = await openWith({ width: 640, height: 560, feed: 330 });
+    const midRoot = mid.overlayRoot();
+    const midSettings = rectOf(midRoot.querySelector('[data-bso-panel="settings"]'));
+    const midFeed = rectOf(midRoot.querySelector('[data-bso-panel="feed"]'));
+    assert.ok(Math.abs(midFeed.top - 16) < 1e-3, "the feed keeps its own slot");
+    assert.ok(Math.abs(midSettings.left - 16) < 1e-3, `settings seeds into the free left column (left ${midSettings.left})`);
+    assert.ok(Math.abs(midSettings.top - 58) < 1e-3, `settings uses the column's top slot (top ${midSettings.top})`);
+    assert.equal(intersects(midSettings, midFeed), false, "the left-column settings panel never covers the feed");
+    assert.ok(midSettings.top + midSettings.height <= 560 - 72 + 1e-9, "the left-column placement clears the player control strip");
+    assert.equal(mid.storageWrites.at(-1).bvState.panelLayouts.settings, undefined, "the column fall-through persists no layout");
+
+    // The same fall-through on a smaller player where even less room exists.
+    const small = await openWith({ width: 640, height: 480, feed: 300 });
+    const smallRoot = small.overlayRoot();
+    const smallSettings = rectOf(smallRoot.querySelector('[data-bso-panel="settings"]'));
+    const smallFeed = rectOf(smallRoot.querySelector('[data-bso-panel="feed"]'));
+    assert.ok(Math.abs(smallSettings.left - 16) < 1e-3, `settings falls through to the free column on the small player (left ${smallSettings.left})`);
+    assert.ok(Math.abs(smallSettings.top - 58) < 1e-3, "the fall-through keeps the column's top slot");
+    assert.equal(intersects(smallSettings, smallFeed), false, "the small-player fall-through still never covers the feed");
+    assert.ok(smallSettings.top + smallSettings.height <= 480 - 72 + 1e-9, "the small-player placement clears the player control strip");
+    assert.equal(small.storageWrites.at(-1).bvState.panelLayouts.settings, undefined, "the small-player fall-through persists no layout");
+
+    // Mid-labeling the full-height manual panel also leaves the left column
+    // free on a wide player, so settings seeds there instead of over the form.
+    const manual = await openWith({ width: 1280, height: 560, manual: 460 });
+    const manualRoot = manual.overlayRoot();
+    const manualSettings = rectOf(manualRoot.querySelector('[data-bso-panel="settings"]'));
+    const manualPanel = rectOf(manualRoot.querySelector('[data-bso-panel="manual"]'));
+    assert.ok(Math.abs(manualSettings.left - 16) < 1e-3, `settings seeds into the left column beside manual labeling (left ${manualSettings.left})`);
+    assert.ok(Math.abs(manualSettings.top - 58) < 1e-3, "the manual-labeling fall-through uses the column's top slot");
+    assert.equal(intersects(manualSettings, manualPanel), false, "settings never covers the manual labeling form");
+    assert.ok(manualSettings.top + manualSettings.height <= 560 - 72 + 1e-9, "the manual-labeling placement clears the player control strip");
+    assert.equal(manual.storageWrites.at(-1).bvState.panelLayouts.settings, undefined, "the manual-labeling fall-through persists no layout");
+  } finally {
+    FakeNode.prototype.appendChild = originalAppend;
+  }
+});
+
+test("first-open settings placement cascades below the opposite column's occupant when its top slot is taken", async () => {
+  const emulation = { width: 640, height: 560, feed: 330, stats: 210, manual: null };
+  const originalAppend = FakeNode.prototype.appendChild;
+  FakeNode.prototype.appendChild = function (child) {
+    originalAppend.call(this, child);
+    if (child && typeof child.getAttribute === "function") {
+      const panelId = child.getAttribute("data-bso-panel");
+      const rightColumnLeft = emulation.width - 16 - 288;
+      let rect = null;
+      if (panelId === "settings") rect = { left: rightColumnLeft, top: 58, width: 288, height: 190 };
+      else if (panelId === "feed" && emulation.feed) rect = { left: rightColumnLeft, top: 16, width: 288, height: emulation.feed };
+      else if (panelId === "stats" && emulation.stats) rect = { left: 16, top: 58, width: 288, height: emulation.stats };
+      if (rect) child.rect = Object.assign({}, rect);
+      else if (child.getAttribute("data-bso-runtime-phase") != null) child.rect = { left: 0, top: 0, width: emulation.width, height: emulation.height };
+    }
+    return child;
+  };
+  try {
+    const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+    live.overlayRoot().rect = { left: 0, top: 0, width: 640, height: 560 };
+    live.flushStorage();
+    live.onMessage({ type: "SET_PANELS", panels: { feed: true, stats: true, settings: true }, requestId: "settings-ladder-both-1" });
+    const root = live.overlayRoot();
+    const rectOf = (node) => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: parseFloat(node.style.width), height: parseFloat(node.style.height) });
+    const intersects = (a, b) => a.left < b.left + b.width - 1e-9 && b.left < a.left + a.width - 1e-9 && a.top < b.top + b.height - 1e-9 && b.top < a.top + a.height - 1e-9;
+    const settingsRect = rectOf(root.querySelector('[data-bso-panel="settings"]'));
+    const feedRect = rectOf(root.querySelector('[data-bso-panel="feed"]'));
+    const statsRect = rectOf(root.querySelector('[data-bso-panel="stats"]'));
+    assert.ok(Math.abs(settingsRect.left - 16) < 1e-3, `settings uses the opposite column (left ${settingsRect.left})`);
+    assert.ok(Math.abs(settingsRect.top - (statsRect.top + statsRect.height + 12)) < 1e-3, `settings stacks below the opposite column's stats panel (top ${settingsRect.top}, stats bottom ${statsRect.top + statsRect.height})`);
+    assert.equal(intersects(settingsRect, statsRect), false, "settings never covers the stats panel");
+    assert.equal(intersects(settingsRect, feedRect), false, "settings never covers the feed panel");
+    assert.ok(settingsRect.top + settingsRect.height <= 560 - 72 + 1e-9, "the below-stats placement clears the player control strip");
+    assert.equal(live.storageWrites.at(-1).bvState.panelLayouts.settings, undefined, "the below-occupant mirror placement persists no layout");
+  } finally {
+    FakeNode.prototype.appendChild = originalAppend;
+  }
+});
+
+test("first-open settings placement accepts the clamped opposite-column spot when it clears the occupant", async () => {
+  const emulation = { width: 640, height: 560, feed: 330, stats: 222, manual: null };
+  const originalAppend = FakeNode.prototype.appendChild;
+  FakeNode.prototype.appendChild = function (child) {
+    originalAppend.call(this, child);
+    if (child && typeof child.getAttribute === "function") {
+      const panelId = child.getAttribute("data-bso-panel");
+      const rightColumnLeft = emulation.width - 16 - 288;
+      let rect = null;
+      if (panelId === "settings") rect = { left: rightColumnLeft, top: 58, width: 288, height: 190 };
+      else if (panelId === "feed" && emulation.feed) rect = { left: rightColumnLeft, top: 16, width: 288, height: emulation.feed };
+      else if (panelId === "stats" && emulation.stats) rect = { left: 16, top: 58, width: 288, height: emulation.stats };
+      if (rect) child.rect = Object.assign({}, rect);
+      else if (child.getAttribute("data-bso-runtime-phase") != null) child.rect = { left: 0, top: 0, width: emulation.width, height: emulation.height };
+    }
+    return child;
+  };
+  try {
+    const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+    live.overlayRoot().rect = { left: 0, top: 0, width: 640, height: 560 };
+    live.flushStorage();
+    live.onMessage({ type: "SET_PANELS", panels: { feed: true, stats: true, settings: true }, requestId: "settings-ladder-band-1" });
+    const root = live.overlayRoot();
+    const rectOf = (node) => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: parseFloat(node.style.width), height: parseFloat(node.style.height) });
+    const intersects = (a, b) => a.left < b.left + b.width - 1e-9 && b.left < a.left + a.width - 1e-9 && a.top < b.top + b.height - 1e-9 && b.top < a.top + a.height - 1e-9;
+    const settingsRect = rectOf(root.querySelector('[data-bso-panel="settings"]'));
+    const feedRect = rectOf(root.querySelector('[data-bso-panel="feed"]'));
+    const statsRect = rectOf(root.querySelector('[data-bso-panel="stats"]'));
+    const boundTop = 560 - 190 - 12 - 72;
+    assert.ok(Math.abs(settingsRect.left - 16) < 1e-3, `settings uses the opposite column (left ${settingsRect.left})`);
+    assert.ok(Math.abs(settingsRect.top - boundTop) < 1e-3, `the 12px-gap request clamps and is accepted at the bound (top ${settingsRect.top}, bound ${boundTop})`);
+    assert.ok(settingsRect.top >= statsRect.top + statsRect.height - 1e-6, "the clamped spot still clears the stats occupant");
+    assert.equal(intersects(settingsRect, statsRect), false, "settings never covers the stats panel");
+    assert.equal(intersects(settingsRect, feedRect), false, "settings never covers the feed panel");
+    assert.ok(settingsRect.top + settingsRect.height <= 560 - 72 + 1e-9, "the clamped spot clears the player control strip");
+    assert.equal(live.storageWrites.at(-1).bvState.panelLayouts.settings, undefined, "the clamped-accepted placement persists no layout");
+  } finally {
+    FakeNode.prototype.appendChild = originalAppend;
+  }
+});
+
+test("first-open settings placement opens above a mid-column occupant instead of covering it", async () => {
+  const emulation = { width: 640, height: 560, feed: 160, feedTop: 210, stats: 230, manual: null };
+  const originalAppend = FakeNode.prototype.appendChild;
+  FakeNode.prototype.appendChild = function (child) {
+    originalAppend.call(this, child);
+    if (child && typeof child.getAttribute === "function") {
+      const panelId = child.getAttribute("data-bso-panel");
+      const rightColumnLeft = emulation.width - 16 - 288;
+      let rect = null;
+      if (panelId === "settings") rect = { left: rightColumnLeft, top: 58, width: 288, height: 190 };
+      else if (panelId === "feed" && emulation.feed) rect = { left: rightColumnLeft, top: emulation.feedTop, width: 288, height: emulation.feed };
+      else if (panelId === "stats" && emulation.stats) rect = { left: 16, top: 58, width: 288, height: emulation.stats };
+      if (rect) child.rect = Object.assign({}, rect);
+      else if (child.getAttribute("data-bso-runtime-phase") != null) child.rect = { left: 0, top: 0, width: emulation.width, height: emulation.height };
+    }
+    return child;
+  };
+  try {
+    const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+    live.overlayRoot().rect = { left: 0, top: 0, width: 640, height: 560 };
+    live.flushStorage();
+    live.onMessage({ type: "SET_PANELS", panels: { feed: true, stats: true, settings: true }, requestId: "settings-ladder-above-1" });
+    const root = live.overlayRoot();
+    const rectOf = (node) => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: parseFloat(node.style.width), height: parseFloat(node.style.height) });
+    const intersects = (a, b) => a.left < b.left + b.width - 1e-9 && b.left < a.left + a.width - 1e-9 && a.top < b.top + b.height - 1e-9 && b.top < a.top + a.height - 1e-9;
+    const settingsRect = rectOf(root.querySelector('[data-bso-panel="settings"]'));
+    const feedRect = rectOf(root.querySelector('[data-bso-panel="feed"]'));
+    const statsRect = rectOf(root.querySelector('[data-bso-panel="stats"]'));
+    assert.ok(Math.abs(settingsRect.left - 336) < 1e-3, `settings stays in the default column (left ${settingsRect.left})`);
+    assert.ok(Math.abs(settingsRect.top - 12) < 1e-3, `settings opens above the dragged feed at the top margin (top ${settingsRect.top})`);
+    assert.ok(settingsRect.top + settingsRect.height <= feedRect.top - 1e-6, "the settings panel clears the mid-column feed");
+    assert.equal(intersects(settingsRect, feedRect), false, "settings never covers the dragged feed");
+    assert.equal(intersects(settingsRect, statsRect), false, "settings never covers the stats panel");
+    assert.ok(settingsRect.top + settingsRect.height <= 560 - 72 + 1e-9, "the above-occupant spot clears the player control strip");
+    assert.equal(live.storageWrites.at(-1).bvState.panelLayouts.settings, undefined, "the above-occupant placement persists no layout");
+  } finally {
+    FakeNode.prototype.appendChild = originalAppend;
+  }
+});
+
+test("first-open settings placement clamps as last resort only when no column is free", async () => {
+  const emulation = { width: 640, height: 480, feed: 300, stats: 210, manual: null };
+  const originalAppend = FakeNode.prototype.appendChild;
+  FakeNode.prototype.appendChild = function (child) {
+    originalAppend.call(this, child);
+    if (child && typeof child.getAttribute === "function") {
+      const panelId = child.getAttribute("data-bso-panel");
+      const rightColumnLeft = emulation.width - 16 - 288;
+      let rect = null;
+      if (panelId === "settings") rect = { left: rightColumnLeft, top: 58, width: 288, height: 190 };
+      else if (panelId === "feed" && emulation.feed) rect = { left: rightColumnLeft, top: 16, width: 288, height: emulation.feed };
+      else if (panelId === "stats" && emulation.stats) rect = { left: 16, top: 58, width: 288, height: emulation.stats };
+      if (rect) child.rect = Object.assign({}, rect);
+      else if (child.getAttribute("data-bso-runtime-phase") != null) child.rect = { left: 0, top: 0, width: emulation.width, height: emulation.height };
+    }
+    return child;
+  };
+  try {
+    const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+    live.overlayRoot().rect = { left: 0, top: 0, width: 640, height: 480 };
+    live.flushStorage();
+    live.onMessage({ type: "SET_PANELS", panels: { feed: true, stats: true, settings: true }, requestId: "settings-ladder-resort-1" });
+    const root = live.overlayRoot();
+    const rectOf = (node) => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: parseFloat(node.style.width), height: parseFloat(node.style.height) });
+    const settingsRect = rectOf(root.querySelector('[data-bso-panel="settings"]'));
+    assert.ok(Math.abs(settingsRect.left - 336) < 1e-3, `settings stays in its default column (left ${settingsRect.left})`);
+    assert.ok(Math.abs(settingsRect.top + settingsRect.height - (480 - 72 - 12)) < 1e-3, `the last resort lowers the panel to the overlay bound (bottom ${settingsRect.top + settingsRect.height})`);
+    assert.ok(settingsRect.top + settingsRect.height <= 480 - 72 + 1e-9, "the last-resort placement still clears the player control strip");
+    assert.equal(live.storageWrites.at(-1).bvState.panelLayouts.settings, undefined, "the last-resort clamp persists no layout");
+  } finally {
+    FakeNode.prototype.appendChild = originalAppend;
+  }
 });

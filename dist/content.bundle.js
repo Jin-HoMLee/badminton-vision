@@ -5568,6 +5568,7 @@
     // so the native player stays fully interactive; callers pass the reserve in
     // per-panel constraints (0 keeps the classic full-area behavior).
     var DEFAULT_CONTROLS_RESERVE = 0;
+    var OVERLAP_EPSILON = 1e-6;
   
     function finite(value, fallback) {
       return Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -5703,12 +5704,76 @@
         pixels.height >= Math.min(area.minHeight, area.maxHeight) - 1e-9;
     }
   
+    function firstOpenPanelPlacement(viewport, constraints, slot, occupants, gap) {
+      var areaWidth = dimension(viewport && viewport.width);
+      var areaHeight = dimension(viewport && viewport.height);
+      var width = dimension(slot && slot.width);
+      var height = dimension(slot && slot.height);
+      if (!(areaWidth > 0 && areaHeight > 0 && width > 0 && height > 0)) return null;
+      var startLeft = finite(slot.left, 0);
+      var startTop = finite(slot.top, 0);
+      var stepGap = Math.max(0, finite(gap, PANEL_MARGIN));
+      var area = bounds(viewport, constraints || {});
+      var maxTop = Math.max(area.margin, area.height - height - area.margin - area.bottomReserve);
+      var openRects = [];
+      (occupants || []).forEach(function (occupant) {
+        if (!occupant) return;
+        var occupantWidth = dimension(occupant.width);
+        var occupantHeight = dimension(occupant.height);
+        if (occupantWidth > 0 && occupantHeight > 0) {
+          openRects.push({ left: finite(occupant.left, 0), top: finite(occupant.top, 0), width: occupantWidth, height: occupantHeight });
+        }
+      });
+      var clampAt = function (left, top) {
+        return pixelPanelLayout({
+          x: left / areaWidth,
+          y: top / areaHeight,
+          width: width / areaWidth,
+          height: height / areaHeight
+        }, viewport, null, constraints || {});
+      };
+      var intersects = function (rect, other) {
+        var widthOverlap = Math.min(rect.left + rect.width, other.left + other.width) - Math.max(rect.left, other.left);
+        var heightOverlap = Math.min(rect.top + rect.height, other.top + other.height) - Math.max(rect.top, other.top);
+        return widthOverlap > OVERLAP_EPSILON && heightOverlap > OVERLAP_EPSILON;
+      };
+      var overlapsAny = function (rect) {
+        for (var index = 0; index < openRects.length; index += 1) {
+          if (intersects(rect, openRects[index])) return true;
+        }
+        return false;
+      };
+      var clippedTop = function (top) { return Math.min(maxTop, Math.max(area.margin, top)); };
+      var boundaryTops = function (withGap) {
+        var tops = [];
+        for (var index = 0; index < openRects.length; index += 1) {
+          var occupant = openRects[index];
+          tops.push(clippedTop(occupant.top + occupant.height + (withGap ? stepGap : 0)));
+          tops.push(clippedTop(occupant.top - height - (withGap ? stepGap : 0)));
+        }
+        return tops.sort(function (a, b) { return a - b; });
+      };
+      var search = function (left, tops) {
+        for (var index = 0; index < tops.length; index += 1) {
+          var rect = clampAt(left, tops[index]);
+          if (!overlapsAny(rect)) return rect;
+        }
+        return null;
+      };
+      var gapPass = [startTop, area.margin].concat(boundaryTops(true), [maxTop]);
+      var flushPass = boundaryTops(false);
+      var mirrorLeft = areaWidth - (startLeft + width);
+      var placed = search(startLeft, gapPass) || search(mirrorLeft, gapPass) || search(startLeft, flushPass) || search(mirrorLeft, flushPass);
+      if (placed) return placed;
+      return clampAt(startLeft, maxTop);
+    }
     return Object.freeze({
       PANEL_MARGIN: PANEL_MARGIN,
       PANEL_NUDGE: PANEL_NUDGE,
       PANEL_RESIZE_NUDGE: PANEL_RESIZE_NUDGE,
       normalizeLayout: normalizeLayout,
       pixelPanelLayout: pixelPanelLayout,
+      firstOpenPanelPlacement: firstOpenPanelPlacement,
       movePanelLayout: movePanelLayout,
       resizePanelLayout: resizePanelLayout,
       nudgePanelLayout: nudgePanelLayout,
@@ -6228,7 +6293,16 @@
       // Evidence visibility is controlled in the popup's disclosure; it is not
       // an on-video panel. Keep panel furniture limited to actual overlay
       // surfaces so legacy evidence-panel state cannot mount a duplicate UI.
-      panels: { feed: false, stats: false, map: false, controls: false },
+      // The settings panel is furniture like the others: per-video visibility,
+      // collapse, and geometry, never part of the density presets.
+      panels: { feed: false, stats: false, map: false, controls: false, settings: false },
+      // Settings panel values (Area 4 Phase 1 ships the read-only About content:
+      // version and links). Phase 2 display/inference preferences belong in this
+      // one serializable object, mirroring the toggle-backed trackerSettings
+      // pattern. Settings are global preferences; the settings panel's open
+      // state, collapse, and geometry stay video-local through the panels,
+      // collapse, and layout maps below.
+      settings: {},
       // Explicit panel choices override density presets while the preference
       // still gives Balanced/Full a useful default presentation. Both the
       // effective values and overrides are scoped to the active video.
@@ -6396,7 +6470,7 @@
       return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
     }
   
-    var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls"];
+    var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls", "settings"];
   
     function copyPanelLayout(layout) {
       if (!layout || typeof layout !== "object") return null;
@@ -6440,7 +6514,7 @@
   
     // Panels that are overlay furniture (not the transient court-setup card)
     // get a header collapse/expand affordance; state mirrors layout persistence.
-    var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls"];
+    var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls", "settings"];
   
     function copyPanelCollapseState(collapsed) {
       var result = {};
@@ -6482,7 +6556,7 @@
   
     function copyEdit(edit) { return edit && typeof edit === "object" ? clone(edit) : null; }
   
-    var PANEL_VISIBILITY_KEYS = ["feed", "stats", "map", "controls"];
+    var PANEL_VISIBILITY_KEYS = ["feed", "stats", "map", "controls", "settings"];
     function copyPanelVisibility(panels) {
       var result = {};
       if (!panels || typeof panels !== "object") return result;
@@ -8445,7 +8519,8 @@
       map: { minWidth: 176, minHeight: 190, maxWidth: 360, maxHeight: 520, bottomReserve: PLAYER_CONTROLS_RESERVE },
       feed: { minWidth: 280, minHeight: 128, maxWidth: 560, maxHeight: 520, bottomReserve: PLAYER_CONTROLS_RESERVE },
       manual: { minWidth: 320, minHeight: 300, maxWidth: 620, maxHeight: 690, bottomReserve: PLAYER_CONTROLS_RESERVE },
-      controls: { minWidth: 180, minHeight: 84, maxWidth: 360, maxHeight: 220, bottomReserve: PLAYER_CONTROLS_RESERVE }
+      controls: { minWidth: 180, minHeight: 84, maxWidth: 360, maxHeight: 220, bottomReserve: PLAYER_CONTROLS_RESERVE },
+      settings: { minWidth: 240, minHeight: 96, maxWidth: 420, maxHeight: 480, bottomReserve: PLAYER_CONTROLS_RESERVE }
     };
     function panelConstraints(panelId) { return PANEL_LAYOUT_CONSTRAINTS[panelId] || {}; }
     function panelMetrics(container, panel) {
@@ -8473,6 +8548,19 @@
       }
       return { layout: state.panelLayouts && state.panelLayouts[panelId] || null, viewport: metrics.viewport, rendered: metrics.rendered };
     }
+    function settingsFirstOpenPlacement(panel, viewport, rendered, result) {
+      if (!panelLayoutApi || typeof panelLayoutApi.firstOpenPanelPlacement !== "function") return result;
+      if (!root || typeof root.querySelectorAll !== "function" || !result) return result;
+      var occupants = [];
+      root.querySelectorAll("[data-bso-panel-layout]").forEach(function (other) {
+        if (other === panel) return;
+        var sibling = panelMetrics(panelContainer(other), other).rendered;
+        if (sibling.width > 0 && sibling.height > 0) occupants.push({ left: sibling.left, top: sibling.top, width: sibling.width, height: sibling.height });
+      });
+      if (!occupants.length) return result;
+      var placement = panelLayoutApi.firstOpenPanelPlacement(viewport, panelConstraints("settings"), { left: result.left, top: result.top, width: result.width, height: result.height }, occupants, panelLayoutApi.PANEL_MARGIN);
+      return placement || result;
+    }
     function applyPanelLayout(container, panel, panelId, layout) {
       if (!panel || !panelLayoutApi || typeof panelLayoutApi.pixelPanelLayout !== "function") return null;
       var metrics = panelMetrics(container, panel);
@@ -8482,6 +8570,7 @@
       var collapsed = panel.getAttribute && panel.getAttribute("data-bso-panel-collapsed") === "true";
       if (collapsed) metrics.rendered.height = 32;
       var result = panelLayoutApi.pixelPanelLayout(layout, metrics.viewport, metrics.rendered, panelConstraints(panelId));
+      if (!layout && panelId === "settings") result = settingsFirstOpenPlacement(panel, metrics.viewport, metrics.rendered, result);
       panel.style.left = result.left + "px"; panel.style.top = result.top + "px";
       panel.style.right = "auto"; panel.style.bottom = "auto";
       panel.style.width = result.width + "px";
@@ -9155,12 +9244,52 @@
         overlayPanelShortcut("Rally stats", "stats", "activity", "Show rally statistics"),
         overlayPanelShortcut("Court map", "map", "crosshair", "Show the court map"),
         overlayPanelShortcut("Live controls", "controls", "sliders", "Show density and summary shortcuts"),
+        overlayPanelShortcut("Settings", "settings", "settings", "Show version, local-first notes, and links"),
         manualShortcut,
         ui.button("Density: " + state.density, { variant: "ghost", size: "sm", icon: "sliders", onClick: cycleDensity }),
         ui.button("Summary", { variant: "ghost", size: "sm", icon: "table", onClick: openSummary })
       ]);
       access.appendChild(menu);
       return access;
+    }
+    // Settings panel About registry (Area 4 Phase 1). Links open in a new tab
+    // only on user click; the extension never fetches them. Phase 2 appends
+    // display/inference sections to settingsPanel() and stores their values in
+    // defaults.settings (see docs/settings-panel.md).
+    var SETTINGS_ABOUT_LINKS = [
+      { label: "Project source & licenses", href: "https://github.com/Jin-HoMLee/badminton-vision", description: "Source code, bundled model notices, and license texts" }
+    ];
+    function extensionVersion() {
+      if (!hasChrome() || !chrome.runtime || typeof chrome.runtime.getManifest !== "function") return null;
+      try {
+        var version = chrome.runtime.getManifest().version;
+        return version == null ? null : String(version);
+      } catch (_) { return null; }
+    }
+    function settingsPanel() {
+      var version = extensionVersion();
+      var about = ui.el("section", { className: "bv-settings-about", "aria-label": "About", "data-bso-settings-about": "true" }, [
+        ui.el("div", { className: "bv-settings-row" }, [
+          ui.el("span", { className: "bv-settings-key" }, ["Version"]),
+          ui.el("span", { className: "bv-settings-value bv-mono", "data-bso-extension-version": version || "" }, [version || "—"])
+        ]),
+        ui.el("p", { className: "bv-settings-note" }, ["Local-first analysis. Video frames and your labels stay on this device; no account or upload is involved."]),
+        ui.el("ul", { className: "bv-settings-links", "data-bso-settings-links": "true" }, SETTINGS_ABOUT_LINKS.map(function (link) {
+          return ui.el("li", {}, [ui.el("a", { href: link.href, target: "_blank", rel: "noreferrer", title: link.description || link.label }, [link.label, ui.icon("external", 12)])]);
+        }))
+      ]);
+      return ui.panel("Settings", {
+        layoutId: "settings",
+        icon: "settings",
+        className: "bv-settings-panel",
+        collapsed: panelCollapsed("settings"),
+        onToggleCollapse: function (value) { togglePanelCollapsed("settings", value); },
+        actions: [ui.iconButton("x", "Hide settings", { size: "sm", onClick: function () {
+          state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "settings", value: false });
+          persist();
+          render();
+        } })]
+      }, [about]);
     }
     function liveOverlay() {
       var overlay = ui.el("div", {
@@ -9627,15 +9756,24 @@
       clearPanelGesture();
       updateDiagnosticsMarkers();
       root.replaceChildren();
-      if (!state.enabled && !state.seeding && !state.labeling) return;
-      // Court setup is an optional mapping flow layered over the same live
-      // inference surface. Never replace raw pose/shuttle/racket evidence with
-      // the setup card just because calibration is missing or being changed.
-      // However, when a camera cut triggers seeding, the old evidence is stale
-      // and must not be shown frozen over the new camera angle.
-      if (state.enabled && !(state.seeding && state.cameraCut)) root.appendChild(liveOverlay());
-      if (state.seeding) root.appendChild(seedFlow());
-      if (state.labeling && !state.seeding) root.appendChild(manualPanel());
+      // The settings panel is on-demand furniture like manual labeling: it
+      // mounts without inference so About content stays reachable before the
+      // overlay is enabled, and withholds only during a camera-cut reseed where
+      // every other stale layer is hidden too.
+      if (state.panels && state.panels.settings && !state.enabled && !state.seeding && !state.labeling) {
+        root.appendChild(settingsPanel());
+      } else {
+        if (!state.enabled && !state.seeding && !state.labeling) return;
+        // Court setup is an optional mapping flow layered over the same live
+        // inference surface. Never replace raw pose/shuttle/racket evidence with
+        // the setup card just because calibration is missing or being changed.
+        // However, when a camera cut triggers seeding, the old evidence is stale
+        // and must not be shown frozen over the new camera angle.
+        if (state.enabled && !(state.seeding && state.cameraCut)) root.appendChild(liveOverlay());
+        if (state.seeding) root.appendChild(seedFlow());
+        if (state.labeling && !state.seeding) root.appendChild(manualPanel());
+        if (state.panels && state.panels.settings && !(state.seeding && state.cameraCut)) root.appendChild(settingsPanel());
+      }
       // Append houghCanvas at root level for proper z-index layering (above seed-layer background but below seed-points/card)
       if (houghCanvas) root.appendChild(houghCanvas);
       // Detection lifecycle is derived from seeding state so camera-cut re-seeds
