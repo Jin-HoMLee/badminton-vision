@@ -78,6 +78,7 @@ const expectedFiles = [
   "offscreen/vendor/litert/wasm-utils.js",
   "offscreen/vendor/tfjs/LICENSE",
   "offscreen/vendor/tfjs/README.md",
+  "offscreen/vendor/tfjs/regenerator-shim.js",
   "offscreen/vendor/tfjs/tf.min.js",
   "design-system/assets/icon-16.svg",
   "design-system/assets/icon-32.svg",

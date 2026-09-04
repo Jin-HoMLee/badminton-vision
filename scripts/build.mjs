@@ -64,6 +64,7 @@ const runtimeFiles = [
   ["offscreen/vendor/litert/litert_wasm_compat_internal.wasm", "offscreen/vendor/litert/litert_wasm_compat_internal.wasm"],
   ["offscreen/vendor/litert/LICENSE", "offscreen/vendor/litert/LICENSE"],
   ["offscreen/vendor/litert/LITERT-README.md", "offscreen/vendor/litert/LITERT-README.md"],
+  ["offscreen/vendor/tfjs/regenerator-shim.js", "offscreen/vendor/tfjs/regenerator-shim.js"],
   ["offscreen/vendor/tfjs/tf.min.js", "offscreen/vendor/tfjs/tf.min.js"],
   ["offscreen/vendor/tfjs/LICENSE", "offscreen/vendor/tfjs/LICENSE"],
   ["offscreen/vendor/tfjs/README.md", "offscreen/vendor/tfjs/README.md"],
