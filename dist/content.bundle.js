@@ -8483,6 +8483,33 @@
       }
       return { layout: state.panelLayouts && state.panelLayouts[panelId] || null, viewport: metrics.viewport, rendered: metrics.rendered };
     }
+    function settingsFirstOpenPlacement(panel, viewport, rendered, result) {
+      if (!root || typeof root.querySelectorAll !== "function" || !result || !panelLayoutApi || typeof panelLayoutApi.pixelPanelLayout !== "function") return result;
+      var gap = Math.max(0, Number(panelLayoutApi.PANEL_MARGIN) || 0);
+      for (var guard = 0; guard < 6; guard += 1) {
+        var box = { left: result.left, top: result.top, width: result.width, height: result.height };
+        var below = -1;
+        root.querySelectorAll("[data-bso-panel-layout]").forEach(function (other) {
+          if (other === panel) return;
+          var sibling = panelMetrics(panelContainer(other), other).rendered;
+          if (sibling.width > 0 && sibling.height > 0 &&
+              box.left < sibling.left + sibling.width && sibling.left < box.left + box.width &&
+              box.top < sibling.top + sibling.height && sibling.top < box.top + box.height) {
+            below = Math.max(below, sibling.top + sibling.height);
+          }
+        });
+        if (below < 0) return result;
+        var stacked = panelLayoutApi.pixelPanelLayout({
+          x: result.layout.x,
+          y: (below + gap) / (viewport.height || 1),
+          width: result.layout.width,
+          height: result.layout.height
+        }, viewport, rendered, panelConstraints("settings"));
+        if (!stacked || stacked.top <= box.top) return result;
+        result = stacked;
+      }
+      return result;
+    }
     function applyPanelLayout(container, panel, panelId, layout) {
       if (!panel || !panelLayoutApi || typeof panelLayoutApi.pixelPanelLayout !== "function") return null;
       var metrics = panelMetrics(container, panel);
@@ -8492,6 +8519,7 @@
       var collapsed = panel.getAttribute && panel.getAttribute("data-bso-panel-collapsed") === "true";
       if (collapsed) metrics.rendered.height = 32;
       var result = panelLayoutApi.pixelPanelLayout(layout, metrics.viewport, metrics.rendered, panelConstraints(panelId));
+      if (!layout && panelId === "settings") result = settingsFirstOpenPlacement(panel, metrics.viewport, metrics.rendered, result);
       panel.style.left = result.left + "px"; panel.style.top = result.top + "px";
       panel.style.right = "auto"; panel.style.bottom = "auto";
       panel.style.width = result.width + "px";

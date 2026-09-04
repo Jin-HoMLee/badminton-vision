@@ -37,6 +37,13 @@ camera-cut reseed (`!(state.seeding && state.cameraCut)` in `render()`).
   slot `.bv-overlay-root > [data-bso-panel="settings"]` in `src/styles.css`,
   and the `ui.panel` chrome (chevron collapse, x close, header drag, resize
   handle).
+- First-open stacking: a settings panel with **no saved layout** for the video
+  first-opens at its CSS default slot (right edge, `top: 58px`) and, when an
+  already-open panel occupies that spot, stacks below it at mount time
+  (`settingsFirstOpenPlacement()` in `src/content.js`). The offset is clamped
+  to the overlay bounds, is deterministic per render, and is never persisted
+  (no `SET_PANEL_LAYOUT` write), so a saved drag always wins and a later open
+  with the slot free returns to the CSS default.
 - Panel-body hit testing stays conservative: the panel background passes
   pointer events through; only the header/footer/resize surface and the About
   links (`a` elements, already covered by the `.bv-panel-body a` rule) opt in.
