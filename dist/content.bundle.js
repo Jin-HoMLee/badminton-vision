@@ -7907,7 +7907,10 @@
     }
     function requestHoughDetection() {
       // Capture current video frame and request Hough line detection
-      if (!video || !hasChrome() || !chrome.runtime) return;
+      if (!video || !hasChrome() || !chrome.runtime) {
+        console.log("[Hough] Cannot request detection: video/chrome/runtime unavailable");
+        return;
+      }
   
       try {
         // Create a canvas to capture the current frame
@@ -7916,12 +7919,18 @@
         var videoWidth = video.videoWidth || video.width || 1;
         var videoHeight = video.videoHeight || video.height || 1;
   
-        if (videoWidth <= 0 || videoHeight <= 0) return;
+        if (videoWidth <= 0 || videoHeight <= 0) {
+          console.log("[Hough] Cannot request detection: invalid video dimensions", videoWidth, "x", videoHeight);
+          return;
+        }
   
         canvas.width = videoWidth;
         canvas.height = videoHeight;
         var ctx = canvas.getContext("2d");
-        if (!ctx) return;
+        if (!ctx) {
+          console.log("[Hough] Cannot get canvas context");
+          return;
+        }
   
         ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
         var imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
@@ -7937,33 +7946,52 @@
         console.log("[Hough] Sending frame:", { width: videoWidth, height: videoHeight, dataLength: frameObject.data.length });
   
         // Send frame to offscreen script for Hough detection
-        // Note: Chrome MV3 structured cloning should handle Uint8Array properly
-        chrome.runtime.sendMessage({
-          action: "detectHoughLines",
-          frameData: frameObject,
-          width: videoWidth,
-          height: videoHeight
-        }, function (response) {
-          if (chrome.runtime.lastError) {
-            console.error("Hough detection error:", chrome.runtime.lastError);
-            return;
-          }
-          console.log("[Hough] Response received:", response);
-          if (response && response.ok && Array.isArray(response.lines)) {
-            console.log("[Hough] Detected", response.lines.length, "lines");
-            houghLines = response.lines;
-            // Trigger a redraw of the overlay canvas
-            if (host && typeof host.getBoundingClientRect === "function") {
-              var hostRect = host.getBoundingClientRect();
-              console.log("[Hough] Redrawing canvas with host rect:", hostRect.width, "x", hostRect.height);
-              resizeOverlayCanvas(hostRect.width, hostRect.height);
-            } else {
-              console.log("[Hough] Cannot redraw: host not ready");
+        try {
+          chrome.runtime.sendMessage({
+            action: "detectHoughLines",
+            frameData: frameObject,
+            width: videoWidth,
+            height: videoHeight
+          }, function (response) {
+            if (chrome.runtime.lastError) {
+              console.error("Hough detection error:", chrome.runtime.lastError);
+              return;
             }
-          } else {
-            console.log("[Hough] Invalid response - ok:", response && response.ok, "lines:", response && response.lines);
-          }
-        });
+            if (!response) {
+              console.log("[Hough] No response from offscreen script");
+              return;
+            }
+            console.log("[Hough] Response received:", response);
+            if (response && response.ok && Array.isArray(response.lines)) {
+              console.log("[Hough] Detected", response.lines.length, "lines");
+              houghLines = response.lines;
+              // Trigger a redraw of the overlay canvas
+              // Use host geometry if available, otherwise use video geometry
+              if (host && typeof host.getBoundingClientRect === "function") {
+                var hostRect = host.getBoundingClientRect();
+                if (hostRect.width > 0 && hostRect.height > 0) {
+                  console.log("[Hough] Redrawing canvas with host rect:", hostRect.width, "x", hostRect.height);
+                  resizeOverlayCanvas(hostRect.width, hostRect.height);
+                } else {
+                  // Host not positioned yet, try to use video geometry instead
+                  if (video && typeof video.getBoundingClientRect === "function") {
+                    var videoRect = video.getBoundingClientRect();
+                    console.log("[Hough] Host not positioned, using video rect:", videoRect.width, "x", videoRect.height);
+                    resizeOverlayCanvas(videoRect.width, videoRect.height);
+                  } else {
+                    console.log("[Hough] Cannot redraw: neither host nor video positioned");
+                  }
+                }
+              } else {
+                console.log("[Hough] Cannot redraw: host not ready");
+              }
+            } else {
+              console.log("[Hough] Invalid response - ok:", response && response.ok, "lines:", response && response.lines);
+            }
+          });
+        } catch (sendError) {
+          console.error("[Hough] Error sending message:", sendError);
+        }
       } catch (error) {
         console.error("Error requesting Hough detection:", error);
       }
