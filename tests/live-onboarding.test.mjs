@@ -1855,6 +1855,48 @@ test("court seeding offers tappable floating corner labels and 1-4 keyboard plac
   assert.equal(layer.querySelector("[data-bso-seed-guide]"), null);
 });
 
+test("the floating corner pill paints above the seed card on small players", async () => {
+  // At the default layout on the 640x360 player the setup card is clamped
+  // against the control-strip reserve, so its opaque box covers the pill's
+  // marked-spot band; the pill's stacking level keeps it visible/tappable.
+  const live = await createSession();
+  live.flushStorage();
+  live.onMessage({ type: "START_SEED", requestId: "pill-above-card-1" });
+  const root = live.overlayRoot();
+  const layer = root.querySelector("[data-bso-court-seeding]");
+  const pill = layer.querySelector("[data-bso-seed-corner-button]");
+  const card = layer.querySelector("[data-bso-seed-card]");
+  assert.ok(pill && card, "setup renders the floating pill and the instruction card");
+  const pillLeft = Number.parseFloat(pill.style.left);
+  const pillTop = Number.parseFloat(pill.style.top);
+  const cardLeft = Number.parseFloat(card.style.left);
+  const cardTop = Number.parseFloat(card.style.top);
+  const cardRight = cardLeft + Number.parseFloat(card.style.width);
+  const cardBottom = cardTop + Number.parseFloat(card.style.height);
+  // translateY(-100%) lifts the 40px pill body above its top anchor, so its
+  // visual box is [pillTop - 40, pillTop]; that whole band lies inside the
+  // rendered card box at the default placement.
+  assert.ok(pillTop - 40 >= cardTop - 1e-9, "the pill's visual band starts inside the card");
+  assert.ok(pillTop <= cardBottom + 1e-9, "the pill's visual band ends inside the card");
+  assert.ok(pillLeft >= cardLeft - 1e-9 && pillLeft <= cardRight + 1e-9, "the pill's corner column crosses the card");
+  const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
+  const zIndexOf = (selector) => {
+    const rule = styles.match(new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\{([^}]*)\\}"));
+    assert.ok(rule, `${selector} declares a rule`);
+    const declared = rule[1].match(/z-index:\s*(\d+)/);
+    return declared ? Number(declared[1]) : null;
+  };
+  const pillZ = zIndexOf(".bv-seed-corner-button");
+  const cardZ = zIndexOf(".bv-seed-card");
+  assert.ok(pillZ != null && cardZ != null && pillZ > cardZ, "the pill stacks above the opaque card inside the seed layer");
+  // The pill is overlapped by the card but still receives the click that
+  // seeds the corner at its marked spot.
+  pill.dispatchEvent({ type: "click", target: pill });
+  assert.equal(live.host().getAttribute("data-bso-seed-count"), "1");
+  const placed = live.storageWrites.at(-1).bvState.seedDraftPoints[0];
+  assert.ok(Math.abs(placed.y - (1 - (72 + 24) / 360)) < 1e-9, "the click seeds the corner at the clamped marked spot");
+});
+
 test("collapse and close are visually distinct header affordances on every panel", async () => {
   const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
   live.flushStorage();

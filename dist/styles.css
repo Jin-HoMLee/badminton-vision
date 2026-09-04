@@ -470,9 +470,13 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-seed-card-handle { cursor: grab; touch-action: none; }
 .bv-seed-card-handle:active, .bv-seed-card.is-dragging .bv-seed-card-handle { cursor: grabbing; }
 .bv-seed-card-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-left: auto; }
-/* Floating corner-seed button: the tappable corner label during calibration. */
+/* Floating corner-seed button: the tappable corner label during calibration.
+   It deliberately paints above the instruction card (z-index 4 over 3): at the
+   default card placement on short players the card is clamped to the native
+   control-strip reserve and covers the marked-spot band, so the pill must stay
+   on top to remain visible and tappable there. */
 .bv-seed-corner-button {
-  position: absolute; z-index: 2; box-sizing: border-box; display: inline-flex; align-items: center;
+  position: absolute; z-index: 4; box-sizing: border-box; display: inline-flex; align-items: center;
   justify-content: flex-start; max-width: calc(100% - 24px); height: var(--sp-10); padding: 0 var(--sp-5);
   border: 1px solid var(--lime-500); border-radius: var(--radius-pill);
   background: var(--ink-900); color: var(--lime-500); box-shadow: var(--shadow-raised);
