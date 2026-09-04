@@ -127,3 +127,63 @@ test("a panel taller than the free area is height-capped so it can never cover t
   const movedPixels = api.pixelPanelLayout(moved, smallViewport, { left: 12, top: 12, width: 380, height: 2000 }, constraints);
   assert.ok(movedPixels.top + movedPixels.height <= smallViewport.height - reserve + 1e-9, "dragging a tall panel down keeps it above the strip");
 });
+
+test("first-open placement accepts a clamped below-occupant spot when it is overlap-free", async () => {
+  const api = await moduleApi("panel-layout.js", "BVPanelLayout");
+  const viewport = { width: 640, height: 560 };
+  const constraints = { minWidth: 240, minHeight: 96, maxWidth: 420, maxHeight: 480, bottomReserve: 72 };
+  const slot = { left: 336, top: 58, width: 288, height: 190 };
+  const intersects = (a, b) => a.left < b.left + b.width && b.left < a.left + a.width && a.top < b.top + b.height && b.top < a.top + a.height;
+  const feed = { left: 336, top: 16, width: 288, height: 330 };
+  // Stats bottoms sweep through the (274, 286] band where the below-occupant
+  // request clamps at the bound: the clamped mirror spot must be accepted
+  // whenever it no longer overlaps the occupant.
+  for (const [statsHeight, expectedTop] of [[210, 280], [222, 286], [228, 286]]) {
+    const stats = { left: 16, top: 58, width: 288, height: statsHeight };
+    const placed = api.firstOpenPanelPlacement(viewport, constraints, slot, [feed, stats], api.PANEL_MARGIN);
+    assert.ok(placed, `stats h=${statsHeight} still places`);
+    assert.ok(Math.abs(placed.left - 16) < 1e-6, `stats h=${statsHeight} lands in the opposite column (left ${placed.left})`);
+    assert.ok(Math.abs(placed.top - expectedTop) < 1e-6, `stats h=${statsHeight} lands at ${expectedTop} (top ${placed.top})`);
+    assert.equal(intersects(placed, stats), false, `stats h=${statsHeight}: the clamped spot never covers stats`);
+    assert.equal(intersects(placed, feed), false, `stats h=${statsHeight}: the clamped spot never covers feed`);
+    assert.ok(placed.top + placed.height <= viewport.height - 12 - 72 + 1e-9, `stats h=${statsHeight} stays within the overlay bounds`);
+  }
+});
+
+test("first-open placement never covers an occupant while any free spot exists", async () => {
+  const api = await moduleApi("panel-layout.js", "BVPanelLayout");
+  const viewport = { width: 640, height: 560 };
+  const constraints = { minWidth: 240, minHeight: 96, maxWidth: 420, maxHeight: 480, bottomReserve: 72 };
+  const slot = { left: 336, top: 58, width: 288, height: 190 };
+  const intersects = (a, b) => a.left < b.left + b.width && b.left < a.left + a.width && a.top < b.top + b.height && b.top < a.top + a.height;
+  const boundsOk = (placed) => placed.left >= 12 - 1e-9 && placed.top >= 12 - 1e-9 && placed.left + placed.width <= viewport.width - 12 + 1e-9 && placed.top + placed.height <= viewport.height - 12 - 72 + 1e-9;
+  const feed = { left: 336, top: 16, width: 288, height: 330 };
+  // Sweep the left-column occupant (stats) through heights where the free
+  // spot below it exists (bottom <= 286) and beyond it.
+  for (let statsHeight = 128; statsHeight <= 236; statsHeight += 1) {
+    const stats = { left: 16, top: 58, width: 288, height: statsHeight };
+    const placed = api.firstOpenPanelPlacement(viewport, constraints, slot, [feed, stats], api.PANEL_MARGIN);
+    assert.ok(placed, `stats h=${statsHeight} always places`);
+    assert.ok(boundsOk(placed), `stats h=${statsHeight} stays within bounds`);
+    const statsBottom = stats.top + stats.height;
+    if (statsBottom <= viewport.height - 190 - 12 - 72) {
+      assert.equal(intersects(placed, stats), false, `stats h=${statsHeight} never covers stats while a free spot exists`);
+      assert.equal(intersects(placed, feed), false, `stats h=${statsHeight} never covers feed while a free spot exists`);
+      assert.ok(Math.abs(placed.left - 16) < 1e-6, `stats h=${statsHeight} uses the opposite column`);
+    }
+  }
+  // Sweep the right-column occupant (feed) through heights where the free
+  // spot below it exists and beyond it.
+  for (let feedHeight = 128; feedHeight <= 420; feedHeight += 1) {
+    const occupant = { left: 336, top: 16, width: 288, height: feedHeight };
+    const stats = { left: 16, top: 58, width: 288, height: 210 };
+    const placed = api.firstOpenPanelPlacement(viewport, constraints, slot, [occupant, stats], api.PANEL_MARGIN);
+    assert.ok(placed, `feed h=${feedHeight} always places`);
+    assert.ok(boundsOk(placed), `feed h=${feedHeight} stays within bounds`);
+    const feedBottom = occupant.top + occupant.height;
+    if (feedBottom <= viewport.height - 190 - 12 - 72) {
+      assert.equal(intersects(placed, occupant), false, `feed h=${feedHeight} never covers the feed while a free spot exists`);
+      assert.equal(intersects(placed, stats), false, `feed h=${feedHeight} never covers stats while a free spot exists`);
+    }
+  }
+});

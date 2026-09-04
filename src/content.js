@@ -1075,65 +1075,17 @@
     return { layout: state.panelLayouts && state.panelLayouts[panelId] || null, viewport: metrics.viewport, rendered: metrics.rendered };
   }
   function settingsFirstOpenPlacement(panel, viewport, rendered, result) {
-    if (!root || typeof root.querySelectorAll !== "function" || !result || !panelLayoutApi || typeof panelLayoutApi.pixelPanelLayout !== "function") return result;
-    var gap = Math.max(0, Number(panelLayoutApi.PANEL_MARGIN) || 0);
-    var siblings = [];
+    if (!panelLayoutApi || typeof panelLayoutApi.firstOpenPanelPlacement !== "function") return result;
+    if (!root || typeof root.querySelectorAll !== "function" || !result) return result;
+    var occupants = [];
     root.querySelectorAll("[data-bso-panel-layout]").forEach(function (other) {
       if (other === panel) return;
       var sibling = panelMetrics(panelContainer(other), other).rendered;
-      if (sibling.width > 0 && sibling.height > 0) siblings.push(sibling);
+      if (sibling.width > 0 && sibling.height > 0) occupants.push({ left: sibling.left, top: sibling.top, width: sibling.width, height: sibling.height });
     });
-    if (!siblings.length) return result;
-    var areaWidth = Math.max(1, Number(viewport.width) || 1);
-    var areaHeight = Math.max(1, Number(viewport.height) || 1);
-    var layoutFor = function (box) {
-      return {
-        x: box.left / areaWidth,
-        y: box.top / areaHeight,
-        width: box.width / areaWidth,
-        height: box.height / areaHeight
-      };
-    };
-    var overlapsAny = function (box) {
-      for (var index = 0; index < siblings.length; index += 1) {
-        var sibling = siblings[index];
-        if (box.left < sibling.left + sibling.width && sibling.left < box.left + box.width &&
-            box.top < sibling.top + sibling.height && sibling.top < box.top + box.height) return true;
-      }
-      return false;
-    };
-    var lowestOccupantBottom = function (box) {
-      var below = -1;
-      for (var index = 0; index < siblings.length; index += 1) {
-        var sibling = siblings[index];
-        if (box.left < sibling.left + sibling.width && sibling.left < box.left + box.width &&
-            box.top < sibling.top + sibling.height && sibling.top < box.top + box.height) {
-          below = Math.max(below, sibling.top + sibling.height);
-        }
-      }
-      return below;
-    };
-    var fallback = result;
-    var placeInColumn = function (left) {
-      var box = { left: left, top: result.top, width: result.width, height: result.height };
-      for (var guard = 0; guard < 6; guard += 1) {
-        if (!overlapsAny(box)) return panelLayoutApi.pixelPanelLayout(layoutFor(box), viewport, rendered, panelConstraints("settings"));
-        var below = lowestOccupantBottom(box);
-        var stacked = panelLayoutApi.pixelPanelLayout(layoutFor({ left: box.left, top: below + gap, width: box.width, height: box.height }), viewport, rendered, panelConstraints("settings"));
-        if (!stacked) return null;
-        if (stacked.top < below + gap - 0.5) {
-          if (left === result.left && stacked.top > box.top) fallback = stacked;
-          return null;
-        }
-        box = { left: stacked.left, top: stacked.top, width: stacked.width, height: stacked.height };
-      }
-      return null;
-    };
-    var placed = placeInColumn(result.left);
-    if (placed) return placed;
-    placed = placeInColumn(areaWidth - (result.left + result.width));
-    if (placed) return placed;
-    return fallback;
+    if (!occupants.length) return result;
+    var placement = panelLayoutApi.firstOpenPanelPlacement(viewport, panelConstraints("settings"), { left: result.left, top: result.top, width: result.width, height: result.height }, occupants, panelLayoutApi.PANEL_MARGIN);
+    return placement || result;
   }
   function applyPanelLayout(container, panel, panelId, layout) {
     if (!panel || !panelLayoutApi || typeof panelLayoutApi.pixelPanelLayout !== "function") return null;

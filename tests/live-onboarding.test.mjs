@@ -2431,6 +2431,47 @@ test("first-open settings placement cascades below the opposite column's occupan
   }
 });
 
+test("first-open settings placement accepts the clamped opposite-column spot when it clears the occupant", async () => {
+  const emulation = { width: 640, height: 560, feed: 330, stats: 222, manual: null };
+  const originalAppend = FakeNode.prototype.appendChild;
+  FakeNode.prototype.appendChild = function (child) {
+    originalAppend.call(this, child);
+    if (child && typeof child.getAttribute === "function") {
+      const panelId = child.getAttribute("data-bso-panel");
+      const rightColumnLeft = emulation.width - 16 - 288;
+      let rect = null;
+      if (panelId === "settings") rect = { left: rightColumnLeft, top: 58, width: 288, height: 190 };
+      else if (panelId === "feed" && emulation.feed) rect = { left: rightColumnLeft, top: 16, width: 288, height: emulation.feed };
+      else if (panelId === "stats" && emulation.stats) rect = { left: 16, top: 58, width: 288, height: emulation.stats };
+      if (rect) child.rect = Object.assign({}, rect);
+      else if (child.getAttribute("data-bso-runtime-phase") != null) child.rect = { left: 0, top: 0, width: emulation.width, height: emulation.height };
+    }
+    return child;
+  };
+  try {
+    const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+    live.overlayRoot().rect = { left: 0, top: 0, width: 640, height: 560 };
+    live.flushStorage();
+    live.onMessage({ type: "SET_PANELS", panels: { feed: true, stats: true, settings: true }, requestId: "settings-ladder-band-1" });
+    const root = live.overlayRoot();
+    const rectOf = (node) => ({ left: parseFloat(node.style.left), top: parseFloat(node.style.top), width: parseFloat(node.style.width), height: parseFloat(node.style.height) });
+    const intersects = (a, b) => a.left < b.left + b.width - 1e-9 && b.left < a.left + a.width - 1e-9 && a.top < b.top + b.height - 1e-9 && b.top < a.top + a.height - 1e-9;
+    const settingsRect = rectOf(root.querySelector('[data-bso-panel="settings"]'));
+    const feedRect = rectOf(root.querySelector('[data-bso-panel="feed"]'));
+    const statsRect = rectOf(root.querySelector('[data-bso-panel="stats"]'));
+    const boundTop = 560 - 190 - 12 - 72;
+    assert.ok(Math.abs(settingsRect.left - 16) < 1e-3, `settings uses the opposite column (left ${settingsRect.left})`);
+    assert.ok(Math.abs(settingsRect.top - boundTop) < 1e-3, `the 12px-gap request clamps and is accepted at the bound (top ${settingsRect.top}, bound ${boundTop})`);
+    assert.ok(settingsRect.top >= statsRect.top + statsRect.height - 1e-6, "the clamped spot still clears the stats occupant");
+    assert.equal(intersects(settingsRect, statsRect), false, "settings never covers the stats panel");
+    assert.equal(intersects(settingsRect, feedRect), false, "settings never covers the feed panel");
+    assert.ok(settingsRect.top + settingsRect.height <= 560 - 72 + 1e-9, "the clamped spot clears the player control strip");
+    assert.equal(live.storageWrites.at(-1).bvState.panelLayouts.settings, undefined, "the clamped-accepted placement persists no layout");
+  } finally {
+    FakeNode.prototype.appendChild = originalAppend;
+  }
+});
+
 test("first-open settings placement clamps as last resort only when no column is free", async () => {
   const emulation = { width: 640, height: 480, feed: 300, stats: 210, manual: null };
   const originalAppend = FakeNode.prototype.appendChild;
