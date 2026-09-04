@@ -905,7 +905,19 @@ async function handleHoughDetection(message) {
     if (frameData instanceof ImageData) {
       frame = frameData;
     } else if (frameData.data && frameData.width && frameData.height) {
-      frame = frameData;
+      // frameData might be a serialized object with array data
+      // Create a new ImageData with the same dimensions and data
+      try {
+        // Handle both Uint8ClampedArray and regular arrays
+        let dataArray = frameData.data;
+        if (Array.isArray(dataArray) && typeof Uint8ClampedArray !== 'undefined') {
+          dataArray = new Uint8ClampedArray(dataArray);
+        }
+        frame = new ImageData(dataArray, frameData.width, frameData.height);
+      } catch (e) {
+        console.error('Failed to create ImageData from frameData:', e);
+        return { ok: false, lines: [], reason: 'failed-to-create-imagedata' };
+      }
     } else if (typeof OffscreenCanvas !== 'undefined') {
       // If frameData is a bitmap or raw data, create a canvas and draw it
       const canvas = new OffscreenCanvas(width, height);

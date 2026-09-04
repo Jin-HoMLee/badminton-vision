@@ -7926,10 +7926,18 @@
         ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
         var imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
   
+        // Convert ImageData to a serializable object for chrome.runtime.sendMessage
+        // ImageData might not serialize properly through MV3 messaging
+        var frameObject = {
+          data: Array.from(imageData.data),  // Convert Uint8ClampedArray to regular array
+          width: imageData.width,
+          height: imageData.height
+        };
+  
         // Send frame to offscreen script for Hough detection
         chrome.runtime.sendMessage({
           action: "detectHoughLines",
-          frameData: imageData,
+          frameData: frameObject,
           width: videoWidth,
           height: videoHeight
         }, function (response) {
@@ -7937,13 +7945,20 @@
             console.error("Hough detection error:", chrome.runtime.lastError);
             return;
           }
+          console.log("[Hough] Response received:", response);
           if (response && response.ok && Array.isArray(response.lines)) {
+            console.log("[Hough] Detected", response.lines.length, "lines");
             houghLines = response.lines;
             // Trigger a redraw of the overlay canvas
             if (host && typeof host.getBoundingClientRect === "function") {
               var hostRect = host.getBoundingClientRect();
+              console.log("[Hough] Redrawing canvas with host rect:", hostRect.width, "x", hostRect.height);
               resizeOverlayCanvas(hostRect.width, hostRect.height);
+            } else {
+              console.log("[Hough] Cannot redraw: host not ready");
             }
+          } else {
+            console.log("[Hough] Invalid response - ok:", response && response.ok, "lines:", response && response.lines);
           }
         });
       } catch (error) {
@@ -7953,9 +7968,11 @@
   
     function startHoughDetectionLoop() {
       if (houghDetectionInterval !== null || typeof setInterval !== "function") return;
+      console.log("[Hough] Starting detection loop");
       // Request Hough detection every 500ms during calibration
       houghDetectionInterval = setInterval(function () {
         if (state && state.seeding && video) {
+          console.log("[Hough] Running detection iteration");
           requestHoughDetection();
         }
       }, 500);
@@ -8551,6 +8568,7 @@
       return svg;
     }
     function startCourtSetup() {
+      console.log("[Hough] startCourtSetup called");
       state = window.BVState.reduceExtensionState(state, { type: "START_SEED" });
       state.videoKey = activeVideoKey || currentVideoKey();
       panelGesture = null;
@@ -8559,6 +8577,7 @@
       persist();
       render();
       // Start periodic Hough detection during calibration
+      console.log("[Hough] About to start detection loop, seeding:", state.seeding);
       startHoughDetectionLoop();
     }
     function undoSeedPoint() {
