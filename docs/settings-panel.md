@@ -64,5 +64,4 @@ Phase 2 must not rework any panel registration. The seams are:
 
 Coverage: state-level gates in `tests/state.test.mjs`, content/popup wiring in
 `tests/live-onboarding.test.mjs`, geometry fixture in
-`tests/panel-layout.test.mjs`, static contract gates in
-`tests/settings-panel.test.mjs`.
+`tests/panel-layout.test.mjs`.

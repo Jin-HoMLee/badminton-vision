@@ -9681,16 +9681,20 @@
       // mounts without inference so About content stays reachable before the
       // overlay is enabled, and withholds only during a camera-cut reseed where
       // every other stale layer is hidden too.
-      if (!state.enabled && !state.seeding && !state.labeling && !(state.panels && state.panels.settings)) return;
-      // Court setup is an optional mapping flow layered over the same live
-      // inference surface. Never replace raw pose/shuttle/racket evidence with
-      // the setup card just because calibration is missing or being changed.
-      // However, when a camera cut triggers seeding, the old evidence is stale
-      // and must not be shown frozen over the new camera angle.
-      if (state.enabled && !(state.seeding && state.cameraCut)) root.appendChild(liveOverlay());
-      if (state.seeding) root.appendChild(seedFlow());
-      if (state.labeling && !state.seeding) root.appendChild(manualPanel());
-      if (state.panels && state.panels.settings && !(state.seeding && state.cameraCut)) root.appendChild(settingsPanel());
+      if (state.panels && state.panels.settings && !state.enabled && !state.seeding && !state.labeling) {
+        root.appendChild(settingsPanel());
+      } else {
+        if (!state.enabled && !state.seeding && !state.labeling) return;
+        // Court setup is an optional mapping flow layered over the same live
+        // inference surface. Never replace raw pose/shuttle/racket evidence with
+        // the setup card just because calibration is missing or being changed.
+        // However, when a camera cut triggers seeding, the old evidence is stale
+        // and must not be shown frozen over the new camera angle.
+        if (state.enabled && !(state.seeding && state.cameraCut)) root.appendChild(liveOverlay());
+        if (state.seeding) root.appendChild(seedFlow());
+        if (state.labeling && !state.seeding) root.appendChild(manualPanel());
+        if (state.panels && state.panels.settings && !(state.seeding && state.cameraCut)) root.appendChild(settingsPanel());
+      }
       // Append houghCanvas at root level for proper z-index layering (above seed-layer background but below seed-points/card)
       if (houghCanvas) root.appendChild(houghCanvas);
       // Detection lifecycle is derived from seeding state so camera-cut re-seeds
