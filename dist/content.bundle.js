@@ -8453,6 +8453,11 @@
         var panelId = panel.getAttribute("data-bso-panel");
         if (panelId) applyPanelLayout(panelContainer(panel), panel, panelId, state.panelLayouts && state.panelLayouts[panelId]);
       });
+      // The court-seeding markers (px-anchored corner pill and %-anchored guide
+      // ring) are re-derived from the current host box on every layout pass, so
+      // a mid-seeding fullscreen/resize can never leave the pill off-host or
+      // disagreeing with the marked spot.
+      refreshSeedMarkers();
     }
     function storePanelLayout(panelId, layout) {
       state = window.BVState.reduceExtensionState(state, { type: "SET_PANEL_LAYOUT", panel: panelId, videoKey: activeVideoKey || currentVideoKey(), layout: layout });
@@ -8895,6 +8900,34 @@
           placeSeedCornerAtMarkedSpot(index);
         }
       }, [corner + " outer corner"]);
+    }
+    function refreshSeedMarkers() {
+      if (!state.seeding || !root || typeof root.querySelector !== "function") return;
+      var layer = root.querySelector("[data-bso-court-seeding]");
+      if (!layer) return;
+      var guide = layer.querySelector("[data-bso-seed-guide]");
+      if (!guide) return;
+      var index = Number(guide.getAttribute("data-bso-seed-guide"));
+      var spot = markedCornerSpot(index);
+      if (!spot) return;
+      guide.style.left = spot.x * 100 + "%";
+      guide.style.top = spot.y * 100 + "%";
+      var metrics = seedLayerMetrics();
+      var pill = layer.querySelector("[data-bso-seed-corner-button]");
+      if (!pill || metrics.width <= 0 || metrics.height <= 0) return;
+      var anchor = { x: spot.x * metrics.width, y: spot.y * metrics.height };
+      var placement = seedCardApi.placeSeedCornerButton(anchor, metrics, { height: SEED_CORNER_BUTTON_HEIGHT, reserve: PLAYER_CONTROLS_RESERVE });
+      pill.style.top = Math.max(0, Number(placement.top) || 0) + "px";
+      if (placement.left != null) {
+        pill.style.left = placement.left + "px";
+        pill.style.right = "";
+      } else if (placement.right != null) {
+        pill.style.right = placement.right + "px";
+        pill.style.left = "";
+      } else {
+        pill.style.left = "0px";
+        pill.style.right = "";
+      }
     }
     function seedCornerShortcuts() {
       // Visible keyboard help inside the seed card: 1-4 name the corners in

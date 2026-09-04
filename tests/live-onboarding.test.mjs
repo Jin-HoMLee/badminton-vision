@@ -1897,6 +1897,73 @@ test("the floating corner pill paints above the seed card on small players", asy
   assert.ok(Math.abs(placed.y - (1 - (72 + 24) / 360)) < 1e-9, "the click seeds the corner at the clamped marked spot");
 });
 
+test("seed markers re-anchor on mid-seeding geometry changes", async () => {
+  // The pill is pixel-anchored and the guide ring percentage-anchored at
+  // render time, so a mid-seeding resize or fullscreen toggle must re-derive
+  // both in place from the new host box: they never disagree with the marked
+  // spot and never disappear below the player strip in the shrink direction.
+  const live = await createSession();
+  live.flushStorage();
+  live.onMessage({ type: "START_SEED", requestId: "seed-resize-1" });
+  const root = live.overlayRoot();
+  const host = live.host();
+  const layer = root.querySelector("[data-bso-court-seeding]");
+  const guide = layer.querySelector("[data-bso-seed-guide]");
+  const pill = layer.querySelector("[data-bso-seed-corner-button]");
+  assert.ok(guide && pill, "setup renders the guide ring and the floating pill");
+  assert.equal(host.getAttribute("data-bso-seed-count"), "0");
+  const spotY = (height) => 1 - (72 + 24) / height;
+  assert.ok(Math.abs(Number.parseFloat(guide.style.left) - 22) < 1e-9, "the ring keeps the near-left corner column");
+  assert.ok(Math.abs(Number.parseFloat(guide.style.top) - spotY(360) * 100) < 1e-9, "the ring clamps above the 640x360 strip");
+  assert.ok(Math.abs(Number.parseFloat(pill.style.top) - (spotY(360) * 360 - 25)) < 0.01, "the pill floats above the 640x360 strip");
+  assert.ok(Math.abs(Number.parseFloat(pill.style.left) - 140.8) < 0.01, "the pill pins to the corner column");
+  // Grow to a fullscreen-size player: the same nodes re-anchor to the new
+  // box. At 1080p the nominal 82% near-corner row is already above the strip,
+  // so the marked spot is unclamped and the pill follows it upward.
+  live.video.rect = { left: 0, top: 0, width: 1920, height: 1080 };
+  host.rect = live.video.rect;
+  live.emitWindow("resize");
+  assert.equal(root.querySelector("[data-bso-court-seeding]"), layer, "a geometry change does not rebuild the seed layer");
+  assert.equal(layer.querySelector("[data-bso-seed-guide]"), guide, "the guide ring node is refreshed in place");
+  assert.equal(layer.querySelector("[data-bso-seed-corner-button]"), pill, "the floating pill node is refreshed in place");
+  assert.equal(host.getAttribute("data-bso-seed-count"), "0", "a geometry change does not place a corner");
+  assert.ok(Math.abs(Number.parseFloat(guide.style.left) - 22) < 1e-9, "the ring keeps its corner column fullscreen");
+  assert.ok(Math.abs(Number.parseFloat(guide.style.top) - 82) < 1e-9, "the ring re-anchors to the fullscreen box");
+  assert.ok(Math.abs(Number.parseFloat(pill.style.top) - (0.82 * 1080 - 25)) < 0.01, "the pill re-anchors to the unclamped marked spot");
+  assert.ok(Math.abs(Number.parseFloat(pill.style.left) - 422.4) < 0.01, "the pill keeps its pinned column fullscreen");
+  assert.ok(Number.parseFloat(pill.style.top) <= 1080 - 72, "the pill stays clear of the fullscreen strip");
+  // The refreshed pill places the corner at the freshly recomputed fullscreen
+  // marked spot, not at the stale small-player position it used to show.
+  pill.dispatchEvent({ type: "click", target: pill });
+  assert.equal(host.getAttribute("data-bso-seed-count"), "1");
+  const placedFullscreen = live.storageWrites.at(-1).bvState.seedDraftPoints[0];
+  assert.ok(Math.abs(placedFullscreen.x - 0.22) < 1e-9);
+  assert.ok(Math.abs(placedFullscreen.y - 0.82) < 1e-9, "the pill click seeds the freshly recomputed marked spot");
+  const nextGuide = root.querySelector("[data-bso-seed-guide]");
+  const nextPill = root.querySelector("[data-bso-seed-corner-button]");
+  assert.equal(nextPill.getAttribute("data-bso-seed-corner"), "near-right", "the flow advances to the next corner");
+  // Shrink back to the small player: the markers re-anchor inside the
+  // strip-free area instead of staying clipped below it or off-host.
+  live.video.rect = { left: 0, top: 0, width: 640, height: 360 };
+  host.rect = live.video.rect;
+  live.emitWindow("resize");
+  assert.equal(root.querySelector("[data-bso-court-seeding]")
+    .querySelector("[data-bso-seed-guide]"), nextGuide, "the shrink refreshes the ring in place");
+  assert.equal(root.querySelector("[data-bso-court-seeding]")
+    .querySelector("[data-bso-seed-corner-button]"), nextPill, "the shrink refreshes the pill in place");
+  assert.ok(Math.abs(Number.parseFloat(nextGuide.style.left) - 78) < 1e-9);
+  assert.ok(Math.abs(Number.parseFloat(nextGuide.style.top) - spotY(360) * 100) < 1e-9, "the ring re-clamps on the shrink back");
+  assert.ok(Math.abs(Number.parseFloat(nextPill.style.top) - 239) < 0.01, "the pill re-anchors on the shrink back");
+  assert.ok(Math.abs(Number.parseFloat(nextPill.style.right) - 140.8) < 0.01, "the right corner pill re-pins its column");
+  const pillTop = Number.parseFloat(nextPill.style.top);
+  assert.ok(pillTop - 40 >= 0 && pillTop <= 360 - 72, "the pill visual band stays inside the strip-free area");
+  nextPill.dispatchEvent({ type: "click", target: nextPill });
+  assert.equal(host.getAttribute("data-bso-seed-count"), "2");
+  const placedSmall = live.storageWrites.at(-1).bvState.seedDraftPoints[1];
+  assert.ok(Math.abs(placedSmall.x - 0.78) < 1e-9);
+  assert.ok(Math.abs(placedSmall.y - spotY(360)) < 1e-9, "the shrunk pill seeds the re-clamped marked spot");
+});
+
 test("collapse and close are visually distinct header affordances on every panel", async () => {
   const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
   live.flushStorage();
