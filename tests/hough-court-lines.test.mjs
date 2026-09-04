@@ -1,421 +1,238 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 
-// Mock the adapter factory
-const createHoughAdapter = function() {
-  // Inline the core functions from the adapter for testing
-  const DEFAULT_CONFIG = {
-    cannyLow: 50,
-    cannyHigh: 150,
-    rhoResolution: 1,
-    thetaResolution: 1,
-    votingThreshold: 50,
-    minLineLength: 0.1,
-    angleGroupTolerance: 5,
-    distanceGroupTolerance: 20
-  };
+// The merged tests used to inline a copy of the adapter's internals, which
+// meant the shipped module could rot without any test noticing. Import the
+// real module instead.
+const require = createRequire(import.meta.url);
+const adapter = require('../src/extension/offscreen/hough-court-lines-adapter.js');
 
-  function toGrayscale(pixels) {
-    const { width, height, data, channels } = pixels;
-    const gray = new Uint8Array(width * height);
-    const totalPixels = width * height;
-
-    for (let i = 0; i < totalPixels; i++) {
-      const offset = i * channels;
-      const r = data[offset];
-      const g = data[offset + 1];
-      const b = data[offset + 2];
-      gray[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-    }
-    return { width, height, data: gray };
-  }
-
-  function histogramEqualize(grayImage) {
-    const { width, height, data } = grayImage;
-    const histogram = new Uint32Array(256);
-
-    for (let i = 0; i < data.length; i++) {
-      histogram[data[i]]++;
-    }
-
-    const cdf = new Uint32Array(256);
-    cdf[0] = histogram[0];
-    for (let i = 1; i < 256; i++) {
-      cdf[i] = cdf[i - 1] + histogram[i];
-    }
-
-    const totalPixels = width * height;
-    const lut = new Uint8Array(256);
-    const cdfMin = cdf[0];
-    const cdfMax = cdf[255];
-    const cdfRange = cdfMax - cdfMin || 1;
-
-    for (let i = 0; i < 256; i++) {
-      lut[i] = Math.round(((cdf[i] - cdfMin) / cdfRange) * 255);
-    }
-
-    const equalized = new Uint8Array(data.length);
-    for (let i = 0; i < data.length; i++) {
-      equalized[i] = lut[data[i]];
-    }
-
-    return { width, height, data: equalized };
-  }
-
-  function gaussianBlur(grayImage, sigma = 1.0) {
-    const { width, height, data } = grayImage;
-    const blurred = new Uint8Array(data.length);
-
-    const kernelSize = Math.max(3, Math.round(2 * Math.ceil(3 * sigma) + 1));
-    const halfSize = Math.floor(kernelSize / 2);
-
-    const kernel = new Float32Array(kernelSize);
-    let sum = 0;
-    for (let i = 0; i < kernelSize; i++) {
-      const x = i - halfSize;
-      kernel[i] = Math.exp(-(x * x) / (2 * sigma * sigma));
-      sum += kernel[i];
-    }
-    for (let i = 0; i < kernelSize; i++) {
-      kernel[i] /= sum;
-    }
-
-    const temp = new Uint8Array(data.length);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        let sum = 0;
-        let weight = 0;
-        for (let i = -halfSize; i <= halfSize; i++) {
-          const nx = Math.min(Math.max(x + i, 0), width - 1);
-          const k = kernel[i + halfSize];
-          sum += data[y * width + nx] * k;
-          weight += k;
-        }
-        temp[y * width + x] = Math.round(sum / weight);
-      }
-    }
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        let sum = 0;
-        let weight = 0;
-        for (let i = -halfSize; i <= halfSize; i++) {
-          const ny = Math.min(Math.max(y + i, 0), height - 1);
-          const k = kernel[i + halfSize];
-          sum += temp[ny * width + x] * k;
-          weight += k;
-        }
-        blurred[y * width + x] = Math.round(sum / weight);
-      }
-    }
-
-    return { width, height, data: blurred };
-  }
-
-  function sobelEdgeDetection(grayImage) {
-    const { width, height, data } = grayImage;
-    const magnitude = new Uint8Array(width * height);
-    const direction = new Float32Array(width * height);
-
-    const sobelX = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]];
-    const sobelY = [[-1, -2, -1], [0, 0, 0], [1, 2, 1]];
-
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        let gx = 0, gy = 0;
-
-        for (let ky = 0; ky < 3; ky++) {
-          for (let kx = 0; kx < 3; kx++) {
-            const pixel = data[(y + ky - 1) * width + (x + kx - 1)];
-            gx += sobelX[ky][kx] * pixel;
-            gy += sobelY[ky][kx] * pixel;
-          }
-        }
-
-        const mag = Math.hypot(gx, gy);
-        magnitude[y * width + x] = Math.min(255, Math.round(mag / 8));
-        direction[y * width + x] = Math.atan2(gy, gx) * (180 / Math.PI);
-      }
-    }
-
-    return { width, height, magnitude, direction };
-  }
-
-  function nonMaxSuppression(edges, magnitude, direction) {
-    const { width, height } = edges;
-    const suppressed = new Uint8Array(width * height);
-
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        const idx = y * width + x;
-        const angle = direction[idx];
-        const mag = magnitude[idx];
-
-        let q = 0, r = 0;
-
-        if ((angle >= -22.5 && angle < 22.5) || angle < -157.5 || angle >= 157.5) {
-          q = magnitude[y * width + (x + 1)];
-          r = magnitude[y * width + (x - 1)];
-        } else if ((angle >= 22.5 && angle < 67.5) || (angle < -112.5 && angle >= -157.5)) {
-          q = magnitude[(y + 1) * width + (x - 1)];
-          r = magnitude[(y - 1) * width + (x + 1)];
-        } else if ((angle >= 67.5 && angle < 112.5) || (angle < -67.5 && angle >= -112.5)) {
-          q = magnitude[(y + 1) * width + x];
-          r = magnitude[(y - 1) * width + x];
-        } else {
-          q = magnitude[(y + 1) * width + (x + 1)];
-          r = magnitude[(y - 1) * width + (x - 1)];
-        }
-
-        if (mag >= q && mag >= r) {
-          suppressed[idx] = mag;
-        }
-      }
-    }
-
-    return suppressed;
-  }
-
-  function cannyEdgeDetection(grayImage, lowThreshold = 50, highThreshold = 150) {
-    const blurred = gaussianBlur(grayImage, 1.4);
-    const edges = sobelEdgeDetection(blurred);
-    const suppressed = nonMaxSuppression(blurred, edges.magnitude, edges.direction);
-
-    const { width, height } = blurred;
-    const strong = new Uint8Array(width * height);
-    const weak = new Uint8Array(width * height);
-    const edges_out = new Uint8Array(width * height);
-
-    const STRONG = 255;
-    const WEAK = 100;
-
-    for (let i = 0; i < suppressed.length; i++) {
-      if (suppressed[i] >= highThreshold) {
-        strong[i] = STRONG;
-      } else if (suppressed[i] >= lowThreshold) {
-        weak[i] = WEAK;
-      }
-    }
-
-    function trackEdges(y, x, visited) {
-      if (y < 0 || y >= height || x < 0 || x >= width) return;
-      const idx = y * width + x;
-      if (visited[idx]) return;
-      visited[idx] = true;
-
-      if (weak[idx] === WEAK) {
-        edges_out[idx] = STRONG;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx !== 0 || dy !== 0) {
-              trackEdges(y + dy, x + dx, visited);
-            }
-          }
-        }
-      }
-    }
-
-    const visited = new Uint8Array(width * height);
-    for (let i = 0; i < strong.length; i++) {
-      if (strong[i] === STRONG) {
-        edges_out[i] = STRONG;
-        const x = i % width;
-        const y = Math.floor(i / width);
-        visited[i] = true;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            trackEdges(y + dy, x + dx, visited);
-          }
-        }
-      }
-    }
-
-    return { width, height, edges: edges_out };
-  }
-
-  function houghLineTransform(edgeImage, rhoRes = 1, thetaRes = 1, votingThreshold = 50) {
-    const { width, height, edges } = edgeImage;
-
-    const maxRho = Math.hypot(width, height);
-    const rhoSize = Math.ceil(maxRho / rhoRes);
-    const thetaSize = Math.ceil(180 / thetaRes);
-
-    const accumulator = new Uint32Array(rhoSize * thetaSize);
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const idx = y * width + x;
-        if (edges[idx] > 128) {
-          for (let thetaDeg = 0; thetaDeg < 180; thetaDeg += thetaRes) {
-            const theta = thetaDeg * (Math.PI / 180);
-            const rho = x * Math.cos(theta) + y * Math.sin(theta);
-            const rhoIdx = Math.round((rho + maxRho / 2) / rhoRes);
-            const thetaIdx = Math.round(thetaDeg / thetaRes);
-
-            if (rhoIdx >= 0 && rhoIdx < rhoSize && thetaIdx >= 0 && thetaIdx < thetaSize) {
-              accumulator[thetaIdx * rhoSize + rhoIdx]++;
-            }
-          }
-        }
-      }
-    }
-
-    const lines = [];
-    for (let thetaIdx = 0; thetaIdx < thetaSize; thetaIdx++) {
-      for (let rhoIdx = 0; rhoIdx < rhoSize; rhoIdx++) {
-        const votes = accumulator[thetaIdx * rhoSize + rhoIdx];
-        if (votes >= votingThreshold) {
-          const theta = (thetaIdx * thetaRes) * (Math.PI / 180);
-          const rho = rhoIdx * rhoRes - maxRho / 2;
-          lines.push({ rho, theta, votes, thetaDeg: thetaIdx * thetaRes });
-        }
-      }
-    }
-
-    return { width, height, maxRho, lines };
-  }
-
-  return {
-    toGrayscale,
-    histogramEqualize,
-    gaussianBlur,
-    sobelEdgeDetection,
-    nonMaxSuppression,
-    cannyEdgeDetection,
-    houghLineTransform
-  };
-};
-
-test('Grayscale conversion', (t) => {
-  const adapter = createHoughAdapter();
-  const width = 10, height = 10;
-  const rgba = new Uint8Array(width * height * 4);
-
-  // Fill with known values: R=100, G=150, B=50
-  for (let i = 0; i < width * height; i++) {
-    rgba[i * 4] = 100;     // R
-    rgba[i * 4 + 1] = 150; // G
-    rgba[i * 4 + 2] = 50;  // B
-    rgba[i * 4 + 3] = 255; // A
-  }
-
-  const pixels = { width, height, data: rgba, channels: 4 };
-  const gray = adapter.toGrayscale(pixels);
-
-  assert.equal(gray.width, width);
-  assert.equal(gray.height, height);
-  // Expected luminance: 0.299*100 + 0.587*150 + 0.114*50 ≈ 118
-  const expected = Math.round(0.299 * 100 + 0.587 * 150 + 0.114 * 50);
-  assert.equal(gray.data[0], expected, `Grayscale value should be ${expected}, got ${gray.data[0]}`);
-});
-
-test('Histogram equalization', (t) => {
-  const adapter = createHoughAdapter();
-  const width = 10, height = 10;
-  const gray = new Uint8Array(width * height);
-
-  // Fill with low values (0-50)
-  for (let i = 0; i < width * height; i++) {
-    gray[i] = (i % 50);
-  }
-
-  const grayImage = { width, height, data: gray };
-  const equalized = adapter.histogramEqualize(grayImage);
-
-  // After equalization, values should be spread across the range
-  const min = Math.min(...equalized.data);
-  const max = Math.max(...equalized.data);
-  assert(max > min + 50, 'Equalization should spread values across range');
-});
-
-test('Gaussian blur reduces noise', (t) => {
-  const adapter = createHoughAdapter();
-  const width = 20, height = 20;
-  const gray = new Uint8Array(width * height);
-
-  // Create checkerboard pattern (high frequency noise)
+/** Build an RGBA frame with a court-like scene: noisy purple floor in the
+ * lower part, darker surrounds above, crisp white lines (boundaries, service
+ * line, centre line, receding side lines). */
+function syntheticCourtFrame(width = 640, height = 360) {
+  const data = new Uint8ClampedArray(width * height * 4);
   for (let i = 0; i < width * height; i++) {
     const x = i % width;
-    const y = Math.floor(i / width);
-    gray[i] = ((x + y) % 2) * 255;
+    const y = (i / width) | 0;
+    const floor = y > height * 0.4;
+    // Smooth two-axis noise so texture stays low-frequency (no artificial
+    // horizontal/vertical banding for the Hough transform to lock onto).
+    let r = floor ? 150 + 6 * Math.sin(x / 23) + 5 * Math.sin(y / 17) : 70 + 8 * Math.sin(x / 31) + 7 * Math.sin(y / 13);
+    let g = floor ? 98 + 5 * Math.sin(x / 19) + 4 * Math.sin(y / 11) : 62 + 6 * Math.sin(x / 29) + 5 * Math.sin(y / 7);
+    let b = floor ? 172 + 6 * Math.sin(x / 29) + 6 * Math.sin(y / 23) : 84 + 8 * Math.sin(x / 13) + 6 * Math.sin(y / 17);
+    data[i * 4] = Math.max(0, Math.min(255, Math.round(r)));
+    data[i * 4 + 1] = Math.max(0, Math.min(255, Math.round(g)));
+    data[i * 4 + 2] = Math.max(0, Math.min(255, Math.round(b)));
+    data[i * 4 + 3] = 255;
   }
-
-  const grayImage = { width, height, data: gray };
-  const blurred = adapter.gaussianBlur(grayImage, 1.0);
-
-  // After blur, interior pixels should be less extreme
-  const centerIdx = (width * Math.floor(height / 2)) + Math.floor(width / 2);
-  const centerValue = blurred.data[centerIdx];
-  assert(centerValue > 50 && centerValue < 200, 'Blurred center should be midtone');
-});
-
-test('Canny edge detection produces an edge image', (t) => {
-  const adapter = createHoughAdapter();
-  const width = 50, height = 50;
-  const gray = new Uint8Array(width * height);
-
-  // Create a strong vertical line in the middle (dark to bright transition)
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (x < width / 2) {
-        gray[y * width + x] = 10;  // Very dark
-      } else {
-        gray[y * width + x] = 245; // Very bright
+  const paint = (x1, y1, x2, y2, thickness = 3) => {
+    const steps = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
+    for (let s = 0; s <= steps; s++) {
+      const x = Math.round(x1 + ((x2 - x1) * s) / steps);
+      const y = Math.round(y1 + ((y2 - y1) * s) / steps);
+      for (let dx = -thickness; dx <= thickness; dx++) {
+        for (let dy = -thickness; dy <= thickness; dy++) {
+          if (dx * dx + dy * dy > thickness * thickness) continue;
+          const px = x + dx;
+          const py = y + dy;
+          if (px < 0 || py < 0 || px >= width || py >= height) continue;
+          const i = (py * width + px) * 4;
+          data[i] = 255;
+          data[i + 1] = 255;
+          data[i + 2] = 255;
+        }
       }
     }
+  };
+  // Broadcast half-court layout: near boundary, service line, far boundary,
+  // receding side lines, centre line.
+  paint(width * 0.04, height * 0.93, width * 0.96, height * 0.93);
+  paint(width * 0.10, height * 0.78, width * 0.90, height * 0.78);
+  paint(width * 0.24, height * 0.40, width * 0.76, height * 0.40);
+  paint(width * 0.20, height * 0.93, width * 0.30, height * 0.40);
+  paint(width * 0.80, height * 0.93, width * 0.70, height * 0.40);
+  paint(width * 0.48, height * 0.93, width * 0.53, height * 0.40);
+  return { data, width, height };
+}
+
+test('module exports the documented pipeline surface', () => {
+  for (const name of [
+    'detectCourtLines', 'toGrayscale', 'histogramEqualize',
+    'gaussianBlur', 'sobelEdgeDetection', 'nonMaxSuppression', 'cannyEdgeDetection',
+    'houghLineTransform', 'mergeParallelPeaks', 'clipLinesToSupport',
+    'supportedSegments', 'filterShortSegments'
+  ]) {
+    assert.equal(typeof adapter[name], 'function', `export ${name}`);
   }
-
-  const grayImage = { width, height, data: gray };
-  const edges = adapter.cannyEdgeDetection(grayImage, 30, 80);
-
-  // Should produce an edge image
-  assert.equal(edges.width, width);
-  assert.equal(edges.height, height);
-  assert(edges.edges instanceof Uint8Array);
-  assert.equal(edges.edges.length, width * height);
+  assert.equal(typeof adapter.DEFAULT_CONFIG, 'object');
+  assert.equal(adapter.DEFAULT_CONFIG.cannyLow, null);
+  assert.equal(adapter.DEFAULT_CONFIG.cannyHigh, null);
+  assert.ok(adapter.DEFAULT_CONFIG.maxLines > 0);
 });
 
-test('Hough transform accumulates votes', (t) => {
-  const adapter = createHoughAdapter();
-  const width = 50, height = 50;
-  const edges = new Uint8Array(width * height);
-
-  // Create a horizontal line of edge pixels
-  for (let x = 10; x < 40; x++) {
-    edges[25 * width + x] = 255;
+test('grayscale conversion applies luminance weights', () => {
+  const width = 10;
+  const height = 10;
+  const rgba = new Uint8Array(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    rgba[i * 4] = 100;
+    rgba[i * 4 + 1] = 150;
+    rgba[i * 4 + 2] = 50;
+    rgba[i * 4 + 3] = 255;
   }
-
-  const edgeImage = { width, height, edges };
-  const result = adapter.houghLineTransform(edgeImage, 1, 1, 5);
-
-  // Should find lines with votes
-  assert(result.lines.length > 0, 'Should detect lines');
-  const maxVotes = Math.max(...result.lines.map(l => l.votes));
-  assert(maxVotes >= 5, 'Detected lines should have sufficient votes');
+  const gray = adapter.toGrayscale({ width, height, data: rgba, channels: 4 });
+  const expected = Math.round(0.299 * 100 + 0.587 * 150 + 0.114 * 50);
+  assert.equal(gray.data[0], expected);
+  assert.equal(gray.data.length, width * height);
 });
 
-test('Hough transform executes without errors', async (t) => {
-  // This test verifies the Hough transform pipeline runs
-  const adapter = createHoughAdapter();
-  const width = 100, height = 100;
-
-  // Create grayscale image with simple edges
+test('histogram equalization spreads a narrow range', () => {
+  const width = 64;
+  const height = 64;
   const gray = new Uint8Array(width * height);
+  for (let i = 0; i < gray.length; i++) gray[i] = 40 + (i % 25);
+  const equalized = adapter.histogramEqualize({ width, height, data: gray });
+  let min = 255;
+  let max = 0;
+  for (const v of equalized.data) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  assert.ok(max - min >= 100, `range spread, got ${min}..${max}`);
+});
 
-  // Fill with gradient (creates edges)
+test('gaussian blur smooths a checkerboard', () => {
+  const width = 32;
+  const height = 32;
+  const gray = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) gray[y * width + x] = ((x + y) % 2) * 255;
+  }
+  const blurred = adapter.gaussianBlur({ width, height, data: gray }, 1.0);
+  const center = blurred.data[(width * (height >> 1)) + (width >> 1)];
+  assert.ok(center > 50 && center < 200, `blurred center midtone, got ${center}`);
+});
+
+test('regression: adaptive canny finds edges on a real-style soft-contrast frame', () => {
+  // Broadcast frames (blurred, moderate contrast) previously produced ZERO
+  // canny edges because the fixed 50/150 thresholds sat above the achievable
+  // NMS magnitude range (~0..60). The adaptive default must find them.
+  const width = 320;
+  const height = 180;
+  const data = new Uint8ClampedArray(width * height * 4);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      gray[y * width + x] = Math.floor((x / width) * 255);
+      const i = (y * width + x) * 4;
+      const band = y > height * 0.6 ? 150 + 10 * Math.sin(x / 9) : 60;
+      const line = Math.abs(y - height * 0.6) < 4 ? 235 : band;
+      data[i] = line + (x % 7);
+      data[i + 1] = line + 5 - (x % 11);
+      data[i + 2] = line - 10;
+      data[i + 3] = 255;
     }
   }
+  const gray = adapter.toGrayscale({ width, height, data, channels: 4 });
+  const edges = adapter.cannyEdgeDetection(gray, null, null);
+  let count = 0;
+  for (const v of edges.edges) if (v) count++;
+  assert.ok(count > 50, `adaptive canny found ${count} edge pixels`);
+});
 
-  const grayImage = { width, height, data: gray };
-  const edges = adapter.cannyEdgeDetection(grayImage, 30, 80);
-  const houghResult = adapter.houghLineTransform(edges, 1, 2, 1);
+test('explicit canny thresholds still work as literal values', () => {
+  const frame = syntheticCourtFrame(320, 180);
+  const gray = adapter.toGrayscale({ ...frame, channels: 4 });
+  const edges = adapter.cannyEdgeDetection(gray, 10, 30);
+  let count = 0;
+  for (const v of edges.edges) if (v) count++;
+  assert.ok(count > 100, `literal-threshold canny found ${count} edge pixels`);
+});
 
-  // Should return a valid result
-  assert.equal(typeof houghResult.width, 'number');
-  assert.equal(typeof houghResult.height, 'number');
-  assert(Array.isArray(houghResult.lines));
-  assert(typeof houghResult.maxRho, 'number');
+test('hough transform accumulates votes for straight lines', () => {
+  const width = 100;
+  const height = 100;
+  const edges = new Uint8Array(width * height);
+  for (let x = 10; x < 90; x++) edges[50 * width + x] = 255;
+  const result = adapter.houghLineTransform({ width, height, edges }, 1, 1, 5);
+  assert.ok(result.lines.length > 0);
+  const best = result.lines.slice().sort((a, b) => b.votes - a.votes)[0];
+  assert.ok(Math.abs(best.thetaDeg - 90) <= 1, `horizontal line peaks near 90, got ${best.thetaDeg}`);
+  assert.ok(best.votes >= 30);
+});
+
+test('merge parallel peaks collapses 0/179 degree duplicates and keeps distinct parallels', () => {
+  const peaks = [
+    { rho: 200, thetaDeg: 0, votes: 120 },     // vertical line x=200
+    { rho: -200, thetaDeg: 179, votes: 110 },  // same line, alternate parameterization
+    { rho: 300, thetaDeg: 1, votes: 90 },      // distinct vertical x=300
+    { rho: 400, thetaDeg: 90, votes: 80 },     // horizontal y=400
+    { rho: 397, thetaDeg: 90, votes: 70 }      // second ridge of the same thick horizontal
+  ];
+  const merged = adapter.mergeParallelPeaks(peaks, 6, 24);
+  assert.equal(merged.length, 3, `merged to ${merged.length} peaks`);
+  const verticals = merged.filter((p) => p.thetaDeg <= 6 || p.thetaDeg >= 174);
+  const horizontals = merged.filter((p) => Math.abs(p.thetaDeg - 90) <= 6);
+  assert.equal(verticals.length, 2, 'two distinct vertical lines survive');
+  assert.equal(horizontals.length, 1, 'one horizontal survives');
+});
+
+test('regression: segments hug their support instead of spanning frame borders', async () => {
+  // A short horizontal white mark in the middle of the frame must produce a
+  // segment near the mark, not a full-width line extended to both borders.
+  const frame = syntheticCourtFrame(400, 300);
+  const result = await adapter.detectCourtLines(frame, { votingThreshold: 30, maxLines: 20 });
+  assert.ok(result.lines.length >= 3, `detected ${result.lines.length} lines`);
+  // Expect a near-horizontal segment whose x-span is inside the frame (the
+  // synthetic centre + side lines do not reach x=0/x=1).
+  const horizontals = result.lines.filter((l) => Math.abs(l.angle - 90) <= 8);
+  assert.ok(horizontals.length >= 2, `horizontal family present (${horizontals.length})`);
+  const bounded = horizontals.some((l) => l.x1 > 0.02 && l.x2 < 0.98);
+  assert.ok(bounded, 'at least one horizontal segment is clipped to its support');
+});
+
+test('detectCourtLines finds the synthetic court end to end', async () => {
+  const frame = syntheticCourtFrame(640, 360);
+  const result = await adapter.detectCourtLines(frame);
+  assert.ok(Array.isArray(result.lines));
+  assert.equal(typeof result.config, 'object');
+  assert.equal(result.config.votingThreshold, 45, 'merged defaults reported');
+  assert.ok(result.lines.length >= 3, `found ${result.lines.length} lines`);
+  const angles = result.lines.map((l) => l.angle);
+  const hasHorizontal = angles.some((a) => Math.abs(a - 90) <= 6);
+  // Court lines running away from a courtside camera tilt up to ~25 degrees
+  // off image-vertical (Hough theta 0/180 families).
+  const hasSteep = angles.some((a) => a <= 25 || a >= 155);
+  assert.ok(hasHorizontal, `horizontal family present in ${angles.map(Math.round)}`);
+  assert.ok(hasSteep, `steep family present in ${angles.map(Math.round)}`);
+  for (const l of result.lines) {
+    for (const v of [l.x1, l.y1, l.x2, l.y2]) {
+      assert.ok(Number.isFinite(v) && v >= 0 && v <= 1, `normalized endpoint ${v}`);
+    }
+    assert.ok(Number.isInteger(l.votes) && l.votes > 0);
+  }
+});
+
+test('detectCourtLines caps output at maxLines', async () => {
+  const frame = syntheticCourtFrame(640, 360);
+  const result = await adapter.detectCourtLines(frame, { maxLines: 4 });
+  assert.ok(result.lines.length <= 4, `capped at 4, got ${result.lines.length}`);
+});
+
+test('detectCourtLines tolerates noise and empty frames without throwing', async () => {
+  const noise = new Uint8ClampedArray(160 * 90 * 4);
+  for (let i = 0; i < noise.length; i++) noise[i] = Math.floor(Math.random() * 256);
+  const noisy = await adapter.detectCourtLines({ width: 160, height: 90, data: noise });
+  assert.ok(Array.isArray(noisy.lines));
+
+  const black = new Uint8ClampedArray(160 * 90 * 4);
+  const empty = await adapter.detectCourtLines({ width: 160, height: 90, data: black });
+  assert.deepEqual(empty.lines, []);
+});
+
+test('detectCourtLines is deterministic for the same frame', async () => {
+  const frame = syntheticCourtFrame(320, 180);
+  const a = await adapter.detectCourtLines(frame);
+  const b = await adapter.detectCourtLines(frame);
+  assert.deepEqual(a.lines, b.lines);
 });

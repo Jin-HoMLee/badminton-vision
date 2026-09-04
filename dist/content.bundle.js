@@ -7938,9 +7938,13 @@
       }
   
       try {
-        // Create a canvas to capture the current frame
+        // Capture the current frame at a bounded resolution. Court-line guidance
+        // is drawn in normalized coordinates, so a 640px long edge keeps the
+        // messaging payload ~4x smaller than a full 1080p frame at the same
+        // line quality. Full-resolution RGBA arrays through JSON messaging are
+        // the dominant cost of the 500ms detection cycle.
+        var MAX_CAPTURE_EDGE = 640;
         var canvas = document.createElement("canvas");
-        var rect = video.getBoundingClientRect();
         var videoWidth = video.videoWidth || video.width || 1;
         var videoHeight = video.videoHeight || video.height || 1;
   
@@ -7949,16 +7953,19 @@
           return;
         }
   
-        canvas.width = videoWidth;
-        canvas.height = videoHeight;
+        var captureScale = Math.min(1, MAX_CAPTURE_EDGE / Math.max(videoWidth, videoHeight));
+        var captureWidth = Math.max(2, Math.round(videoWidth * captureScale));
+        var captureHeight = Math.max(2, Math.round(videoHeight * captureScale));
+        canvas.width = captureWidth;
+        canvas.height = captureHeight;
         var ctx = canvas.getContext("2d");
         if (!ctx) {
           console.log("[Hough] Cannot get canvas context");
           return;
         }
   
-        ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
-        var imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
+        ctx.drawImage(video, 0, 0, captureWidth, captureHeight);
+        var imageData = ctx.getImageData(0, 0, captureWidth, captureHeight);
   
         // Convert ImageData to a serializable object for chrome.runtime.sendMessage
         // ImageData might not serialize properly through MV3 messaging
@@ -7968,7 +7975,7 @@
           height: imageData.height
         };
   
-        console.log("[Hough] Sending frame:", { width: videoWidth, height: videoHeight, dataLength: frameObject.data.length });
+        console.log("[Hough] Sending frame:", { width: captureWidth, height: captureHeight, dataLength: frameObject.data.length });
   
         // Send frame to offscreen script for Hough detection
         try {
@@ -7982,8 +7989,8 @@
           chrome.runtime.sendMessage({
             action: "detectHoughLines",
             frameData: frameObject,
-            width: videoWidth,
-            height: videoHeight
+            width: captureWidth,
+            height: captureHeight
           }, function (response) {
             // Check for extension context errors
             if (chrome.runtime.lastError) {
@@ -8057,6 +8064,27 @@
         if (typeof clearInterval === "function") clearInterval(houghDetectionInterval);
         houghDetectionInterval = null;
         houghLines = [];
+      }
+      // Clear any last guidance strokes immediately. A detection response can
+      // arrive after stop and redraw, but without this the previous frame's
+      // strokes stay visible until the next seeding session.
+      if (houghCanvas && typeof houghCanvas.getContext === "function") {
+        var houghContext = houghCanvas.getContext("2d");
+        if (houghContext && typeof houghContext.clearRect === "function" && houghCanvas.width > 0 && houghCanvas.height > 0) {
+          houghContext.clearRect(0, 0, houghCanvas.width, houghCanvas.height);
+        }
+      }
+    }
+  
+    // The detection loop must run exactly while the court-seeding flow is
+    // active, no matter how seeding began (Set up court action, camera-cut
+    // invalidation, or a restored in-progress session after a page reload).
+    // Render is the single place every seeding transition passes through.
+    function syncHoughDetectionLoop() {
+      if (state && state.seeding) {
+        if (houghDetectionInterval === null) startHoughDetectionLoop();
+      } else if (houghDetectionInterval !== null) {
+        stopHoughDetectionLoop();
       }
     }
   
@@ -9410,6 +9438,9 @@
       if (state.labeling && !state.seeding) root.appendChild(manualPanel());
       // Append houghCanvas at root level for proper z-index layering (above seed-layer background but below seed-points/card)
       if (houghCanvas) root.appendChild(houghCanvas);
+      // Detection lifecycle is derived from seeding state so camera-cut re-seeds
+      // and restored in-progress setups run guidance too.
+      syncHoughDetectionLoop();
       refreshPanelLayouts();
       installPanelInteractionsInRoot();
     }
