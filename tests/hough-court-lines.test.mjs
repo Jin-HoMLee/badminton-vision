@@ -291,6 +291,54 @@ test('regression: every single-stroke orientation emits exactly one segment', ()
   }
 });
 
+test('regression: a thick painted band emits one segment, not smear tails', () => {
+  // A painted line >= ~3px wide leaves several adjacent edge rows, which
+  // pushes its off-angle smear bins past the 45-vote threshold; their
+  // origin-anchored rho drifts >24px from the head at the band's far end,
+  // so they used to survive merging and support clipping as 87/93deg tail
+  // segments. Measuring the merge distance from the frame centre keeps the
+  // smears inside the window.
+  const width = 640;
+  const height = 360;
+  const frameDims = { width, height };
+  for (const thickness of [3, 5, 8, 12]) {
+    const edges = new Uint8Array(width * height);
+    for (let y = 180; y < 180 + thickness; y++) {
+      for (let x = 30; x < 610; x++) edges[y * width + x] = 255;
+    }
+    const hough = adapter.houghLineTransform({ width, height, edges }, 1, 1, 45);
+    const top = hough.lines.slice().sort((a, b) => b.votes - a.votes).slice(0, 120);
+    const merged = adapter.mergeParallelPeaks(top, 6, 24, frameDims);
+    assert.equal(merged.length, 1, `t=${thickness}px band merged to ${merged.length} peaks`);
+    const clipped = adapter.clipLinesToSupport(merged, { width, height, edges }, 2, 28);
+    const segments = adapter.supportedSegments(clipped, width, height, 28);
+    assert.equal(segments.length, 1, `t=${thickness}px band emitted ${segments.length} segments`);
+    assert.ok(Math.abs(segments[0].angle - 90) <= 1, `t=${thickness}px band near level, got ${segments[0].angle}`);
+  }
+});
+
+test('regression: centre-anchored merging keeps distinct parallel bands apart', () => {
+  // The centre-anchored distance must not fold two genuinely separated
+  // painted bands into one group.
+  const width = 640;
+  const height = 360;
+  const frameDims = { width, height };
+  const edges = new Uint8Array(width * height);
+  for (let y = 120; y < 124; y++) {
+    for (let x = 30; x < 610; x++) edges[y * width + x] = 255;
+  }
+  for (let y = 160; y < 164; y++) {
+    for (let x = 30; x < 610; x++) edges[y * width + x] = 255;
+  }
+  const hough = adapter.houghLineTransform({ width, height, edges }, 1, 1, 45);
+  const top = hough.lines.slice().sort((a, b) => b.votes - a.votes).slice(0, 120);
+  const merged = adapter.mergeParallelPeaks(top, 6, 24, frameDims);
+  assert.equal(merged.length, 2, `two bands 40px apart merged to ${merged.length} peaks`);
+  const clipped = adapter.clipLinesToSupport(merged, { width, height, edges }, 2, 28);
+  const segments = adapter.supportedSegments(clipped, width, height, 28);
+  assert.equal(segments.length, 2, `two bands emitted ${segments.length} segments`);
+});
+
 test('detectCourtLines finds the synthetic court end to end', async () => {
   const frame = syntheticCourtFrame(640, 360);
   const result = await adapter.detectCourtLines(frame);

@@ -152,13 +152,17 @@ leaves on neighbouring θ bins can straddle either side of any fixed fold
 threshold, so no blanket angle fold is applied. Each peak is matched
 against a group reference in its own (θ, ρ) parameterization first and,
 when that matches no group, against the folded twin (180 − θ, −ρ), which
-collapses the wrap-seam duplicates while level-line smears merge back into
-their true peak through the native comparison. Peaks within
-`angleGroupTolerance` degrees AND `distanceGroupTolerance` pixels of rho
-describe one physical line (a thick painted line produces two parallel
-ridges ~1 line-width apart in rho); the strongest vote of each group
-survives. Distinct parallel court lines differ by more than the distance
-tolerance and survive independently.
+collapses the wrap-seam duplicates while the smears of a single stroke
+merge back into their true peak through the native comparison. The
+perpendicular distance used for merging is measured from the frame centre
+along the line normal — not from the corner origin ρ measures — because
+ρ itself grows with distance from the origin, and an origin-anchored
+window splits the off-angle smears of long lines off their head. Peaks
+within `angleGroupTolerance` degrees AND `distanceGroupTolerance` pixels
+of that distance describe one physical line (a thick painted line
+produces several adjacent edge rows ~1 line-width apart); the strongest
+vote of each group survives. Distinct parallel court lines differ by more
+than the distance tolerance and survive independently.
 
 ### Support clipping and endpoints
 

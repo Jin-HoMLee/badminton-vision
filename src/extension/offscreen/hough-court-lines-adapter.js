@@ -12,11 +12,12 @@
  *   (blur + /8 Sobel scaling caps realistic edges near 60), so no strong
  *   seed ever existed and hysteresis emitted nothing on real frames.
  * - Hysteresis flood fill is iterative (explicit stack), never recursive.
- * - Hough peaks merge on BOTH angle and rho distance; each peak is matched
- *   in its own (theta, rho) parameterization first and, when that matches
- *   no group, against the folded twin (180 - theta, -rho), so the two
- *   accumulator parameterizations of one near-vertical line collapse into
- *   one segment while genuinely distinct parallel court lines survive.
+ * - Hough peaks merge on BOTH angle and distance-from-frame-centre; each
+ *   peak is matched in its own (theta, rho) parameterization first and,
+ *   when that matches no group, against the folded twin (180 - theta,
+ *   -rho), so the two accumulator parameterizations of one near-vertical
+ *   line collapse into one segment while genuinely distinct parallel
+ *   court lines survive.
  * - Segments are clipped to their actual edge-pixel support instead of being
  *   extended to the image borders, so guidance hugs visible line markings.
  */
@@ -292,34 +293,46 @@
    * fold is applied. Each peak is compared against a group reference in
    * its own (theta, rho) parameterization first and, when that matches no
    * group, against the folded twin (180 - theta, -rho): wrap-seam
-   * duplicates collapse through the folded comparison while level-line
-   * smears merge back into their true peak through the native one. Peaks
-   * within angleGroupTol degrees AND distanceGroupTol pixels of rho belong
-   * to one physical line; the strongest survives.
+   * duplicates collapse through the folded comparison while the smears of
+   * a single stroke merge back into their true peak through the native
+   * one. Distance is measured as the signed offset from the frame centre
+   * along the line normal (or from the corner origin when no frameSize is
+   * given): rho itself grows with distance from the origin, so an
+   * origin-anchored window splits the off-angle smears of long lines off
+   * their head. Peaks within angleGroupTol degrees AND distanceGroupTol
+   * pixels belong to one physical line; the strongest survives.
    */
-  function mergeParallelPeaks(lines, angleGroupTol, distanceGroupTol) {
-    const sorted = lines.slice().sort((a, b) => b.votes - a.votes);
+  function mergeParallelPeaks(lines, angleGroupTol, distanceGroupTol, frameSize) {
+    const cx = frameSize ? frameSize.width / 2 : 0;
+    const cy = frameSize ? frameSize.height / 2 : 0;
+    const items = lines.map((line) => ({
+      line,
+      offset: frameSize
+        ? cx * Math.cos(line.theta) + cy * Math.sin(line.theta) - line.rho
+        : -line.rho
+    }));
+    const sorted = items.slice().sort((a, b) => b.line.votes - a.line.votes);
     const groups = [];
-    for (const line of sorted) {
+    for (const item of sorted) {
       let placed = false;
       for (const group of groups) {
         const ref = group[0];
-        if (Math.abs(line.thetaDeg - ref.thetaDeg) <= angleGroupTol &&
-            Math.abs(line.rho - ref.rho) <= distanceGroupTol) {
-          group.push(line);
+        if (Math.abs(item.line.thetaDeg - ref.line.thetaDeg) <= angleGroupTol &&
+            Math.abs(item.offset - ref.offset) <= distanceGroupTol) {
+          group.push(item);
           placed = true;
           break;
         }
-        if (Math.abs(180 - line.thetaDeg - ref.thetaDeg) <= angleGroupTol &&
-            Math.abs(line.rho + ref.rho) <= distanceGroupTol) {
-          group.push(line);
+        if (Math.abs(180 - item.line.thetaDeg - ref.line.thetaDeg) <= angleGroupTol &&
+            Math.abs(item.offset + ref.offset) <= distanceGroupTol) {
+          group.push(item);
           placed = true;
           break;
         }
       }
-      if (!placed) groups.push([line]);
+      if (!placed) groups.push([item]);
     }
-    return groups.map((g) => g[0]).sort((a, b) => b.votes - a.votes);
+    return groups.map((g) => g[0].line).sort((a, b) => b.votes - a.votes);
   }
 
   /**
@@ -454,7 +467,7 @@
       // strongest peaks, so merging the top peaks only is both cheap and
       // keeps the real lines.
       const topPeaks = hough.lines.slice().sort((a, b) => b.votes - a.votes).slice(0, 120);
-      const merged = mergeParallelPeaks(topPeaks, cfg.angleGroupTolerance, cfg.distanceGroupTolerance);
+      const merged = mergeParallelPeaks(topPeaks, cfg.angleGroupTolerance, cfg.distanceGroupTolerance, pixels);
       const diagonal = Math.hypot(pixels.width, pixels.height);
       const minSpan = Math.max(28, Math.round(cfg.minSupportSpan * diagonal));
       const clipped = clipLinesToSupport(merged.slice(0, 40), edges, 2, minSpan);
