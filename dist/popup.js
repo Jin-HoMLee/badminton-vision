@@ -2,6 +2,7 @@
   var ui = window.BVUI;
   var root = document.getElementById("app");
   var state = window.BVState.initialExtensionState();
+  var fixtureDefaultTime = state.time;
   var expanded = false;
   var panelControlsExpanded = false;
   var disclosureFocusTarget = null;
@@ -151,6 +152,16 @@
     } else finish();
   }
   function closePopup() { if (window.close) window.close(); }
+  // The runtime reports raw accelerator tokens (webgpu/webgl/wasm) that are
+  // machine labels, not user-facing capabilities. Spell out what each means
+  // wherever a backend name reaches the popup; a missing backend stays
+  // "local" (the old default label).
+  function backendLabel(backend) {
+    if (backend === "webgpu") return "WebGPU acceleration";
+    if (backend === "webgl") return "WebGL (fallback)";
+    if (backend === "wasm") return "WASM (software)";
+    return backend || "local";
+  }
   function isWatchPage(url) { return /^https?:\/\/(?:www\.|m\.)?youtube\.com\/watch(?:[?#]|$)/i.test(url || ""); }
   function replayPendingDispatches() {
     var queued = pendingDispatches;
@@ -267,7 +278,7 @@
         poseTracker.note = "unavailable · fixture has no pose model";
       } else if (productionReady) {
         poseTracker.health = "ok";
-        poseTracker.note = runtimeStatus.backend ? "local pose model · " + runtimeStatus.backend : "local pose model";
+        poseTracker.note = runtimeStatus.backend ? "local pose model · " + backendLabel(runtimeStatus.backend) : "local pose model";
       }
     }
     if (playerTracker) {
@@ -348,14 +359,30 @@
     if (detected && badmintonDetection === true) detectedChildren.push(ui.badge("badminton detected", "in", false));
     if (detected && badmintonDetection === false) detectedChildren.push(ui.badge("sport unconfirmed", "neutral", false));
     detectedChildren.push(ui.el("span", {}, [detectedDetail]));
+    // Keep the explicit Close affordance: the popup also dismisses on an
+    // outside click or Esc, but a labeled X keeps dismissal discoverable and
+    // is the accessible path (UI audit 2026-09: keep, no code change).
     var header = ui.el("header", { className: "bv-popup-header" }, [ui.el("span", { className: "bv-logo" }, [ui.el("img", { src: "design-system/assets/logo-mark.svg", alt: "" }), ui.el("strong", { className: "bv-logo-name" }, ["Badminton Vision"])]), ui.el("span", { className: "bv-popup-head-actions" }, [ui.iconButton("settings", "Settings unavailable in local demo", { size: "sm", disabled: true }), ui.iconButton("x", "Close", { size: "sm", onClick: closePopup })])]);
     var statusState = state.enabled ? (runtimeFallback || runtimeStale ? "stale" : "live") : "ready";
-    var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : "Rally " + state.rally) : detected ? "Badminton match found" : "No YouTube match";
-    var statusDetail = state.enabled ? (runtimeStale && runtimeStatus && Number.isFinite(runtimeStatus.ageSeconds) ? "+" + runtimeStatus.ageSeconds.toFixed(1) + "s" : productionReady ? (runtimeStatus.backend || "local") : fixtureReady ? "fixture probe · not production CV" : state.time) : null;
+    // The local runtime has no rally segmentation (it reports
+    // rally-segmentation-not-available) and nothing in the live path writes
+    // state.rally, whose value is a fixture-era default; state.time holds a
+    // real media clock only once the content script's writer has run. The
+    // chip therefore never passes either default off as live state: the
+    // count renders as "Rally #N" only for a runtime-reported rally id, a
+    // production session reads as "Live analysis", the fixture-probe
+    // analyzer reads as the fixture analysis it is, and a starting or
+    // fallback session shows no count and no timestamp unless the media
+    // clock produced one. The detail spells out the accelerator as the
+    // capability it provides.
+    var knownRallyId = runtimeStatus && runtimeStatus.result && runtimeStatus.result.rally && runtimeStatus.result.rally.state !== "unknown" && runtimeStatus.result.rally.id != null ? String(runtimeStatus.result.rally.id) : null;
+    var mediaClockWritten = typeof state.time === "string" && state.time !== fixtureDefaultTime;
+    var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : knownRallyId != null ? "Rally #" + knownRallyId : fixtureReady ? "Fixture analysis" : productionReady ? "Live analysis" : "Analysis starting") : detected ? "Badminton match found" : "No YouTube match";
+    var statusDetail = state.enabled ? (runtimeStale && runtimeStatus && Number.isFinite(runtimeStatus.ageSeconds) ? "+" + runtimeStatus.ageSeconds.toFixed(1) + "s" : productionReady ? backendLabel(runtimeStatus.backend) : fixtureReady ? "fixture probe · not production CV" : mediaClockWritten ? state.time : null) : null;
     var backendDetail = runtimeFallback
       ? (function () {
         var parts = [];
-        if (runtimeStatus && runtimeStatus.backend) parts.push('backend ' + runtimeStatus.backend);
+        if (runtimeStatus && runtimeStatus.backend) parts.push(backendLabel(runtimeStatus.backend));
         if (runtimeStatus && runtimeStatus.reason && runtimeStatus.reason !== 'runtime-fallback') parts.push(runtimeStatus.reason);
         if (runtimeStatus && Array.isArray(runtimeStatus.fallbacks)) {
           runtimeStatus.fallbacks.forEach(function (fallback) { if (parts.indexOf(fallback) < 0) parts.push(fallback); });
@@ -377,7 +404,7 @@
     var trackerAside = ui.el("button", { className: "bv-link-button", type: "button", "aria-expanded": expanded, "aria-controls": "bv-evidence-visibility-controls", "aria-label": (expanded ? "Collapse" : "Expand") + " Evidence visibility controls", "data-bso-evidence-disclosure-toggle": "true", onClick: toggleEvidenceDisclosure }, [visibleEvidenceCount + " of " + evidenceControlCount + " visible", ui.icon(expanded ? "chevron-up" : "chevron-down", 12)]);
     var runtimeSummary = fixtureReady || runtimeStatus && runtimeStatus.resultKind === "runtime-integration-probe"
       ? "fixture result observed · not production CV"
-      : productionReady ? "local pose + bounded shuttle candidate · " + (runtimeStatus.backend || "backend pending") : runtimeFallback ? "local analysis unavailable · playback unaffected" : "local runtime starting · nothing uploaded";
+      : productionReady ? "local pose + bounded shuttle candidate · " + (runtimeStatus.backend ? backendLabel(runtimeStatus.backend) : "backend pending") : runtimeFallback ? "local analysis unavailable · playback unaffected" : "local runtime starting · nothing uploaded";
     var trackerSummary = ui.el("div", { className: "bv-tracker-summary" }, [ui.badge(degraded ? "some parts unsure" : "all working", degraded ? "warn" : "in"), ui.el("small", {}, [runtimeSummary])]);
     var evidenceRows = expanded ? visibilityTrackers.map(trackerRow).concat([ui.el("p", { className: "bv-helper bv-evidence-disclosure-help" }, ["Choose which live signals are drawn over the video. Automatic output remains local and unknown values are never guessed."]), courtProjectionToggle()]) : [];
     var trackerBody = ui.el("div", { className: "bv-evidence-section-body" }, [trackerSummary, ui.el("div", { className: "bv-tracker-list bv-evidence-disclosure", id: "bv-evidence-visibility-controls", role: "region", "aria-label": "Evidence visibility controls", "data-bso-evidence-disclosure": "true", hidden: !expanded }, evidenceRows)]);
@@ -389,7 +416,7 @@
     var visiblePanelCount = panelItems.filter(function (key) { return state.panels[key]; }).length;
     var panelControlHeader = ui.el("span", { style: { display: "inline-flex", alignItems: "center", gap: "var(--sp-4)" } }, ["Panel Controls"]);
     var panelControlAside = ui.el("button", { className: "bv-link-button", type: "button", "aria-expanded": panelControlsExpanded, "aria-controls": "bv-panel-controls-list", "aria-label": (panelControlsExpanded ? "Collapse" : "Expand") + " Panel Controls", "data-bso-panel-controls-toggle": "true", onClick: togglePanelControlsDisclosure }, [visiblePanelCount + " of " + panelItems.length + " visible", ui.icon(panelControlsExpanded ? "chevron-up" : "chevron-down", 12)]);
-    var panelControlRows = panelControlsExpanded ? [ui.el("p", { className: "bv-helper", style: { marginTop: "0" } }, ["The default video layer is detection-only. Choose a panel here when you want it over the video; these choices are saved for this video."]), panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), panelToggle("Live controls", "Quick density and summary shortcuts", "controls")] : [];
+    var panelControlRows = panelControlsExpanded ? [ui.el("p", { className: "bv-helper", style: { marginTop: "0" } }, ["The default video layer is detection-only. This popup sets which panels appear over the video, saved for this video; while watching, the Panels button over the video offers the same panels as quick shortcuts."]), panelToggle("Shots this rally", "Every stroke as it happens", "feed"), panelToggle("Rally stats", null, "stats"), panelToggle("Court map", "Where players and the shuttle are", "map"), panelToggle("Live controls", "Quick density and summary shortcuts", "controls")] : [];
     var panelControlsBody = ui.el("div", { className: "bv-panel-toggles" }, [ui.el("div", { className: "bv-panel-controls-disclosure", id: "bv-panel-controls-list", role: "region", "aria-label": "Panel Controls options", "data-bso-panel-controls-disclosure": "true", hidden: !panelControlsExpanded }, panelControlRows)]);
     var panelSection = section(panelControlHeader, panelControlsBody, panelControlAside);
 
@@ -464,7 +491,10 @@
     var summaryButton = ui.button("See match summary · download data", { variant: "ghost", icon: "table", onClick: openSummary });
     summaryButton.setAttribute("data-bso-action", "export");
     var actions = ui.el("div", { className: "bv-footer-actions" }, [primary, ui.el("div", { className: "bv-footer-row" }, [seedButton, manualButton]), disableButton, summaryButton]);
-    root.replaceChildren(header, intro, trackerSection, densitySection, panelSection, modelSection, actions);
+    // Panel Controls precedes Evidence visibility: panels are the containers
+    // a viewer picks first, evidence layers are the finer-grained content
+    // drawn over the video; density and pose model stay below both.
+    root.replaceChildren(header, intro, panelSection, trackerSection, densitySection, modelSection, actions);
     restoreDisclosureFocus();
     restorePanelControlsFocus();
   }
