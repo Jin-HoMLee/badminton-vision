@@ -339,10 +339,14 @@ The live evidence SVG is rebuilt on each newly selected synchronized result:
 accepted runtime player keypoints are drawn with a named skeleton, a player box
 is drawn only when the runtime supplies a valid box, and explicit shuttle
 trajectory/candidate and racket fields are consumed without creating detections
-or confidence. Pose, player-box, racket, shuttle, and court-projection
-visibility switches are independent persisted UI state; court projection is
-additionally guarded by a committed calibration, while the raw pose/shuttle/
-racket layers remain available uncalibrated. Missing fields remain
+or confidence. Real racket detections arrive as `racket.detections` entries
+(each a normalized `bbox` with a confidence for the COCO tennis-racket class)
+and are drawn as `bv-racket-box` rects; the retired wrist/elbow pose proxy is
+only used as degraded evidence when no racket detector is present and is never
+drawn alongside real boxes. Pose, player-box, racket, shuttle, and
+court-projection visibility switches are independent persisted UI state; court
+projection is additionally guarded by a committed calibration, while the raw
+pose/shuttle/racket layers remain available uncalibrated. Missing fields remain
 `unknown` or `unavailable`; the SVG and every child use `pointer-events: none`
 so court seeding and playback remain safe.
 
@@ -376,14 +380,27 @@ make the offscreen frame unreadable. A channel that explicitly reports
 existing `transferables` contract. The service-worker relay preserves
 the message shape across the offscreen boundary. The canonical offscreen
 analyzer is the local `lightweight-openpose-lite-256-v1` pose path composed
-with `local-shuttle-frame-difference-v1`. It reads the local frame pixels,
-creates the model's bounded 256x256 RGB input, runs LiteRT locally, and returns
-normalized two-player-capable pose observations plus the shuttle adapter's
-accepted candidate/trajectory. Its result identifies `productionModel: true`
+with `local-shuttle-frame-difference-v1` and the Apache-2.0
+`efficientdet-lite0-racket-v1` tennis-racket detector. It reads the local
+frame pixels, creates the model's bounded 256x256 RGB input, runs LiteRT
+locally, and returns normalized two-player-capable pose observations plus the
+shuttle adapter's accepted candidate/trajectory plus real tennis-racket
+bounding boxes when the COCO racket class clears the detector's confidence
+gate, but never a stroke or rally claim. Its result identifies
+`productionModel: true`
 only when pose inference succeeds; an artifact/backend failure returns unknown
 pose observations and `inferenceAvailable: false` without selecting the
 fixture. The shuttle may still return a separately accepted bounded candidate,
-but never a stroke or rally claim. The explicit `fixture-probe-v1` diagnostic
+and the racket detector contributes only its class-42 tennis-racket boxes:
+it never upgrades other COCO detections into rackets (the strict class filter
+is regression-tested against the real artifact), never fails the frame, and is
+optional - without its artifact the composition falls back to the historical
+wrist/elbow pose proxy and racket state stays `unknown` when the detector runs
+but finds no racket. Artifact provenance, the input/decode contract, and the
+real-model fixtures are recorded in
+`offscreen/vendor/efficientdet-lite0/MODEL-NOTICE.md` and gated by
+`test/efficientdet-racket.test.js` and
+`test/efficientdet-racket-real-model.test.js`. The explicit `fixture-probe-v1` diagnostic
 reads local pixels only to prove plumbing, identifies itself as
 `runtime-integration-probe`, and never produces player/shuttle/shot claims.
 It is not selected when production initialization or inference fails.

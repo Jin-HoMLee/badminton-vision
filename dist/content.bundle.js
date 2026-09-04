@@ -7671,9 +7671,11 @@
     function runtimeRacketEvidence() {
       var result = runtimeResult();
       if (!result) return { supported: false, state: "unavailable", items: [] };
-      // Consume only an explicit runtime field. The production composition
-      // emits a pose-derived wrist/elbow proxy; expand its hands into drawable
-      // evidence without inventing a detector result from keypoints here.
+      // Consume only an explicit runtime field. The production composition may
+      // emit either real racket detections (EfficientDet-Lite0 tennis-racket
+      // boxes under `detections`, drawn as bv-racket-box rects) or the
+      // pose-derived wrist/elbow proxy (`hands` segments) used only when the
+      // cleared racket artifact cannot run. Evidence is never invented here.
       var fields = ["racket", "rackets", "racketSignal", "racketSignals"];
       var suppliedField = fields.find(function (field) { return Object.prototype.hasOwnProperty.call(result, field); });
       if (!suppliedField) return { supported: false, state: "unavailable", items: [] };
@@ -7681,7 +7683,20 @@
       var suppliedItems = Array.isArray(supplied) ? supplied.filter(Boolean) : supplied ? [supplied] : [];
       var items = [];
       suppliedItems.forEach(function (item) {
-        if (item && Array.isArray(item.hands) && item.hands.length) {
+        if (!item || typeof item !== "object") return;
+        // Real detector output: one drawable box per emitted racket detection.
+        if (Array.isArray(item.detections) && item.detections.length) {
+          item.detections.forEach(function (detection, index) {
+            if (!detection || typeof detection !== "object") return;
+            var expanded = Object.assign({}, detection, {
+              state: detection.state || item.state || "available",
+              index: index
+            });
+            items.push(expanded);
+          });
+        }
+        // Pose-derived proxy (wrist/elbow segments) from the composition.
+        else if (Array.isArray(item.hands) && item.hands.length) {
           item.hands.forEach(function (hand) {
             if (!hand || typeof hand !== "object") return;
             var expanded = Object.assign({}, hand, { state: hand.state || item.state || "available" });
@@ -7689,7 +7704,9 @@
             if (!expanded.point && hand.wrist) expanded.point = hand.wrist;
             items.push(expanded);
           });
-        } else items.push(item);
+        }
+        // Pre-shape envelopes (segment/points/bbox objects) pass through.
+        else items.push(item);
       });
       var visible = items.filter(function (item) { return item && typeof item === "object" && item.state !== "unknown"; });
       var stateValue = visible.some(function (item) { return item.state === "tracked" || item.accepted === true; })
