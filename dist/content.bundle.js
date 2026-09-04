@@ -7929,12 +7929,15 @@
         // Convert ImageData to a serializable object for chrome.runtime.sendMessage
         // ImageData might not serialize properly through MV3 messaging
         var frameObject = {
-          data: Array.from(imageData.data),  // Convert Uint8ClampedArray to regular array
+          data: Array.from(imageData.data),  // Convert Uint8ClampedArray to regular array for serialization
           width: imageData.width,
           height: imageData.height
         };
   
+        console.log("[Hough] Sending frame:", { width: videoWidth, height: videoHeight, dataLength: frameObject.data.length });
+  
         // Send frame to offscreen script for Hough detection
+        // Note: Chrome MV3 structured cloning should handle Uint8Array properly
         chrome.runtime.sendMessage({
           action: "detectHoughLines",
           frameData: frameObject,
@@ -8881,6 +8884,9 @@
       if (overlayCanvas) {
         overlayCanvas.setAttribute("data-bso-overlay-canvas", "true");
         overlay.appendChild(overlayCanvas);
+        console.log("[Hough] Canvas appended to overlay. Canvas width/height:", overlayCanvas.width, overlayCanvas.height);
+      } else {
+        console.log("[Hough] overlayCanvas is null!");
       }
       // Evidence is drawn in normalized video coordinates and never intercepts
       // pointer input, so player/shuttle rendering cannot block playback or seed clicks.

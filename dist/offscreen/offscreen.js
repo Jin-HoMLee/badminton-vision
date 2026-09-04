@@ -890,12 +890,15 @@ async function handleGetAvailableModels(message) {
  * Detects court lines in a frame and returns their coordinates.
  */
 async function handleHoughDetection(message) {
+  console.log("[Hough-Handler] Starting Hough detection");
   if (!globalThis.BSOHoughCourtLinesAdapter) {
+    console.log("[Hough-Handler] Adapter unavailable!");
     return { ok: false, lines: [], reason: 'hough-adapter-unavailable' };
   }
 
   try {
     const { frameData, width, height } = message;
+    console.log("[Hough-Handler] Frame data:", { frameData: !!frameData, width, height });
     if (!frameData || !width || !height) {
       return { ok: false, lines: [], reason: 'invalid-frame-data' };
     }
@@ -903,19 +906,25 @@ async function handleHoughDetection(message) {
     // Convert frameData back to ImageData if needed
     let frame;
     if (frameData instanceof ImageData) {
+      console.log("[Hough-Handler] Received ImageData directly");
       frame = frameData;
-    } else if (frameData.data && frameData.width && frameData.height) {
+    } else if (frameData && frameData.data && typeof frameData.width === 'number' && typeof frameData.height === 'number') {
       // frameData might be a serialized object with array data
       // Create a new ImageData with the same dimensions and data
       try {
+        console.log("[Hough-Handler] Creating ImageData from serialized object. Data length:", frameData.data ? frameData.data.length : 'undefined');
         // Handle both Uint8ClampedArray and regular arrays
         let dataArray = frameData.data;
         if (Array.isArray(dataArray) && typeof Uint8ClampedArray !== 'undefined') {
           dataArray = new Uint8ClampedArray(dataArray);
+        } else if (!Array.isArray(dataArray) && typeof Uint8ClampedArray !== 'undefined') {
+          // If it's already a typed array, convert to Uint8ClampedArray
+          dataArray = new Uint8ClampedArray(dataArray);
         }
+        console.log("[Hough-Handler] Expected data length:", frameData.width * frameData.height * 4, "Actual:", dataArray.length);
         frame = new ImageData(dataArray, frameData.width, frameData.height);
       } catch (e) {
-        console.error('Failed to create ImageData from frameData:', e);
+        console.error('[Hough-Handler] Failed to create ImageData from frameData:', e);
         return { ok: false, lines: [], reason: 'failed-to-create-imagedata' };
       }
     } else if (typeof OffscreenCanvas !== 'undefined') {
@@ -932,7 +941,9 @@ async function handleHoughDetection(message) {
       return { ok: false, lines: [], reason: 'unsupported-frame-format' };
     }
 
+    console.log("[Hough-Handler] Calling detectCourtLines...");
     const result = await globalThis.BSOHoughCourtLinesAdapter.detectCourtLines(frame);
+    console.log("[Hough-Handler] detectCourtLines returned", result.lines.length, "lines");
     return {
       ok: true,
       lines: result.lines || [],
@@ -966,9 +977,12 @@ if (typeof chrome !== 'object' || !chrome.runtime || !chrome.runtime.onMessage |
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle Hough line detection for calibration
   if (message && message.action === 'detectHoughLines') {
+    console.log("[Hough-Offscreen] Received detectHoughLines message");
     Promise.resolve(handleHoughDetection(message)).then((result) => {
+      console.log("[Hough-Offscreen] Sending response with", result.lines ? result.lines.length : 0, "lines");
       sendResponse(result);
     }).catch((error) => {
+      console.log("[Hough-Offscreen] Error:", error);
       sendResponse({ ok: false, lines: [], reason: error instanceof Error ? error.message : String(error) });
     });
     return true; // Keep the channel open for async response
