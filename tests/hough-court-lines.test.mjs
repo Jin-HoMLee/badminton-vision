@@ -235,6 +235,62 @@ test('regression: accumulator spans full -maxRho..+maxRho so off-centre vertical
   assert.ok(segments[0].length >= 250, `segment spans the column, got ${Math.round(segments[0].length)}px`);
 });
 
+test('regression: fold-threshold straddle emits one segment, not a folded twin', () => {
+  // A stroke whose head quantizes onto bins 173/174 (direction ~6-7 deg off
+  // vertical) used to be split by the fold threshold at 180 -
+  // angleGroupTolerance: the 173-family stayed native while the 174-family
+  // folded to (6, -rho), so both groups survived support clipping and were
+  // emitted as two overlapping full-length segments. Matching each peak
+  // against the folded twin only when its native key matches no group must
+  // collapse the straddle back into one segment.
+  const width = 640;
+  const height = 360;
+  const stroke = (x0, phiDeg, len) => {
+    const edges = new Uint8Array(width * height);
+    const rad = (phiDeg * Math.PI) / 180;
+    for (let s = 0; s < len; s++) {
+      const x = Math.round(x0 + s * Math.cos(rad));
+      const y = Math.round(30 + s * Math.sin(rad));
+      if (x >= 0 && x < width && y >= 0 && y < height) edges[y * width + x] = 255;
+    }
+    return edges;
+  };
+  for (const [x0, phi, len] of [[320, 83.5, 345], [320, 83.5, 120], [560, 83.5, 345], [320, 84, 300]]) {
+    const edges = stroke(x0, phi, len);
+    const hough = adapter.houghLineTransform({ width, height, edges }, 1, 1, 45);
+    const top = hough.lines.slice().sort((a, b) => b.votes - a.votes).slice(0, 120);
+    const merged = adapter.mergeParallelPeaks(top, 6, 24);
+    assert.equal(merged.length, 1, `x0=${x0} dir ${phi}deg len ${len}: merged to ${merged.length} peaks`);
+    const clipped = adapter.clipLinesToSupport(merged, { width, height, edges }, 2, 28);
+    const segments = adapter.supportedSegments(clipped, width, height, 28);
+    assert.equal(segments.length, 1, `x0=${x0} dir ${phi}deg len ${len}: emitted ${segments.length} segments`);
+  }
+});
+
+test('regression: every single-stroke orientation emits exactly one segment', () => {
+  // After the round-1 fold threshold was removed in favour of per-peak
+  // native-first / folded-twin matching, no orientation of a lone stroke
+  // may split into two groups (overlapping duplicate guidance strokes).
+  const width = 640;
+  const height = 360;
+  for (let phiDeg = 1; phiDeg <= 179; phiDeg += 2) {
+    const edges = new Uint8Array(width * height);
+    const rad = (phiDeg * Math.PI) / 180;
+    for (let s = 0; s < 220; s++) {
+      const x = Math.round(320 + s * Math.cos(rad));
+      const y = Math.round(60 + s * Math.sin(rad));
+      if (x >= 0 && x < width && y >= 0 && y < height) edges[y * width + x] = 255;
+    }
+    const hough = adapter.houghLineTransform({ width, height, edges }, 1, 1, 45);
+    const top = hough.lines.slice().sort((a, b) => b.votes - a.votes).slice(0, 120);
+    const merged = adapter.mergeParallelPeaks(top, 6, 24);
+    assert.equal(merged.length, 1, `dir ${phiDeg}deg merged to ${merged.length} peaks`);
+    const clipped = adapter.clipLinesToSupport(merged, { width, height, edges }, 2, 28);
+    const segments = adapter.supportedSegments(clipped, width, height, 28);
+    assert.equal(segments.length, 1, `dir ${phiDeg}deg emitted ${segments.length} segments`);
+  }
+});
+
 test('detectCourtLines finds the synthetic court end to end', async () => {
   const frame = syntheticCourtFrame(640, 360);
   const result = await adapter.detectCourtLines(frame);

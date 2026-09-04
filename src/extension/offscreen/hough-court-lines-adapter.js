@@ -12,11 +12,11 @@
  *   (blur + /8 Sobel scaling caps realistic edges near 60), so no strong
  *   seed ever existed and hysteresis emitted nothing on real frames.
  * - Hysteresis flood fill is iterative (explicit stack), never recursive.
- * - Hough peaks merge on BOTH angle and rho distance (with bins within
- *   angleGroupTol of 180 normalized to 180 - theta and rho negated), so
- *   the two accumulator parameterizations of one near-vertical line
- *   collapse into one segment while genuinely distinct parallel court
- *   lines survive.
+ * - Hough peaks merge on BOTH angle and rho distance; each peak is matched
+ *   in its own (theta, rho) parameterization first and, when that matches
+ *   no group, against the folded twin (180 - theta, -rho), so the two
+ *   accumulator parameterizations of one near-vertical line collapse into
+ *   one segment while genuinely distinct parallel court lines survive.
  * - Segments are clipped to their actual edge-pixel support instead of being
  *   extended to the image borders, so guidance hugs visible line markings.
  */
@@ -285,38 +285,41 @@
   }
 
   /**
-   * Merge near-duplicate peaks. A line is represented twice in the
-   * accumulator when its angle approaches 180 (theta ~ 180 - theta_eff with
-   * negated rho), so comparisons normalize only bins within angleGroupTol
-   * of 180 to 180 - theta with rho negated; the smeared votes a level line
-   * leaves at theta 91..173 keep their positive rho and merge back into the
-   * true peak through the tolerance windows. Peaks within angleGroupTol
-   * degrees AND distanceGroupTol pixels of rho belong to one physical
-   * line; the strongest survives.
+   * Merge near-duplicate peaks. A near-vertical line votes twice — once
+   * near theta 0 with rho ~ +c and again near theta 179 with rho ~ -c —
+   * while the smeared votes any line leaves on neighbouring theta bins can
+   * straddle either side of any fixed fold threshold, so no blanket angle
+   * fold is applied. Each peak is compared against a group reference in
+   * its own (theta, rho) parameterization first and, when that matches no
+   * group, against the folded twin (180 - theta, -rho): wrap-seam
+   * duplicates collapse through the folded comparison while level-line
+   * smears merge back into their true peak through the native one. Peaks
+   * within angleGroupTol degrees AND distanceGroupTol pixels of rho belong
+   * to one physical line; the strongest survives.
    */
   function mergeParallelPeaks(lines, angleGroupTol, distanceGroupTol) {
-    const normalized = lines.map((line) => {
-      const nearWrap = line.thetaDeg >= 180 - angleGroupTol;
-      const thetaDeg = nearWrap ? 180 - line.thetaDeg : line.thetaDeg;
-      const rho = nearWrap ? -line.rho : line.rho;
-      return { line, thetaDeg, rho };
-    });
-    const sorted = normalized.slice().sort((a, b) => b.line.votes - a.line.votes);
+    const sorted = lines.slice().sort((a, b) => b.votes - a.votes);
     const groups = [];
-    for (const item of sorted) {
+    for (const line of sorted) {
       let placed = false;
       for (const group of groups) {
         const ref = group[0];
-        if (Math.abs(item.thetaDeg - ref.thetaDeg) <= angleGroupTol &&
-            Math.abs(item.rho - ref.rho) <= distanceGroupTol) {
-          group.push(item);
+        if (Math.abs(line.thetaDeg - ref.thetaDeg) <= angleGroupTol &&
+            Math.abs(line.rho - ref.rho) <= distanceGroupTol) {
+          group.push(line);
+          placed = true;
+          break;
+        }
+        if (Math.abs(180 - line.thetaDeg - ref.thetaDeg) <= angleGroupTol &&
+            Math.abs(line.rho + ref.rho) <= distanceGroupTol) {
+          group.push(line);
           placed = true;
           break;
         }
       }
-      if (!placed) groups.push([item]);
+      if (!placed) groups.push([line]);
     }
-    return groups.map((g) => g[0].line).sort((a, b) => b.votes - a.votes);
+    return groups.map((g) => g[0]).sort((a, b) => b.votes - a.votes);
   }
 
   /**

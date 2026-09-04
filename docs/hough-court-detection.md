@@ -147,12 +147,18 @@ For each edge pixel at (x, y) and for each angle θ ∈ [0°, 180°):
 ### Peak merging
 
 Near-vertical lines appear twice in the accumulator — around θ ≈ 0 with
-ρ ≈ +c and around θ ≈ 179 with ρ ≈ −c — so peaks with θ > 90 are normalized
-to (180 − θ, −ρ) before comparison. Peaks within `angleGroupTolerance`
-degrees AND `distanceGroupTolerance` pixels of rho describe one physical
-line (a thick painted line produces two parallel ridges ~1 line-width apart
-in rho); the strongest vote of each group survives. Distinct parallel court
-lines differ by more than the distance tolerance and survive independently.
+ρ ≈ +c and around θ ≈ 179 with ρ ≈ −c — and the smeared votes any line
+leaves on neighbouring θ bins can straddle either side of any fixed fold
+threshold, so no blanket angle fold is applied. Each peak is matched
+against a group reference in its own (θ, ρ) parameterization first and,
+when that matches no group, against the folded twin (180 − θ, −ρ), which
+collapses the wrap-seam duplicates while level-line smears merge back into
+their true peak through the native comparison. Peaks within
+`angleGroupTolerance` degrees AND `distanceGroupTolerance` pixels of rho
+describe one physical line (a thick painted line produces two parallel
+ridges ~1 line-width apart in rho); the strongest vote of each group
+survives. Distinct parallel court lines differ by more than the distance
+tolerance and survive independently.
 
 ### Support clipping and endpoints
 
