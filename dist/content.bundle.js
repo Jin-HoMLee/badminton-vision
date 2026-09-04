@@ -7410,6 +7410,7 @@
     var root = null;
     var video = null;
     var overlayCanvas = null;
+    var houghCanvas = null;  // Separate canvas for Hough detection lines during calibration
     var houghLines = [];  // Store detected Hough court lines
     var houghDetectionInterval = null;  // Periodic Hough detection during calibration
     var domObserver = null;
@@ -7965,19 +7966,19 @@
             if (response && response.ok && Array.isArray(response.lines)) {
               console.log("[Hough] Detected", response.lines.length, "lines");
               houghLines = response.lines;
-              // Trigger a redraw of the overlay canvas
+              // Trigger a redraw of the Hough canvas
               // Use host geometry if available, otherwise use video geometry
               if (host && typeof host.getBoundingClientRect === "function") {
                 var hostRect = host.getBoundingClientRect();
                 if (hostRect.width > 0 && hostRect.height > 0) {
-                  console.log("[Hough] Redrawing canvas with host rect:", hostRect.width, "x", hostRect.height);
-                  resizeOverlayCanvas(hostRect.width, hostRect.height);
+                  console.log("[Hough] Redrawing Hough canvas with host rect:", hostRect.width, "x", hostRect.height);
+                  resizeHoughCanvas(hostRect.width, hostRect.height);
                 } else {
                   // Host not positioned yet, try to use video geometry instead
                   if (video && typeof video.getBoundingClientRect === "function") {
                     var videoRect = video.getBoundingClientRect();
                     console.log("[Hough] Host not positioned, using video rect:", videoRect.width, "x", videoRect.height);
-                    resizeOverlayCanvas(videoRect.width, videoRect.height);
+                    resizeHoughCanvas(videoRect.width, videoRect.height);
                   } else {
                     console.log("[Hough] Cannot redraw: neither host nor video positioned");
                   }
@@ -8071,6 +8072,41 @@
       }
     }
   
+    function resizeHoughCanvas(width, height) {
+      // Draw Hough lines on a separate canvas for proper z-index layering
+      if (!houghCanvas) return;
+      var cssWidth = Math.max(0, Number(width) || 0);
+      var cssHeight = Math.max(0, Number(height) || 0);
+      var dpr = Math.min(2, Math.max(1, Number(window.devicePixelRatio) || 1));
+      var pixelWidth = Math.max(1, Math.round(cssWidth * dpr));
+      var pixelHeight = Math.max(1, Math.round(cssHeight * dpr));
+      if (houghCanvas.width !== pixelWidth) houghCanvas.width = pixelWidth;
+      if (houghCanvas.height !== pixelHeight) houghCanvas.height = pixelHeight;
+      houghCanvas.style.width = cssWidth + "px";
+      houghCanvas.style.height = cssHeight + "px";
+      var context = typeof houghCanvas.getContext === "function" ? houghCanvas.getContext("2d") : null;
+      if (!context || !cssWidth || !cssHeight) return;
+      if (typeof context.setTransform === "function") context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (typeof context.clearRect !== "function") return;
+      context.clearRect(0, 0, cssWidth, cssHeight);
+  
+      // Draw Hough detected court lines during calibration
+      if (state.seeding && houghLines && houghLines.length > 0) {
+        if (typeof context.beginPath === "function" && typeof context.moveTo === "function" && typeof context.lineTo === "function" && typeof context.stroke === "function") {
+          context.strokeStyle = "rgba(100, 200, 255, 0.6)";
+          context.lineWidth = 2;
+          houghLines.forEach(function (line) {
+            if (typeof line.x1 === "number" && typeof line.y1 === "number" && typeof line.x2 === "number" && typeof line.y2 === "number") {
+              context.beginPath();
+              context.moveTo(line.x1 * cssWidth, line.y1 * cssHeight);
+              context.lineTo(line.x2 * cssWidth, line.y2 * cssHeight);
+              context.stroke();
+            }
+          });
+        }
+      }
+    }
+  
     function resizeOverlayCanvas(width, height) {
       if (!overlayCanvas) return;
       var cssWidth = Math.max(0, Number(width) || 0);
@@ -8090,22 +8126,6 @@
       // Keep a real canvas rendering surface in the sibling layer. The SVG
       // evidence remains the accessible/vector surface; this canvas is reserved
       // for bounded frame-local marks and is deliberately never interactive.
-  
-      // Draw Hough detected court lines during calibration
-      if (state.seeding && houghLines && houghLines.length > 0) {
-        if (typeof context.beginPath === "function" && typeof context.moveTo === "function" && typeof context.lineTo === "function" && typeof context.stroke === "function") {
-          context.strokeStyle = "rgba(100, 200, 255, 0.6)";
-          context.lineWidth = 2;
-          houghLines.forEach(function (line) {
-            if (typeof line.x1 === "number" && typeof line.y1 === "number" && typeof line.x2 === "number" && typeof line.y2 === "number") {
-              context.beginPath();
-              context.moveTo(line.x1 * cssWidth, line.y1 * cssHeight);
-              context.lineTo(line.x2 * cssWidth, line.y2 * cssHeight);
-              context.stroke();
-            }
-          });
-        }
-      }
   
       var shuttle = runtimeShuttle();
       if (shuttle && shuttle.state === "tracked" && shuttle.candidate && shuttle.candidate.accepted === true && normalizedPoint(shuttle.candidate) && typeof context.beginPath === "function" && typeof context.arc === "function" && typeof context.stroke === "function") {
@@ -9344,6 +9364,8 @@
       if (state.enabled && !(state.seeding && state.cameraCut)) root.appendChild(liveOverlay());
       if (state.seeding) root.appendChild(seedFlow());
       if (state.labeling && !state.seeding) root.appendChild(manualPanel());
+      // Append houghCanvas at root level for proper z-index layering (above seed-layer background but below seed-points/card)
+      if (houghCanvas) root.appendChild(houghCanvas);
       refreshPanelLayouts();
       installPanelInteractionsInRoot();
     }
@@ -9473,6 +9495,13 @@
       overlayCanvas.setAttribute("aria-hidden", "true");
       overlayCanvas.setAttribute("data-bso-overlay-canvas", "true");
       overlayCanvas.style.pointerEvents = "none";
+      // Create a separate canvas for Hough detection lines during calibration
+      // This keeps Hough lines layered between the seed-layer background and seed-point markers
+      houghCanvas = document.createElement("canvas");
+      houghCanvas.className = "bv-hough-canvas";
+      houghCanvas.setAttribute("aria-hidden", "true");
+      houghCanvas.setAttribute("data-bso-hough-canvas", "true");
+      houghCanvas.style.pointerEvents = "none";
       var link = document.createElement("link"); link.rel = "stylesheet"; link.href = hasChrome() && chrome.runtime ? chrome.runtime.getURL("styles.css") : "styles.css"; shadow.appendChild(link);
       // The stylesheet loads asynchronously; a panel measured before it applies
       // has block-layout geometry. Re-anchor and re-clamp once it is live so a

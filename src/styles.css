@@ -405,8 +405,9 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-panel-body .bv-status-chip { pointer-events: auto; }
 .bv-label-panel .bv-panel-body { pointer-events: auto; }
 .bv-controls-panel .bv-panel-body { display: flex; flex-wrap: wrap; align-items: center; }
-.bv-overlay-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; z-index: 1000; } /* High z-index so Hough detection lines are visible above seed layer */
+.bv-overlay-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .bv-overlay-root > .bv-overlay-canvas { pointer-events: none; }
+.bv-hough-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; z-index: 2; } /* Hough canvas drawn at root level; appears above seed-layer background for visibility during calibration */
 .bv-runtime-evidence { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; z-index: 1; }
 .bv-runtime-evidence * { pointer-events: none; }
 .bv-overlay-root > .bv-runtime-evidence { pointer-events: none; }
