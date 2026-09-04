@@ -63,6 +63,43 @@ test("keyboard nudges use the same safe bounds as dragging", async () => {
   assert.ok(api.isWithinSeedCardBounds(down, viewport, card));
 });
 
+test("floating corner buttons pin to their corner and stay above the player strip", async () => {
+  const api = await seedCardModule();
+  const viewport = { width: 640, height: 360 }; // small player: strip top at 288
+  const button = { height: 40 };
+  const options = { reserve: 72 };
+  const stripTop = viewport.height - options.reserve;
+  const margin = api.SEED_BUTTON_MARGIN;
+  // Near-left corner on a small player: its marked spot is clamped to 264px
+  // and the pill floats above it, pinned to the corner and extending inward.
+  const nearLeft = api.placeSeedCornerButton({ x: 140.8, y: 264 }, viewport, button, options);
+  assert.equal(nearLeft.left, 140.8);
+  assert.equal(nearLeft.right, null);
+  assert.equal(nearLeft.top, 264 - api.SEED_RING_RADIUS - api.SEED_BUTTON_GAP);
+  const nearRight = api.placeSeedCornerButton({ x: 499.2, y: 264 }, viewport, button, options);
+  assert.equal(nearRight.left, null);
+  assert.equal(nearRight.right, 140.8, "right-side pills extend inward from the corner");
+  assert.equal(nearRight.top, nearLeft.top);
+  const farRight = api.placeSeedCornerButton({ x: 403.2, y: 118.8 }, viewport, button, options);
+  assert.equal(farRight.right, 236.8);
+  assert.equal(farRight.top, 118.8 - api.SEED_RING_RADIUS - api.SEED_BUTTON_GAP);
+  // A marked spot too high for an above pill flips the pill below the ring;
+  // every placement stays inside the video and clear of the strip.
+  const high = api.placeSeedCornerButton({ x: 320, y: 20 }, viewport, button, options);
+  assert.equal(high.left, 320);
+  assert.equal(high.top, 20 + api.SEED_RING_RADIUS + api.SEED_BUTTON_GAP + button.height);
+  for (const placement of [nearLeft, nearRight, farRight, high]) {
+    assert.ok(placement.top >= margin + button.height, "the pill never crosses the top edge");
+    assert.ok(placement.top <= stripTop - margin + 1e-9, "the pill never covers the native player strip");
+    const horizontal = placement.left != null ? placement.left : placement.right;
+    assert.ok(horizontal >= 0 && horizontal <= viewport.width - margin + 1e-9, "the pill stays inside the video width");
+  }
+  // Narrow players still keep every corner reachable.
+  const narrow = api.placeSeedCornerButton({ x: 280.8, y: 106 }, { width: 360, height: 202 }, button, options);
+  assert.ok(Math.abs(narrow.right - 79.2) < 1e-9);
+  assert.equal(narrow.top, 106 - api.SEED_RING_RADIUS - api.SEED_BUTTON_GAP);
+});
+
 test("seed-card rendering exposes readable contrast and accessible movement hooks", async () => {
   const [content, styles] = await Promise.all([
     readFile(new URL("../src/content.js", import.meta.url), "utf8"),
@@ -86,4 +123,48 @@ test("seed-card rendering exposes readable contrast and accessible movement hook
   assert.match(styles, /\.bv-seed-card[^\{]*\{[^}]*box-shadow: 0 8px 28px rgba\(0,0,0,\.72\)/s);
   assert.match(styles, /\.bv-seed-card-handle[^\{]*\{[^}]*cursor: grab/s);
   assert.match(styles, /\.bv-seed-card[^\{]*\{[^}]*z-index: 3/s);
+});
+
+test("the pressed corner pill keeps its translateY(-100%) placement above the generic button press-nudge", async () => {
+  const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
+  const declarationsOf = (selector) => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rule = styles.match(new RegExp("(?:^|\\n)\\s*" + escaped + "\\s*\\{([^}]*)\\}"));
+    assert.ok(rule, `${selector} must declare its own rule in src/styles.css`);
+    const declarations = new Map();
+    for (const part of rule[1].split(";")) {
+      const colon = part.indexOf(":");
+      if (colon > 0) declarations.set(part.slice(0, colon).trim(), part.slice(colon + 1).trim());
+    }
+    return declarations;
+  };
+  const pill = declarationsOf(".bv-seed-corner-button");
+  const pressedPill = declarationsOf(".bv-seed-layer .bv-seed-corner-button:active");
+  const pressNudge = declarationsOf("button:active:not(:disabled)");
+  assert.equal(pill.get("transform"), "translateY(-100%)", "the resting pill must hover above its marked spot");
+  assert.equal(pressedPill.get("transform"), "translateY(-100%)", "the pressed pill must stay pinned at its resting placement");
+  assert.ok(pressNudge.has("transform"), "the generic button press-nudge must still target transform so the two rules conflict");
+  const specificityOf = (selector) => {
+    const counts = [0, 0, 0];
+    const rest = selector.replace(/:not\(\s*([^)]*?)\s*\)/g, (whole, argument) => {
+      const nested = specificityOf(argument);
+      counts[0] += nested[0];
+      counts[1] += nested[1];
+      counts[2] += nested[2];
+      return " ";
+    });
+    counts[0] += (rest.match(/#[\w-]+/g) || []).length;
+    counts[1] += (rest.match(/\.[\w-]+/g) || []).length;
+    counts[1] += (rest.match(/\[[^\]]+\]/g) || []).length;
+    counts[2] += (rest.match(/::[\w-]+/g) || []).length;
+    counts[1] += (rest.match(/:(?!:)[\w-]+/g) || []).length;
+    counts[2] += (rest.match(/(?:^|[\s>+~])([a-zA-Z][\w-]*)/g) || []).length;
+    return counts;
+  };
+  const compare = (left, right) => left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
+  const pinned = specificityOf(".bv-seed-layer .bv-seed-corner-button:active");
+  const nudged = specificityOf("button:active:not(:disabled)");
+  assert.ok(compare(pinned, nudged) > 0, "the press-pin rule must out-specify the generic press-nudge or a pressed pill slides off its marked spot");
+  const card = declarationsOf(".bv-seed-card");
+  assert.ok(Number(pill.get("z-index")) > Number(card.get("z-index")), "the pill declares a higher stacking level than the instruction card it paints above");
 });

@@ -1053,6 +1053,11 @@
       var panelId = panel.getAttribute("data-bso-panel");
       if (panelId) applyPanelLayout(panelContainer(panel), panel, panelId, state.panelLayouts && state.panelLayouts[panelId]);
     });
+    // The court-seeding markers (px-anchored corner pill and %-anchored guide
+    // ring) are re-derived from the current host box on every layout pass, so
+    // a mid-seeding fullscreen/resize can never leave the pill off-host or
+    // disagreeing with the marked spot.
+    refreshSeedMarkers();
   }
   function storePanelLayout(panelId, layout) {
     state = window.BVState.reduceExtensionState(state, { type: "SET_PANEL_LAYOUT", panel: panelId, videoKey: activeVideoKey || currentVideoKey(), layout: layout });
@@ -1307,6 +1312,48 @@
     }
     return svg;
   }
+  // Seed steps place the four outer doubles corners in a fixed order. The
+  // guide ring for the current corner doubles as its marked spot: the
+  // floating corner button and the 1-4 number keys place the point exactly
+  // where the ring is drawn, which on small players is clamped above the
+  // native control strip (see seedLayerMetrics/markedCornerSpot below).
+  var SEED_CORNERS = ["Near left", "Near right", "Far right", "Far left"];
+  var SEED_CORNER_TARGETS = [{ x: .22, y: .82 }, { x: .78, y: .82 }, { x: .63, y: .33 }, { x: .37, y: .33 }];
+  // Mirrors the .bv-seed-corner-button height (var(--sp-10) = 40px) used by
+  // seed-card.js placeSeedCornerButton so the button clears the strip reserve.
+  var SEED_CORNER_BUTTON_HEIGHT = 40;
+
+  function seedLayerMetrics() {
+    var rect = host && typeof host.getBoundingClientRect === "function" ? host.getBoundingClientRect() : null;
+    return {
+      width: rect ? Math.max(0, Number(rect.width) || 0) : 0,
+      height: rect ? Math.max(0, Number(rect.height) || 0) : 0
+    };
+  }
+  function seedMaxGuideY() {
+    var layerHeight = seedLayerMetrics().height;
+    return layerHeight > 0 ? 1 - (PLAYER_CONTROLS_RESERVE + 24) / layerHeight : 1;
+  }
+  function markedCornerSpot(index) {
+    // The spot the ring (and the floating corner button/number key) refers
+    // to: the guide target, clamped above the player strip on small players.
+    var guide = SEED_CORNER_TARGETS[index];
+    if (!guide) return null;
+    return { x: guide.x, y: Math.min(guide.y, Math.max(0, seedMaxGuideY())) };
+  }
+  function placeSeedCornerAtMarkedSpot(index) {
+    // Only the next corner in the fixed order can be placed this way: seed
+    // steps are sequential because each point has a defined court role.
+    if (!state.seeding || index !== seedPoints.length) return;
+    var spot = markedCornerSpot(index);
+    if (!spot) return;
+    seedPoints.push({ x: spot.x, y: spot.y });
+    state.seedDraftPoints = seedPoints.map(function (point) { return { x: point.x, y: point.y }; });
+    state.calibrationError = null;
+    if (seedPoints.length === 4) fitSeedPoints();
+    persist();
+    render();
+  }
   function startCourtSetup() {
     state = window.BVState.reduceExtensionState(state, { type: "START_SEED" });
     state.videoKey = activeVideoKey || currentVideoKey();
@@ -1359,44 +1406,51 @@
     stopHoughDetectionLoop();
   }
   function seedFlow() {
-    var corners = ["Near left", "Near right", "Far right", "Far left"];
-    var targets = [{ x: 22, y: 82 }, { x: 78, y: 82 }, { x: 63, y: 33 }, { x: 37, y: 33 }];
     var fitted = seedPoints.length === 4 && calibration;
     var invalid = seedPoints.length === 4 && !fitted;
     // The seed layer keeps full-click capture only above the native player
     // control strip: the strip itself passes pointer events through so pause,
     // seek, the time bar, and settings stay reachable during setup. On small
     // players the near-corner guide markers would fall inside the strip, so
-    // they are clamped above the reserve where they stay clickable.
-    var layerHeight = host && typeof host.getBoundingClientRect === "function" ? Number(host.getBoundingClientRect().height) || 0 : 0;
-    var maxGuideY = layerHeight > 0 ? 1 - (PLAYER_CONTROLS_RESERVE + 24) / layerHeight : 1;
+    // they are clamped above the reserve where they stay clickable; the
+    // floating corner button is anchored to that same marked spot.
+    var layerMetrics = seedLayerMetrics();
     var layer = ui.el("div", {
       className: "bv-seed-layer",
       role: "dialog",
       "aria-label": "Set up court",
       "data-bso-court-seeding": "true",
       "data-bso-seed-count": seedPoints.length,
-      "data-bso-seed-order": corners.slice(0, seedPoints.length).join("|"),
+      "data-bso-seed-order": SEED_CORNERS.slice(0, seedPoints.length).join("|"),
       "data-bso-seed-click-policy": "layer-only",
       "data-bso-seed-lockable": String(Boolean(fitted))
     });
     layer.appendChild(seedDrawing(seedPoints, fitted));
     if (seedPoints.length < 4) {
-      var guide = targets[seedPoints.length];
-      layer.appendChild(ui.el("span", { className: "bv-seed-target", "data-bso-seed-guide": String(seedPoints.length), style: { left: guide.x + "%", top: Math.min(guide.y / 100, Math.max(0, maxGuideY)) * 100 + "%" } }));
+      var spot = markedCornerSpot(seedPoints.length);
+      layer.appendChild(ui.el("span", { className: "bv-seed-target", "data-bso-seed-guide": String(seedPoints.length), style: { left: spot.x * 100 + "%", top: spot.y * 100 + "%" } }));
     }
     seedPoints.forEach(function (point, index) { layer.appendChild(ui.el("span", { className: "bv-seed-point", style: seedPointStyle(point) }, [index + 1])); });
+    // Floating corner button: a clearly labeled, tappable pill for the corner
+    // that is next in the seed order. It sits above the corner's marked spot,
+    // always clear of the native control strip, so calibration works on small
+    // players; tapping it (or pressing its number key) places the point at
+    // the marked spot. Direct clicks on the layer stay untouched for precise
+    // placement, and the Hough guidance overlay is unaffected. The pill needs
+    // a measurable video size, just like a layer click.
+    if (seedPoints.length < 4 && layerMetrics.width > 0 && layerMetrics.height > 0) layer.appendChild(seedCornerButton(seedPoints.length, layerMetrics));
     var card = ui.el("section", { className: "bv-seed-card bv-panel-layout", role: "group", "aria-label": "Court setup instructions", "data-bso-seed-card": "true", "data-bso-contrast": "high", "data-bso-panel": "courtSetup", "data-bso-panel-layout": "true", "data-bso-panel-resizable": "true" });
-    var title = fitted ? "Court ready to lock" : invalid ? "Court needs correction" : "Click the " + corners[seedPoints.length].toLowerCase() + " outer corner";
-    var help = ui.el("span", { className: "bv-sr-only", id: "bv-seed-card-help" }, ["Use the court setup header to move the instructions inside the video. Use the arrow keys to nudge it. Press Home to reset the position."]);
+    var title = fitted ? "Court ready to lock" : invalid ? "Court needs correction" : "Click the " + SEED_CORNERS[seedPoints.length].toLowerCase() + " outer corner";
+    var help = ui.el("span", { className: "bv-sr-only", id: "bv-seed-card-help" }, ["Use the court setup header to move the instructions inside the video. Use the arrow keys to nudge it. Press Home to reset the position. Press 1 to 4 to place the matching corner at its marked spot, or tab to the floating corner button and press Enter."]);
     // The whole header is the drag surface. It has no visible grip or drag
     // copy, keeping the four corner targets unobstructed while retaining an
     // explicit keyboard and native-tooltip affordance for assistive users.
-    var handle = ui.el("header", { className: "bv-seed-card-top bv-panel-header", tabindex: "0", role: "group", "aria-label": "Move court setup instructions", "aria-describedby": "bv-seed-card-help", "aria-grabbed": "false", "aria-keyshortcuts": "ArrowLeft ArrowRight ArrowUp ArrowDown Home", title: "Move court setup instructions. Use arrow keys to nudge. Home resets the position.", "data-bso-seed-card-handle": "true", "data-bso-panel-drag-handle": "true" }, [ui.stepDots(Math.min(seedPoints.length, 4), corners), ui.el("span", { className: "bv-seed-card-title" }, [title]), fitted ? ui.badge("homography ok", "in") : invalid ? ui.badge("not accepted", "warn") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Reset position", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); resetSeedCardPosition(); } }), ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); undoSeedPoint(); } }), ui.button("Reset court", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0 && !state.seeded, onClick: function (event) { event.stopPropagation(); resetSeed(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); openLabeling(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !fitted, onClick: function (event) { event.stopPropagation(); lockSeed(); } })])]);
+    var handle = ui.el("header", { className: "bv-seed-card-top bv-panel-header", tabindex: "0", role: "group", "aria-label": "Move court setup instructions", "aria-describedby": "bv-seed-card-help", "aria-grabbed": "false", "aria-keyshortcuts": "ArrowLeft ArrowRight ArrowUp ArrowDown Home", title: "Move court setup instructions. Use arrow keys to nudge. Home resets the position.", "data-bso-seed-card-handle": "true", "data-bso-panel-drag-handle": "true" }, [ui.stepDots(Math.min(seedPoints.length, 4), SEED_CORNERS), ui.el("span", { className: "bv-seed-card-title" }, [title]), fitted ? ui.badge("homography ok", "in") : invalid ? ui.badge("not accepted", "warn") : null, ui.el("span", { className: "bv-seed-card-actions" }, [ui.button("Reset position", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); resetSeedCardPosition(); } }), ui.button("Undo", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0, onClick: function (event) { event.stopPropagation(); undoSeedPoint(); } }), ui.button("Reset court", { variant: "ghost", size: "sm", disabled: seedPoints.length === 0 && !state.seeded, onClick: function (event) { event.stopPropagation(); resetSeed(); } }), ui.button("Skip to manual", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); openLabeling(); } }), ui.button("Lock court", { variant: "primary", size: "sm", disabled: !fitted, onClick: function (event) { event.stopPropagation(); lockSeed(); } })])]);
     handle.appendChild(help);
     card.appendChild(handle);
     if (state.calibrationError) card.appendChild(ui.callout("warn", "Calibration not accepted", state.calibrationError));
     card.appendChild(ui.el("p", {}, ["Your four clicks are the outer doubles corners only. Service lines, centre lines and the net come from the official 13.40 × 6.10 m court and are projected in — they never adapt to the image."]));
+    if (seedPoints.length < 4) card.appendChild(seedCornerShortcuts());
     card.appendChild(ui.el("div", { className: "bv-seed-note" }, [ui.icon("info", 13), ui.el("span", {}, ["Playback keeps running. A camera cut past tolerance pauses analysis, not the video."]), ui.button("Cancel", { variant: "ghost", size: "sm", onClick: function (event) { event.stopPropagation(); cancelSeeding(); } })]));
     card.appendChild(ui.el("button", { className: "bv-panel-resize-handle", type: "button", "aria-label": "Resize court setup panel", "aria-keyshortcuts": "ArrowLeft ArrowRight ArrowUp ArrowDown Home", title: "Drag to resize. Use arrow keys for precise sizing; Home resets the size.", "data-bso-panel-resize-handle": "true" }, [ui.icon("grip", 12)]));
     layer.appendChild(card);
@@ -1422,6 +1476,71 @@
       render();
     });
     return layer;
+  }
+  function seedCornerButton(index, layerMetrics) {
+    var spot = markedCornerSpot(index);
+    var anchor = { x: spot.x * layerMetrics.width, y: spot.y * layerMetrics.height };
+    var placement = seedCardApi.placeSeedCornerButton(anchor, layerMetrics, { height: SEED_CORNER_BUTTON_HEIGHT, reserve: PLAYER_CONTROLS_RESERVE });
+    var style = { top: Math.max(0, Number(placement.top) || 0) + "px" };
+    if (placement.left != null) style.left = placement.left + "px";
+    else if (placement.right != null) style.right = placement.right + "px";
+    else style.left = "0px";
+    var corner = SEED_CORNERS[index];
+    return ui.el("button", {
+      className: "bv-seed-corner-button",
+      type: "button",
+      "data-bso-seed-corner-button": String(index),
+      "data-bso-seed-corner": String(corner).toLowerCase().replace(/\s+/g, "-"),
+      "aria-label": "Place the " + corner.toLowerCase() + " outer corner at the marked spot",
+      "aria-keyshortcuts": String(index + 1),
+      title: "Place the " + corner.toLowerCase() + " outer corner at the marked spot. Press " + (index + 1) + " for the same action.",
+      style: style,
+      onClick: function (event) {
+        if (event && event.stopPropagation) event.stopPropagation();
+        placeSeedCornerAtMarkedSpot(index);
+      }
+    }, [corner + " outer corner"]);
+  }
+  function refreshSeedMarkers() {
+    if (!state.seeding || !root || typeof root.querySelector !== "function") return;
+    var layer = root.querySelector("[data-bso-court-seeding]");
+    if (!layer) return;
+    var guide = layer.querySelector("[data-bso-seed-guide]");
+    if (!guide) return;
+    var index = Number(guide.getAttribute("data-bso-seed-guide"));
+    var spot = markedCornerSpot(index);
+    if (!spot) return;
+    guide.style.left = spot.x * 100 + "%";
+    guide.style.top = spot.y * 100 + "%";
+    var metrics = seedLayerMetrics();
+    var pill = layer.querySelector("[data-bso-seed-corner-button]");
+    if (!pill || metrics.width <= 0 || metrics.height <= 0) return;
+    var anchor = { x: spot.x * metrics.width, y: spot.y * metrics.height };
+    var placement = seedCardApi.placeSeedCornerButton(anchor, metrics, { height: SEED_CORNER_BUTTON_HEIGHT, reserve: PLAYER_CONTROLS_RESERVE });
+    pill.style.top = Math.max(0, Number(placement.top) || 0) + "px";
+    if (placement.left != null) {
+      pill.style.left = placement.left + "px";
+      pill.style.right = "";
+    } else if (placement.right != null) {
+      pill.style.right = placement.right + "px";
+      pill.style.left = "";
+    } else {
+      pill.style.left = "0px";
+      pill.style.right = "";
+    }
+  }
+  function seedCornerShortcuts() {
+    // Visible keyboard help inside the seed card: 1-4 name the corners in
+    // seed order and place the next one at its marked spot when its number
+    // is pressed; the current step's key is accented.
+    var children = [ui.el("span", {}, ["Tip: press "])];
+    SEED_CORNERS.forEach(function (corner, index) {
+      if (index) children.push(ui.el("span", {}, [" · "]));
+      children.push(ui.kbd(String(index + 1), seedPoints.length === index));
+      children.push(ui.el("span", {}, [corner.toLowerCase()]));
+    });
+    children.push(ui.el("span", {}, [" to place it at the marked spot, or tap the floating corner button."]));
+    return ui.el("p", { className: "bv-seed-shortcuts", "data-bso-seed-shortcuts": "true" }, children);
   }
 
   // The saved manual label dataset is the honest source for rally-level
@@ -2014,10 +2133,27 @@
       closeLabeling();
       return;
     }
-    if (isInteractiveTarget(event.target)) return;
+    // The focused corner pill advertises its own digit in aria-keyshortcuts
+    // and its title ("Press N for the same action"), so that key must fire
+    // while the pill itself is focused; every other focused control keeps
+    // yielding to native keys.
+    var currentSeedPillFocused = Boolean(state.seeding && event.target && typeof event.target.getAttribute === "function" && String(event.target.getAttribute("data-bso-seed-corner-button")) === String(seedPoints.length));
+    if (isInteractiveTarget(event.target) && !currentSeedPillFocused) return;
     if (key === "o" && state.enabled && !state.seeding) {
       event.preventDefault();
       if (!state.labeling) openLabeling();
+      return;
+    }
+    // Court setup is keyboard-accessible: 1-4 name the corner to place, and
+    // the key works only when that corner is the next one in the seed order.
+    // The point goes to the marked spot (the visible ring), exactly like the
+    // floating corner button. Other focused controls already yielded in the
+    // guard above; only the current pill's own digit fires from focus.
+    if (state.seeding && seedPoints.length < 4 && key >= "1" && key <= "4") {
+      if (Number(key) - 1 === seedPoints.length) {
+        event.preventDefault();
+        placeSeedCornerAtMarkedSpot(Number(key) - 1);
+      }
       return;
     }
     if (!state.labeling || state.seeding) return;

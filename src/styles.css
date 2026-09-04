@@ -470,6 +470,30 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-seed-card-handle { cursor: grab; touch-action: none; }
 .bv-seed-card-handle:active, .bv-seed-card.is-dragging .bv-seed-card-handle { cursor: grabbing; }
 .bv-seed-card-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-left: auto; }
+/* Floating corner-seed button: the tappable corner label during calibration.
+   It deliberately paints above the instruction card (z-index 4 over 3): at the
+   default card placement on short players the card is clamped to the native
+   control-strip reserve and covers the marked-spot band, so the pill must stay
+   on top to remain visible and tappable there. */
+.bv-seed-corner-button {
+  position: absolute; z-index: 4; box-sizing: border-box; display: inline-flex; align-items: center;
+  justify-content: flex-start; max-width: calc(100% - 24px); height: var(--sp-10); padding: 0 var(--sp-5);
+  border: 1px solid var(--lime-500); border-radius: var(--radius-pill);
+  background: var(--ink-900); color: var(--lime-500); box-shadow: var(--shadow-raised);
+  font: var(--type-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: auto; transform: translateY(-100%);
+}
+.bv-seed-corner-button:hover:not(:disabled) { color: var(--lime-400); border-color: var(--lime-400); }
+.bv-seed-corner-button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* The pill's translateY(-100%) is its placement contract: it must hover above
+   its marked spot and under the cursor. The generic 1px press-nudge
+   (button:active:not(:disabled)) would displace it ~41px while pressed and
+   make real clicks fall through to the seed layer, so pin it during :active. */
+.bv-seed-layer .bv-seed-corner-button:active { transform: translateY(-100%); }
+.bv-seed-card .bv-seed-shortcuts {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3);
+  font: var(--type-ui-sm); color: var(--text-body);
+}
 .bv-seed-card p { margin: var(--sp-4) 0 0; font: var(--type-body-sm); font-size: var(--fs-12); color: var(--text-body); }
 .bv-seed-note { display: flex; align-items: flex-start; gap: var(--sp-3); margin-top: var(--sp-4); padding-top: var(--sp-4); border-top: 1px solid var(--border-subtle); font: var(--type-ui-sm); font-size: var(--fs-11); color: var(--text-body); }
 .bv-seed-note .bv-button { margin-left: auto; }

@@ -137,11 +137,34 @@ The court-setup seed layer used to capture the whole video during the
 four-corner flow. It now ends at the reserve: `clip-path: inset(0 0
 var(--overlay-controls-reserve) 0)` keeps the strip clickable mid-setup
 (scrim included), and on small players the near-corner guide markers are
-clamped above the strip (`seedFlow` in `src/content.js`) so the guide itself
-stays clickable. The focused gates are `tests/panel-layout.test.mjs`
-(reserve geometry and the height cap) and `tests/live-onboarding.test.mjs`
-(strip control points, seed guide clamp, layer pass-through, and the
-drag/resize/collapse regression).
+clamped above the strip so the guide itself stays clickable. Because the
+clamped marked spot is the *only* reachable target when a corner would fall
+inside the strip, each seeding step also renders a floating corner-label
+button (`.bv-seed-corner-button`, `data-bso-seed-corner-button`) pinned to
+that marked spot and clamped fully above the reserve by the pure
+`placeSeedCornerButton` helper in `src/seed-card.js`. Tapping the button — or
+pressing the corner's number key (1 near left, 2 near right, 3 far right,
+4 far left, wired in `handleKeyboardShortcuts` in `src/content.js`) — places
+the point exactly at the marked spot, so calibration works on small players
+and from the keyboard; direct clicks on the layer still place points
+anywhere for precise mouse placement, and the keyboard tip is documented in
+the seed card itself (`data-bso-seed-shortcuts`). Only the next corner in
+the fixed seed order accepts these shortcuts. A focused control otherwise
+yields to native keys — with one deliberate exception: the current step's
+own floating button advertises its digit in `aria-keyshortcuts` and its
+title ("Press N for the same action"), so that digit places the corner even
+while the button itself is focused, exactly as advertised. The ring and the
+pill are re-derived on every layout pass while seeding (`refreshSeedMarkers`
+at the end of `refreshPanelLayouts` in `src/content.js`), so a mid-seeding
+fullscreen toggle or resize can never strand the pill off-host or pull it
+away from the marked spot. The Hough guidance overlay and the existing
+layer click contract are untouched. The focused gates are
+tests/panel-layout.test.mjs (reserve geometry and the height cap),
+tests/seed-card.test.mjs (button geometry plus the styles.css press-pin
+cascade contract) and tests/live-onboarding.test.mjs (strip control points,
+seed guide clamp, layer pass-through, the pill/keyboard placement flow, the
+focused-pill digit and marker re-anchor cases, and the drag/resize/collapse
+regression).
 
 ## Panel collapse, close, and evidence visibility
 

@@ -108,10 +108,56 @@
       pixels.top + bounds.cardHeight <= bounds.height - bounds.margin + 1e-9;
   }
 
+  // Floating corner-seed button geometry (small-screen court calibration).
+  var SEED_BUTTON_GAP = 12; // space between the corner ring edge and the button
+  var SEED_BUTTON_MARGIN = 12; // minimum distance from the video edges
+  var SEED_RING_RADIUS = 13; // half of the 26px .bv-seed-target guide ring
+
+  // The seed layer's click capture (and guide ring) ends above the native
+  // player control strip, so on small players a near corner would have no
+  // reachable click target. The floating corner button is the tappable
+  // affordance for that corner: it is pinned next to the ring but always sits
+  // fully above the strip reserve. The button carries translateY(-100%), so
+  // the returned `top` is the button's visible bottom edge.
+  function placeSeedCornerButton(anchor, viewport, button, options) {
+    var margin = Math.max(0, finite(options && options.margin, SEED_BUTTON_MARGIN));
+    var gap = Math.max(0, finite(options && options.gap, SEED_BUTTON_GAP));
+    var radius = Math.max(0, finite(options && options.ringRadius, SEED_RING_RADIUS));
+    var reserve = Math.max(0, finite(options && options.reserve, 0));
+    var anchorX = finite(anchor && anchor.x, NaN);
+    var anchorY = finite(anchor && anchor.y, NaN);
+    var height = dimension(button && button.height);
+    var viewportWidth = dimension(viewport && viewport.width);
+    var viewportHeight = dimension(viewport && viewport.height);
+    var layout = { left: null, right: null, top: margin };
+    if (!viewportWidth || !viewportHeight || !height) return layout;
+    // Horizontal pin: anchor the near edge of the button at the corner and let
+    // it extend toward the middle of the video, so it never crosses an edge.
+    if (!Number.isFinite(anchorX)) layout.left = margin;
+    else if (anchorX <= viewportWidth / 2) layout.left = Math.max(0, Math.min(viewportWidth - margin, anchorX));
+    else layout.right = Math.max(0, Math.min(viewportWidth - margin, viewportWidth - anchorX));
+    // Vertical: prefer sitting above the marked spot, clear of its ring, then
+    // clamp so the whole button stays above the player strip reserve. When the
+    // spot is too high for the button to fit above it, sit below the spot.
+    var stripTop = Math.max(0, viewportHeight - reserve);
+    var minTop = margin + height;
+    var maxTop = Math.max(minTop, stripTop - margin);
+    var above = Number.isFinite(anchorY) ? anchorY - radius - gap : minTop;
+    if (Number.isFinite(anchorY) && above < minTop) {
+      layout.top = Math.min(maxTop, Math.max(minTop, anchorY + radius + gap + height));
+    } else {
+      layout.top = Math.max(minTop, Math.min(above, maxTop));
+    }
+    return layout;
+  }
+
   return Object.freeze({
     SEED_CARD_MARGIN: SEED_CARD_MARGIN,
     SEED_CARD_NUDGE: SEED_CARD_NUDGE,
     DEFAULT_SEED_CARD_TOP_RATIO: DEFAULT_SEED_CARD_TOP_RATIO,
+    SEED_BUTTON_GAP: SEED_BUTTON_GAP,
+    SEED_BUTTON_MARGIN: SEED_BUTTON_MARGIN,
+    SEED_RING_RADIUS: SEED_RING_RADIUS,
     normalizePosition: normalizePosition,
     defaultSeedCardPosition: defaultSeedCardPosition,
     clampSeedCardPosition: clampSeedCardPosition,
@@ -119,6 +165,7 @@
     moveSeedCardPosition: moveSeedCardPosition,
     nudgeSeedCardPosition: nudgeSeedCardPosition,
     canSeedFromClick: canSeedFromClick,
-    isWithinSeedCardBounds: isWithinSeedCardBounds
+    isWithinSeedCardBounds: isWithinSeedCardBounds,
+    placeSeedCornerButton: placeSeedCornerButton
   });
 });
