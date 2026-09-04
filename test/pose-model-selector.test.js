@@ -65,7 +65,12 @@ test('sync availability requires the runtime prerequisites, not only the adapter
   all.forEach((model) => { byId[model.id] = model; });
   assert.equal(byId['lightweight-openpose-lite-256-v1'].available, true);
   assert.equal(byId['movenet-multipose-lightning-v1'].available, true);
-  assert.equal(byId['blazepose-tfjs-heavy-v1'].available, true);
+  // BlazePose is work in progress: it stays listed (and its adapter stays
+  // loadable) but is never reported available, even with every prerequisite
+  // present.
+  assert.equal(byId['blazepose-tfjs-heavy-v1'].available, false);
+  assert.equal(byId['blazepose-tfjs-heavy-v1'].reason, 'pose-model-work-in-progress');
+  assert.equal(byId['blazepose-tfjs-heavy-v1'].workInProgress, true);
 
   const noTf = environment();
   delete noTf.tf;
@@ -74,7 +79,22 @@ test('sync availability requires the runtime prerequisites, not only the adapter
   assert.equal(withoutTf['movenet-multipose-lightning-v1'].available, false);
   assert.equal(withoutTf['movenet-multipose-lightning-v1'].reason, 'tensorflowjs-not-loaded');
   assert.equal(withoutTf['blazepose-tfjs-heavy-v1'].available, false);
+  assert.equal(withoutTf['blazepose-tfjs-heavy-v1'].reason, 'pose-model-work-in-progress');
   assert.equal(withoutTf['lightweight-openpose-lite-256-v1'].available, true);
+});
+
+test('the availability probe refuses the work-in-progress model before any runtime or artifact check', async () => {
+  const env = environment();
+  const probe = await selector.probePoseModelAvailability('blazepose-tfjs-heavy-v1', env);
+  assert.equal(probe.available, false);
+  assert.equal(probe.reason, 'pose-model-work-in-progress');
+  // Even without the TF.js runtime the refusal reason is the work-in-progress
+  // gate, never a runtime or artifact diagnostic.
+  const noTf = environment();
+  delete noTf.tf;
+  const noRuntimeProbe = await selector.probePoseModelAvailability('blazepose-tfjs-heavy-v1', noTf);
+  assert.equal(noRuntimeProbe.available, false);
+  assert.equal(noRuntimeProbe.reason, 'pose-model-work-in-progress');
 });
 
 test('artifact probe reports a graph model available only when its local model.json is reachable', async () => {
@@ -83,9 +103,10 @@ test('artifact probe reports a graph model available only when its local model.j
   reachable.fetch = async (url) => ({ ok: String(url).includes('movenet-multipose-lightning/model.json'), status: String(url).includes('movenet-multipose-lightning/model.json') ? 200 : 404 });
   const movenet = await selector.probePoseModelAvailability('movenet-multipose-lightning-v1', reachable);
   assert.equal(movenet.available, true);
-  const missing = await selector.probePoseModelAvailability('blazepose-tfjs-heavy-v1', reachable);
-  assert.equal(missing.available, false);
-  assert.equal(missing.reason, 'pose-model-artifacts-not-bundled');
+  // A non-bundled artifact still refuses a non-WIP model.
+  const notBundled = await selector.probePoseModelAvailability('movenet-multipose-lightning-v1', env);
+  assert.equal(notBundled.available, false);
+  assert.equal(notBundled.reason, 'pose-model-artifacts-not-bundled');
   const noRuntime = environment();
   delete noRuntime.tf;
   const noTf = await selector.probePoseModelAvailability('movenet-multipose-lightning-v1', noRuntime);
@@ -122,11 +143,11 @@ test('switcher prepares and initializes a target before committing, disposing on
 
 test('a target that cannot initialize never displaces the active analyzer', async () => {
   const env = environment();
-  env.BSOBlazePoseTfjsAdapter.BlazePoseAnalyzer = analyzerClass('blazepose-tfjs-heavy-v1', {
+  env.BSOMoveNetAdapter.MoveNetMultiPoseLightningAnalyzer = analyzerClass('movenet-multipose-lightning-v1', {
     initialize: { available: false, reason: 'no-usable-inference-backend' }
   });
   const switcher = new selector.PoseModelSwitcher({ environment: env });
-  const failed = await switcher.activateModel('blazepose-tfjs-heavy-v1');
+  const failed = await switcher.activateModel('movenet-multipose-lightning-v1');
   assert.equal(failed.ok, false);
   assert.equal(failed.reason, 'no-usable-inference-backend');
   assert.equal(switcher.getCurrentModel().id, 'lightweight-openpose-lite-256-v1');
@@ -135,6 +156,47 @@ test('a target that cannot initialize never displaces the active analyzer', asyn
   const unknown = await switcher.activateModel('not-a-model');
   assert.equal(unknown.ok, false);
   assert.equal(switcher.getCurrentModel().id, 'lightweight-openpose-lite-256-v1');
+});
+
+test('the work-in-progress BlazePose entry stays loadable but is refused by every activation path', async () => {
+  const env = environment();
+  // The adapter class stays resolvable and constructible so the model remains
+  // testable while the switch-back wedge is open.
+  const blazeClass = selector.getPoseAnalyzerClass('blazepose-tfjs-heavy-v1', env);
+  assert.ok(blazeClass, 'BlazePose adapter class stays resolvable');
+  assert.equal(new blazeClass({ environment: env }).identity.id, 'blazepose-tfjs-heavy-v1');
+
+  const notices = [];
+  const switcher = new selector.PoseModelSwitcher({ environment: env, onModelChange: (result) => notices.push(result) });
+
+  const prepared = await switcher.prepareModel('blazepose-tfjs-heavy-v1');
+  assert.equal(prepared.ok, false);
+  assert.equal(prepared.reason, 'pose-model-work-in-progress');
+  assert.equal(prepared.prepared, null);
+  assert.equal(switcher.getCurrentModel().id, 'lightweight-openpose-lite-256-v1');
+
+  const activated = await switcher.activateModel('blazepose-tfjs-heavy-v1');
+  assert.equal(activated.ok, false);
+  assert.equal(activated.reason, 'pose-model-work-in-progress');
+  assert.equal(switcher.getCurrentModel().id, 'lightweight-openpose-lite-256-v1');
+
+  const sync = switcher.switchModel('blazepose-tfjs-heavy-v1');
+  assert.equal(sync.ok, false);
+  assert.equal(sync.reason, 'pose-model-work-in-progress');
+  assert.equal(switcher.getCurrentModel().id, 'lightweight-openpose-lite-256-v1');
+
+  assert.deepEqual(notices.map((result) => [result.ok, result.modelId, result.reason]), [
+    [false, 'blazepose-tfjs-heavy-v1', 'pose-model-work-in-progress'],
+    [false, 'blazepose-tfjs-heavy-v1', 'pose-model-work-in-progress']
+  ]);
+});
+
+test('a work-in-progress initial model boots the production default instead', () => {
+  const env = environment();
+  const switcher = new selector.PoseModelSwitcher({ environment: env, initialModelId: 'blazepose-tfjs-heavy-v1' });
+  assert.equal(switcher.getCurrentModel().id, 'lightweight-openpose-lite-256-v1');
+  assert.ok(switcher.getCurrentModel().analyzer);
+  assert.equal(switcher.getCurrentModel().analyzer.identity.id, 'lightweight-openpose-lite-256-v1');
 });
 
 test('switching back to the already active model is a no-op success', async () => {

@@ -167,19 +167,21 @@ class FakeDocument extends FakeNode {
   getElementById(id) { return this.querySelector(`[id="${id}"]`); }
 }
 
-async function createPopupSession({ runtimeStatus = null, poseModelSwitchReason = null } = {}) {
+async function createPopupSession({ runtimeStatus = null, poseModelSwitchReason = null, storedPoseModel = null, nestedPoseModel = null } = {}) {
   const documentRef = new FakeDocument();
   const app = new FakeNode("main");
   app.setAttribute("id", "app");
   documentRef.body.appendChild(app);
   const sent = [];
+  const runtimeMessages = [];
   const manifest = JSON.parse(await read("manifest.json"));
   const runtime = { lastError: null, getURL: (path) => `chrome-extension://test/${path}`, getManifest: () => manifest };
-  if (poseModelSwitchReason !== null) {
-    runtime.sendMessage = (message, callback) => {
-      if (message && message.action === "switchPoseModel") callback({ ok: false, reason: poseModelSwitchReason, modelId: message.modelId });
-    };
-  }
+  runtime.sendMessage = (message, callback) => {
+    runtimeMessages.push(message);
+    if (poseModelSwitchReason !== null && message && message.action === "switchPoseModel") {
+      callback({ ok: false, reason: poseModelSwitchReason, modelId: message.modelId });
+    }
+  };
   const chromeApi = {
     runtime,
     tabs: {
@@ -187,7 +189,12 @@ async function createPopupSession({ runtimeStatus = null, poseModelSwitchReason 
       sendMessage: (tabId, message, callback) => { sent.push({ tabId, message }); callback?.(); }
     },
     storage: { local: {
-      get: (_keys, callback) => callback({ bvState: { videoKey: "youtube:real-match", enabled: false, seeded: false }, bvRuntimeStatus: runtimeStatus }),
+      get: (_keys, callback) => {
+        const stored = { bvState: { videoKey: "youtube:real-match", enabled: false, seeded: false }, bvRuntimeStatus: runtimeStatus };
+        if (storedPoseModel !== null) stored.bvSelectedPoseModel = storedPoseModel;
+        if (nestedPoseModel !== null) stored.bvState.selectedPoseModel = nestedPoseModel;
+        callback(stored);
+      },
       set: (_value, callback) => callback?.()
     } }
   };
@@ -209,7 +216,7 @@ async function createPopupSession({ runtimeStatus = null, poseModelSwitchReason 
   for (const file of ["src/fixtures.js", "src/review.js", "src/state.js", "src/ui.js", "src/popup.js"]) {
     vm.runInContext(await read(file), context, { filename: file });
   }
-  return { app, sent };
+  return { app, sent, runtimeMessages };
 }
 
 async function createContentSession() {
@@ -514,4 +521,52 @@ test("pose model switch failure keeps the cause in the tooltip with a concise st
   assert.ok(full.includes("rejected the target model (404)."), "tooltip carries the full cause");
   assert.ok(full.includes("The previous model remains active."), "tooltip keeps the previous-model note");
   assert.equal(popup.app.querySelector("[data-bso-model-selector]").value, "lightweight-openpose-lite-256-v1", "selector reverts to the previous model");
+});
+
+test("the work-in-progress BlazePose option stays listed but grayed out and cannot be selected", async () => {
+  const popup = await createPopupSession();
+  const select = popup.app.querySelector("[data-bso-model-selector]");
+  assert.ok(select, "model selector renders");
+  const options = select.querySelectorAll("option");
+  const byValue = {};
+  options.forEach((option) => { byValue[option.getAttribute("value")] = option; });
+
+  const blaze = byValue["blazepose-tfjs-heavy-v1"];
+  assert.ok(blaze, "BlazePose keeps its menu entry");
+  assert.equal(blaze.disabled, true, "BlazePose is grayed out/disabled");
+  assert.equal(blaze.getAttribute("title"), "Work in progress: switching to BlazePose Heavy can freeze pose detection until the extension or the tab is reloaded. Disabled until it is fixed.");
+  assert.ok(blaze.children[0].textContent.includes("(work in progress)"), "menu label carries the work-in-progress marker");
+  assert.ok(!byValue["lightweight-openpose-lite-256-v1"].disabled, "production default stays selectable");
+  assert.ok(!byValue["movenet-multipose-lightning-v1"].disabled, "MoveNet stays selectable");
+
+  // A programmatic selection attempt is refused: no switch request leaves the
+  // popup, while a selectable model still goes through to the offscreen.
+  select.value = "blazepose-tfjs-heavy-v1";
+  select.dispatchEvent({ type: "change" });
+  assert.equal(popup.runtimeMessages.filter((message) => message.action === "switchPoseModel").length, 0, "work-in-progress selection is never sent to the offscreen analyzer");
+  select.value = "movenet-multipose-lightning-v1";
+  select.dispatchEvent({ type: "change" });
+  const switches = popup.runtimeMessages.filter((message) => message.action === "switchPoseModel");
+  assert.equal(switches.length, 1);
+  assert.equal(switches[0].modelId, "movenet-multipose-lightning-v1", "selectable model switches still dispatch");
+});
+
+test("a stored BlazePose preference never re-selects the work-in-progress model", async () => {
+  const popup = await createPopupSession({ storedPoseModel: "blazepose-tfjs-heavy-v1" });
+  const select = popup.app.querySelector("[data-bso-model-selector]");
+  assert.equal(select.value, "lightweight-openpose-lite-256-v1", "stored work-in-progress preference falls back to the production default");
+  const blaze = select.querySelectorAll("option").find((option) => option.getAttribute("value") === "blazepose-tfjs-heavy-v1");
+  assert.equal(blaze.disabled, true);
+});
+
+test("a BlazePose selection persisted inside bvState by older builds is filtered at hydration too", async () => {
+  const popup = await createPopupSession({ nestedPoseModel: "blazepose-tfjs-heavy-v1" });
+  const select = popup.app.querySelector("[data-bso-model-selector]");
+  assert.equal(select.value, "lightweight-openpose-lite-256-v1", "nested work-in-progress selection falls back to the production default");
+});
+
+test("a stored MoveNet preference still re-selects its model", async () => {
+  const popup = await createPopupSession({ storedPoseModel: "movenet-multipose-lightning-v1" });
+  const select = popup.app.querySelector("[data-bso-model-selector]");
+  assert.equal(select.value, "movenet-multipose-lightning-v1", "only work-in-progress models are filtered out of stored preferences");
 });

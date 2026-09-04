@@ -191,6 +191,8 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-model-selector:hover:not(:disabled) { border-color: var(--border-strong); }
 .bv-model-selector:focus-visible { outline: 2px solid var(--lime-500); outline-offset: -1px; }
 .bv-model-selector:disabled { opacity: .42; cursor: not-allowed; }
+/* Work-in-progress pose models stay listed but grayed out and unselectable. */
+.bv-model-selector option:disabled { color: var(--text-faint); cursor: not-allowed; }
 .bv-model-section-body {
   display: flex; flex-direction: column; gap: var(--sp-3);
 }
