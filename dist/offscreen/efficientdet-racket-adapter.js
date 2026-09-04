@@ -427,10 +427,11 @@
   // actually initialized and ran on the frame; the composition accepts
   // exactly those envelopes as authoritative racket evidence (real boxes, or
   // an honest unknown when the run found no racket). Before the model can
-  // run (invalid sample, absent artifact, failed fetch or compile) the same
-  // unknown shape is emitted without the marker, so an unavailable model is
-  // never mistaken for a run that found nothing and the composition keeps
-  // its pose-derived wrist/elbow proxy for the frame.
+  // run (invalid sample, absent artifact, failed fetch or compile) or when a
+  // run throws before completing, the same unknown shape is emitted without
+  // the marker, so an unavailable or failed model is never mistaken for a
+  // run that found nothing and the composition keeps its pose-derived
+  // wrist/elbow proxy for the frame.
   function unknownEvidence(reason) {
     return {
       state: 'unknown',
@@ -619,8 +620,19 @@
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         this.failed = reason;
-        this.status({ type: 'inference-failure', requestId, mediaTime, reason });
-        return unknownEvidence(reason);
+        // A run that threw did not complete, so this frame's evidence is not
+        // authoritative (the composition keeps the pose proxy for it). Drop
+        // the broken model and the cached initialization: the next frame
+        // compiles a fresh model, so a transient backend failure (for
+        // example GPU device loss) recovers on a later frame instead of
+        // silently suppressing evidence for the rest of the session.
+        dispose(this.model);
+        this.model = null;
+        this.backend = null;
+        this.backendReport = null;
+        this.initialization = null;
+        this.status({ type: 'inference-failure', sessionId, requestId, mediaTime, reason });
+        return unavailableEvidence(reason);
       } finally {
         this.inFlight = false;
         this.inFlightMediaTime = null;

@@ -166,9 +166,10 @@ function emptyOutputs() {
 }
 
 test('a failed racket-model compile never marks detector output as a completed run', async () => {
+  let compiles = 0;
   const runtime = {
     loaded: true,
-    async loadAndCompile() { throw new Error('model-compile-failed'); }
+    async loadAndCompile() { compiles += 1; throw new Error('model-compile-failed'); }
   };
   const detector = new adapter.EfficientDetRacketDetector({ runtime, backendOrder: ['wasm'], onStatus: () => {} });
   const initialized = await detector.initialize();
@@ -182,6 +183,62 @@ test('a failed racket-model compile never marks detector output as a completed r
   assert.equal(envelope.detectionMethod, null);
   assert.deepEqual(envelope.detections, []);
   assert.match(envelope.reason, /model-compile-failed/);
+  // The failed initialization is cached: a durable absence must not recompile
+  // the artifact on every frame.
+  const repeated = await detector.analyze({ sessionId: 'init-failure', requestId: 'init-failure:2', mediaTime: 2, frame: racketFrame() });
+  assert.equal(repeated.detectionMethod, null);
+  assert.equal(compiles, 1);
+  detector.dispose();
+});
+
+test('a run exception is not authoritative and the detector re-initializes on the next frame', async () => {
+  const statuses = [];
+  let compiles = 0;
+  class FakeTensor {
+    constructor(data, shape) { this.data = data; this.shape = shape; }
+  }
+  // Anchor 0 carries a warm tennis-racket score once the fresh model runs.
+  const warmScores = new Float32Array(19206 * 90);
+  warmScores[0 * 90 + 42] = 4;
+  const runtime = {
+    loaded: true,
+    Tensor: FakeTensor,
+    async loadAndCompile() {
+      compiles += 1;
+      const attempt = compiles;
+      return {
+        async run() {
+          if (attempt === 1) throw new Error('device-lost');
+          return [
+            { shape: [1, 19206, 90], toTypedArray: () => warmScores },
+            { shape: [1, 19206, 4], toTypedArray: () => new Float32Array(19206 * 4) }
+          ];
+        }
+      };
+    }
+  };
+  const detector = new adapter.EfficientDetRacketDetector({ runtime, backendOrder: ['wasm'], onStatus: (value) => statuses.push(value) });
+  const first = await detector.analyze({ sessionId: 'run-failure', requestId: 'run-failure:1', mediaTime: 1, frame: racketFrame() });
+  // A run that threw did not complete: no authoritative marker, so the
+  // composition keeps the wrist/elbow proxy for this frame.
+  assert.equal(first.state, 'unknown');
+  assert.equal(first.detectionMethod, null);
+  assert.deepEqual(first.detections, []);
+  assert.match(first.reason, /device-lost/);
+  const failureStatus = statuses.find((value) => value.type === 'inference-failure');
+  assert.ok(failureStatus, 'a genuine run failure surfaces a status event');
+  assert.equal(failureStatus.sessionId, 'run-failure');
+  assert.equal(failureStatus.requestId, 'run-failure:1');
+  assert.equal(failureStatus.reason, 'device-lost');
+  // The broken model was dropped with its cached initialization, so the next
+  // frame compiles a fresh model and recovers real detections.
+  const second = await detector.analyze({ sessionId: 'run-failure', requestId: 'run-failure:2', mediaTime: 2, frame: racketFrame() });
+  assert.equal(compiles, 2);
+  assert.equal(second.state, 'tracked');
+  assert.equal(second.detectionMethod, 'efficientdet-lite0-tennis-racket');
+  assert.equal(second.detections.length, 1);
+  assert.equal(second.detections[0].class, 'tennis racket');
+  assert.ok(second.detections[0].confidence > 0.9);
   detector.dispose();
 });
 

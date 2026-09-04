@@ -399,7 +399,12 @@ is optional: while its artifact is absent or cannot initialize (failed fetch
 or compile) the composition keeps the historical wrist/elbow pose proxy, and
 once the detector initializes its per-frame results are authoritative - real
 detections replace the proxy and racket state stays `unknown` when the
-detector runs but finds no racket. Artifact provenance, the input/decode
+detector runs but finds no racket. A run that throws did not complete, so
+that frame keeps the proxy while the detector drops the failed model and
+re-initializes on a later frame; a transient backend failure (for example GPU
+device loss) therefore recovers instead of suppressing evidence for the rest
+of the session, and genuine racket failures surface as runtime status without
+changing the pose capability. Artifact provenance, the input/decode
 contract, and the real-model fixtures are recorded in
 `offscreen/vendor/efficientdet-lite0/MODEL-NOTICE.md` and gated by
 `test/efficientdet-racket.test.js` and

@@ -302,7 +302,7 @@ class LocalPoseShuttleAnalyzer {
       try {
         racketResult = await this.racketAnalyzer.analyze(sample);
       } catch (error) {
-        this.status({ component: 'racket', type: 'detection-failed', reason: error instanceof Error ? error.message : String(error) });
+        this.status({ component: 'racket', type: 'detection-failed', sessionId, reason: error instanceof Error ? error.message : String(error) });
       }
     }
     const racketEvidenceFromDetector = racketResult && typeof racketResult === 'object' && racketResult.detectionMethod === 'efficientdet-lite0-tennis-racket'
@@ -425,17 +425,41 @@ const sessionQueues = new Map();
 const frameStates = new Map();
 
 function analyzerStatus(value) {
-  const session = analyzerStatusSessionId && sessions.get(analyzerStatusSessionId);
-  // Per-frame shuttle and racket observations are evidence on the result
-  // envelope, not runtime capability transitions. Forwarding them as global
-  // status would make a healthy pose backend appear to restart every sampled
-  // frame.
-  if (!session || !value || value.component === 'shuttle' || value.component === 'racket') return;
+  // Status events raised while analyzing a frame carry that frame's
+  // sessionId; initialization events fall back to the session currently
+  // being started.
+  const sessionId = (value && value.sessionId) || analyzerStatusSessionId;
+  const session = sessionId ? sessions.get(sessionId) : null;
+  // Per-frame shuttle observations are evidence on the result envelope, not
+  // runtime capability transitions: forwarding them as global status would
+  // make a healthy shuttle appear to restart every sampled frame. Racket
+  // events are filtered the same way except genuine detector failures
+  // (initialization failure or a run that could not complete), which
+  // surface as status while the pose capability stays unchanged.
+  if (!session || !value || value.component === 'shuttle') return;
+  const details = activeAnalyzer.capabilityDetails || {};
+  if (value.component === 'racket') {
+    if (value.type !== 'model-failure' && value.type !== 'inference-failure' && value.type !== 'detection-failed') return;
+    const poseReady = activeAnalyzer.initializationState?.available !== false;
+    void send(BSOProtocol.createRuntimeStatus({
+      sessionId: session.sessionId,
+      phase: poseReady ? 'ready' : 'fallback',
+      message: poseReady ? 'Racket detection is unavailable; pose and shuttle analysis continue.' : 'Racket detection is unavailable; playback is unaffected.',
+      capabilities: capabilityState(session.capabilities, {
+        inference: poseReady,
+        analyzer: poseReady ? (activeAnalyzer.identity?.id || analyzerId()) : 'none',
+        backend: details.backend || null,
+        fallbacks: details.fallbacks || [],
+        shuttle: details.shuttle || null
+      }),
+      reason: value.reason ? `racket-${value.type}:${value.reason}` : `racket-${value.type}`
+    }));
+    return;
+  }
   const isFailure = value.type === 'model-failure' || value.type === 'composition-pose-unavailable' ||
     value.type === 'inference-failure' || value.type === 'pose-failure';
   const isReady = value.type === 'model-ready' || value.type === 'composition-ready';
   const phase = isFailure ? 'fallback' : isReady ? 'ready' : 'starting';
-  const details = activeAnalyzer.capabilityDetails || {};
   void send(BSOProtocol.createRuntimeStatus({
     sessionId: session.sessionId,
     phase,
