@@ -461,29 +461,55 @@
    * Detect court lines from a frame.
    */
   async function detectCourtLines(frame, config = DEFAULT_CONFIG) {
-    // Read frame pixels
-    const Canvas = defaultEnvironment && defaultEnvironment.OffscreenCanvas;
-    let canvas = Canvas ? new Canvas(frame.width, frame.height) : null;
-    if (!canvas && defaultEnvironment && defaultEnvironment.document && defaultEnvironment.document.createElement) {
-      canvas = defaultEnvironment.document.createElement('canvas');
-      canvas.width = frame.width;
-      canvas.height = frame.height;
+    // Check if frame is already ImageData or has pixel data directly
+    // This avoids unnecessary canvas roundtrip and works with serialized frames
+    let pixels;
+    if (frame && frame.data && frame.width && frame.height) {
+      // Frame is already ImageData or has .data array (from deserialization)
+      // Check if data length matches expected size
+      const expectedLength = frame.width * frame.height * 4;
+      if (frame.data.length === expectedLength) {
+        // Use frame directly - no canvas needed
+        pixels = {
+          width: frame.width,
+          height: frame.height,
+          data: frame.data instanceof Uint8ClampedArray ? frame.data : new Uint8ClampedArray(frame.data),
+          channels: 4
+        };
+      }
     }
-    if (!canvas || typeof canvas.getContext !== 'function') return { lines: [] };
 
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context || typeof context.drawImage !== 'function' || typeof context.getImageData !== 'function') {
-      return { lines: [] };
+    // Fallback: use canvas for sources that need drawImage (ImageBitmap, VideoFrame, HTMLCanvasElement, etc.)
+    if (!pixels) {
+      const Canvas = defaultEnvironment && defaultEnvironment.OffscreenCanvas;
+      let canvas = Canvas ? new Canvas(frame.width, frame.height) : null;
+      if (!canvas && defaultEnvironment && defaultEnvironment.document && defaultEnvironment.document.createElement) {
+        canvas = defaultEnvironment.document.createElement('canvas');
+        canvas.width = frame.width;
+        canvas.height = frame.height;
+      }
+      if (!canvas || typeof canvas.getContext !== 'function') return { lines: [] };
+
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context || typeof context.drawImage !== 'function' || typeof context.getImageData !== 'function') {
+        return { lines: [] };
+      }
+
+      // Only attempt drawImage if frame is a drawable type (not ImageData)
+      if (typeof frame.drawImage === 'function' || frame instanceof HTMLCanvasElement ||
+          (defaultEnvironment && defaultEnvironment.ImageBitmap && frame instanceof defaultEnvironment.ImageBitmap)) {
+        context.drawImage(frame, 0, 0, frame.width, frame.height);
+        const image = context.getImageData(0, 0, frame.width, frame.height);
+        pixels = {
+          width: frame.width,
+          height: frame.height,
+          data: image.data,
+          channels: 4
+        };
+      } else {
+        return { lines: [] };
+      }
     }
-
-    context.drawImage(frame, 0, 0, frame.width, frame.height);
-    const image = context.getImageData(0, 0, frame.width, frame.height);
-    const pixels = {
-      width: frame.width,
-      height: frame.height,
-      data: image.data,
-      channels: 4
-    };
 
     if (!validDimensions(pixels)) return { lines: [] };
 
