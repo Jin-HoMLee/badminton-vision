@@ -183,7 +183,11 @@ accelerator spelled out as a capability (WebGPU acceleration / WebGL
 (`fixture probe · not production CV`) — no demo or fixture context renders
 a static count. The chip's timestamp detail is the media clock only once
 the content script has written `state.time`; the unwritten `12:04.320`
-default never appears while a session is starting or in fallback.
+default never appears while a session is starting or in fallback. The
+design-system click-through mocks under `design-system/ui_kits/extension/`
+are generic PRD sample content, not shipped behavior; their static chip
+sample values (`Rally 14`, `12:04.320`) must not be read as product
+behavior.
 
 ## Court projection
 
