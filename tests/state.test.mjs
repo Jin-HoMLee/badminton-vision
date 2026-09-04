@@ -36,7 +36,7 @@ test("public setup journey keeps minimal density and exposes reversible states",
   const state = await stateModule();
   let current = state.initialExtensionState();
   assert.equal(current.density, "minimal");
-  assert.deepEqual(JSON.parse(JSON.stringify(current.panels)), { feed: false, stats: false, map: false, controls: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(current.panels)), { feed: false, stats: false, map: false, controls: false, settings: false });
   assert.equal(current.trackerSettings.body, true);
   assert.equal(current.trackerSettings.shuttle, true);
   assert.equal(current.trackerSettings.players, false);
@@ -139,7 +139,7 @@ test("default overlay preferences are evidence-only, video-local, and reversible
   current = state.reduceExtensionState(current, { type: "SET_TRACKER", tracker: "body", value: false });
   assert.equal(current.panels.stats, true);
   assert.equal(current.trackerSettings.body, false);
-  assert.deepEqual(JSON.parse(JSON.stringify(current.panelsByVideo[videoA])), { feed: false, stats: true, map: false, controls: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(current.panelsByVideo[videoA])), { feed: false, stats: true, map: false, controls: false, settings: false });
   assert.equal(current.panels.evidence, undefined, "the retired standalone evidence panel has no visibility state owner");
   const legacy = state.initialExtensionState({ videoKey: videoA, panels: { evidence: true }, panelLayouts: { evidence: { x: 0.2, y: 0.2, width: 0.3, height: 0.3 } }, collapsedPanels: { evidence: true } });
   assert.equal(legacy.panels.evidence, undefined, "legacy panel visibility cannot resurrect the standalone surface");
@@ -147,7 +147,7 @@ test("default overlay preferences are evidence-only, video-local, and reversible
   assert.equal(legacy.collapsedPanels.evidence, undefined, "legacy evidence collapse state is discarded");
 
   const otherVideo = state.stateForVideo(current, videoB);
-  assert.deepEqual(JSON.parse(JSON.stringify(otherVideo.panels)), { feed: false, stats: false, map: false, controls: false });
+  assert.deepEqual(JSON.parse(JSON.stringify(otherVideo.panels)), { feed: false, stats: false, map: false, controls: false, settings: false });
   assert.equal(otherVideo.trackerSettings.body, true);
   const restored = state.stateForVideo(otherVideo, videoA);
   assert.equal(restored.panels.stats, true);
@@ -290,4 +290,47 @@ test("unscoped evidence preference set before the first video binds to that vide
   const pristine = state.stateForVideo(state.initialExtensionState(), videoB);
   assert.equal(pristine.trackerSettings.body, true);
   assert.equal(Object.keys(pristine.trackerSettingsByVideo).length, 0, "no preference is fabricated for untouched videos");
+});
+
+test("settings panel visibility, collapse, and layout register like the other panels", async () => {
+  const state = await stateModule();
+  const videoA = state.videoKeyForUrl("https://www.youtube.com/watch?v=alpha");
+  const videoB = state.videoKeyForUrl("https://www.youtube.com/watch?v=beta");
+  let current = state.initialExtensionState({ videoKey: videoA });
+  assert.equal(current.panels.settings, false, "settings starts closed");
+  assert.deepEqual(JSON.parse(JSON.stringify(current.settings)), {}, "Phase 1 settings values are an empty reserved container");
+
+  // The visibility toggle is a normal per-video panel choice and survives
+  // density changes even though presets never own the settings panel.
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL", panel: "settings", value: true });
+  assert.equal(current.panels.settings, true);
+  assert.equal(current.panelOverrides.settings, true, "an explicit open becomes an override");
+  current = state.reduceExtensionState(current, { type: "SET_DENSITY", value: "full" });
+  assert.equal(current.panels.settings, true, "an open settings panel survives a density change");
+  current = state.reduceExtensionState(current, { type: "SET_DENSITY", value: "minimal" });
+  assert.equal(current.panels.settings, true, "density presets never close the settings panel");
+  assert.deepEqual(JSON.parse(JSON.stringify(current.panelsByVideo[videoA])), { feed: false, stats: false, map: false, controls: false, settings: true });
+
+  // Panel geometry and collapse follow the standard per-video contracts.
+  current = state.reduceExtensionState(current, { type: "SET_PANEL_LAYOUT", panel: "settings", videoKey: videoA, layout: { x: 0.2, y: 0.15, width: 0.4, height: 0.3 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(current.panelLayouts.settings)), { x: 0.2, y: 0.15, width: 0.4, height: 0.3 });
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL_COLLAPSE", panel: "settings", videoKey: videoA, value: true });
+  assert.equal(current.collapsedPanels.settings, true);
+  current = state.reduceExtensionState(current, { type: "TOGGLE_PANEL_COLLAPSE", panel: "settings", videoKey: videoA, value: false });
+  assert.equal(current.collapsedPanels.settings, undefined);
+
+  // Visibility is video-local like every panel; the values container is a
+  // global serializable object that survives video switches and round trips.
+  const other = state.stateForVideo(JSON.parse(JSON.stringify(current)), videoB);
+  assert.equal(other.panels.settings, false, "another video starts with settings closed");
+  const back = state.stateForVideo(JSON.parse(JSON.stringify(current)), videoA);
+  assert.equal(back.panels.settings, true, "returning to the video restores the open settings panel");
+  assert.deepEqual(JSON.parse(JSON.stringify(back.panelLayouts.settings)), { x: 0.2, y: 0.15, width: 0.4, height: 0.3 });
+
+  const withValues = state.initialExtensionState(Object.assign({}, JSON.parse(JSON.stringify(current)), { settings: { densityDefault: "balanced" } }));
+  assert.equal(withValues.settings.densityDefault, "balanced");
+  const roundTrip = state.initialExtensionState(JSON.parse(JSON.stringify(withValues)));
+  assert.equal(roundTrip.settings.densityDefault, "balanced", "future settings keys survive storage round trips");
+  const reset = state.resetVideoLocalState(roundTrip, videoB);
+  assert.equal(reset.settings.densityDefault, "balanced", "video-local resets never clear global settings values");
 });

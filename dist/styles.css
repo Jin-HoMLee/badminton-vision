@@ -411,6 +411,18 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-overlay-root > [data-bso-panel="feed"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: var(--overlay-panel-width); }
 .bv-overlay-root > [data-bso-panel="manual"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: min(380px, calc(100% - 32px)); max-height: calc(100% - var(--overlay-gutter) - var(--overlay-controls-reserve)); }
 .bv-overlay-root > [data-bso-panel="controls"] { right: var(--overlay-gutter); bottom: var(--overlay-controls-reserve); width: auto; min-width: 180px; }
+.bv-overlay-root > [data-bso-panel="settings"] { left: var(--overlay-gutter); top: 58px; width: min(300px, calc(100% - 32px)); }
+/* Settings panel About block (Area 4 Phase 1): the first body section holds
+   read-only version/note/link rows; Phase 2 display/inference sections follow
+   below in the same flow. */
+.bv-settings-about { display: flex; flex-direction: column; gap: var(--sp-4); }
+.bv-settings-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-4); }
+.bv-settings-key { font: var(--type-label); letter-spacing: var(--ls-caps); text-transform: uppercase; color: var(--text-faint); }
+.bv-settings-value { font-size: var(--fs-11); color: var(--text-primary); }
+.bv-settings-note { margin: 0; font: var(--type-ui-sm); font-size: var(--fs-11); line-height: 1.5; color: var(--text-muted); }
+.bv-settings-links { display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-4); margin: 0; padding: 0; list-style: none; }
+.bv-settings-links a { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--lime-400); font: var(--type-ui-sm); font-size: var(--fs-12); text-decoration: none; }
+.bv-settings-links a:hover, .bv-settings-links a:focus-visible { text-decoration: underline; }
 /* One quiet access point keeps the default video layer to detection evidence.
    Its menu is hidden until requested and sits at the top edge, away from the
    native player control strip. */

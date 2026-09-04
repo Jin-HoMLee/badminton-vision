@@ -6228,7 +6228,16 @@
       // Evidence visibility is controlled in the popup's disclosure; it is not
       // an on-video panel. Keep panel furniture limited to actual overlay
       // surfaces so legacy evidence-panel state cannot mount a duplicate UI.
-      panels: { feed: false, stats: false, map: false, controls: false },
+      // The settings panel is furniture like the others: per-video visibility,
+      // collapse, and geometry, never part of the density presets.
+      panels: { feed: false, stats: false, map: false, controls: false, settings: false },
+      // Settings panel values (Area 4 Phase 1 ships the read-only About content:
+      // version and links). Phase 2 display/inference preferences belong in this
+      // one serializable object, mirroring the toggle-backed trackerSettings
+      // pattern. Settings are global preferences; the settings panel's open
+      // state, collapse, and geometry stay video-local through the panels,
+      // collapse, and layout maps below.
+      settings: {},
       // Explicit panel choices override density presets while the preference
       // still gives Balanced/Full a useful default presentation. Both the
       // effective values and overrides are scoped to the active video.
@@ -6396,7 +6405,7 @@
       return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
     }
   
-    var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls"];
+    var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls", "settings"];
   
     function copyPanelLayout(layout) {
       if (!layout || typeof layout !== "object") return null;
@@ -6440,7 +6449,7 @@
   
     // Panels that are overlay furniture (not the transient court-setup card)
     // get a header collapse/expand affordance; state mirrors layout persistence.
-    var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls"];
+    var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls", "settings"];
   
     function copyPanelCollapseState(collapsed) {
       var result = {};
@@ -6482,7 +6491,7 @@
   
     function copyEdit(edit) { return edit && typeof edit === "object" ? clone(edit) : null; }
   
-    var PANEL_VISIBILITY_KEYS = ["feed", "stats", "map", "controls"];
+    var PANEL_VISIBILITY_KEYS = ["feed", "stats", "map", "controls", "settings"];
     function copyPanelVisibility(panels) {
       var result = {};
       if (!panels || typeof panels !== "object") return result;
@@ -8445,7 +8454,8 @@
       map: { minWidth: 176, minHeight: 190, maxWidth: 360, maxHeight: 520, bottomReserve: PLAYER_CONTROLS_RESERVE },
       feed: { minWidth: 280, minHeight: 128, maxWidth: 560, maxHeight: 520, bottomReserve: PLAYER_CONTROLS_RESERVE },
       manual: { minWidth: 320, minHeight: 300, maxWidth: 620, maxHeight: 690, bottomReserve: PLAYER_CONTROLS_RESERVE },
-      controls: { minWidth: 180, minHeight: 84, maxWidth: 360, maxHeight: 220, bottomReserve: PLAYER_CONTROLS_RESERVE }
+      controls: { minWidth: 180, minHeight: 84, maxWidth: 360, maxHeight: 220, bottomReserve: PLAYER_CONTROLS_RESERVE },
+      settings: { minWidth: 240, minHeight: 96, maxWidth: 420, maxHeight: 480, bottomReserve: PLAYER_CONTROLS_RESERVE }
     };
     function panelConstraints(panelId) { return PANEL_LAYOUT_CONSTRAINTS[panelId] || {}; }
     function panelMetrics(container, panel) {
@@ -9155,12 +9165,52 @@
         overlayPanelShortcut("Rally stats", "stats", "activity", "Show rally statistics"),
         overlayPanelShortcut("Court map", "map", "crosshair", "Show the court map"),
         overlayPanelShortcut("Live controls", "controls", "sliders", "Show density and summary shortcuts"),
+        overlayPanelShortcut("Settings", "settings", "settings", "Show version, local-first notes, and links"),
         manualShortcut,
         ui.button("Density: " + state.density, { variant: "ghost", size: "sm", icon: "sliders", onClick: cycleDensity }),
         ui.button("Summary", { variant: "ghost", size: "sm", icon: "table", onClick: openSummary })
       ]);
       access.appendChild(menu);
       return access;
+    }
+    // Settings panel About registry (Area 4 Phase 1). Links open in a new tab
+    // only on user click; the extension never fetches them. Phase 2 appends
+    // display/inference sections to settingsPanel() and stores their values in
+    // defaults.settings (see docs/settings-panel.md).
+    var SETTINGS_ABOUT_LINKS = [
+      { label: "Project source & licenses", href: "https://github.com/Jin-HoMLee/badminton-vision", description: "Source code, bundled model notices, and license texts" }
+    ];
+    function extensionVersion() {
+      if (!hasChrome() || !chrome.runtime || typeof chrome.runtime.getManifest !== "function") return null;
+      try {
+        var version = chrome.runtime.getManifest().version;
+        return version == null ? null : String(version);
+      } catch (_) { return null; }
+    }
+    function settingsPanel() {
+      var version = extensionVersion();
+      var about = ui.el("section", { className: "bv-settings-about", "aria-label": "About", "data-bso-settings-about": "true" }, [
+        ui.el("div", { className: "bv-settings-row" }, [
+          ui.el("span", { className: "bv-settings-key" }, ["Version"]),
+          ui.el("span", { className: "bv-settings-value bv-mono", "data-bso-extension-version": version || "" }, [version || "—"])
+        ]),
+        ui.el("p", { className: "bv-settings-note" }, ["Local-first analysis. Video frames and your labels stay on this device; no account or upload is involved."]),
+        ui.el("ul", { className: "bv-settings-links", "data-bso-settings-links": "true" }, SETTINGS_ABOUT_LINKS.map(function (link) {
+          return ui.el("li", {}, [ui.el("a", { href: link.href, target: "_blank", rel: "noreferrer", title: link.description || link.label }, [link.label, ui.icon("external", 12)])]);
+        }))
+      ]);
+      return ui.panel("Settings", {
+        layoutId: "settings",
+        icon: "settings",
+        className: "bv-settings-panel",
+        collapsed: panelCollapsed("settings"),
+        onToggleCollapse: function (value) { togglePanelCollapsed("settings", value); },
+        actions: [ui.iconButton("x", "Hide settings", { size: "sm", onClick: function () {
+          state = window.BVState.reduceExtensionState(state, { type: "TOGGLE_PANEL", panel: "settings", value: false });
+          persist();
+          render();
+        } })]
+      }, [about]);
     }
     function liveOverlay() {
       var overlay = ui.el("div", {
@@ -9627,7 +9677,11 @@
       clearPanelGesture();
       updateDiagnosticsMarkers();
       root.replaceChildren();
-      if (!state.enabled && !state.seeding && !state.labeling) return;
+      // The settings panel is on-demand furniture like manual labeling: it
+      // mounts without inference so About content stays reachable before the
+      // overlay is enabled, and withholds only during a camera-cut reseed where
+      // every other stale layer is hidden too.
+      if (!state.enabled && !state.seeding && !state.labeling && !(state.panels && state.panels.settings)) return;
       // Court setup is an optional mapping flow layered over the same live
       // inference surface. Never replace raw pose/shuttle/racket evidence with
       // the setup card just because calibration is missing or being changed.
@@ -9636,6 +9690,7 @@
       if (state.enabled && !(state.seeding && state.cameraCut)) root.appendChild(liveOverlay());
       if (state.seeding) root.appendChild(seedFlow());
       if (state.labeling && !state.seeding) root.appendChild(manualPanel());
+      if (state.panels && state.panels.settings && !(state.seeding && state.cameraCut)) root.appendChild(settingsPanel());
       // Append houghCanvas at root level for proper z-index layering (above seed-layer background but below seed-points/card)
       if (houghCanvas) root.appendChild(houghCanvas);
       // Detection lifecycle is derived from seeding state so camera-cut re-seeds

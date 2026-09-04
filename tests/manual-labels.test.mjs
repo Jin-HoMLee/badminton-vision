@@ -98,7 +98,9 @@ test("create, edit, delete, and undo operate on one durable video record", async
 test("manual content path is playback-neutral and does not start runtime for labeling", async () => {
   const content = await readFile(new URL("../src/content.js", import.meta.url), "utf8");
   assert.match(content, /Manual \/ offline mode/);
-  assert.match(content, /if \(!state\.enabled && !state\.seeding && !state\.labeling\) return/);
+  // The settings panel is independent furniture too: the overlay may render it
+  // without inference while manual labeling still never starts the runtime.
+  assert.match(content, /if \(!state\.enabled && !state\.seeding && !state\.labeling && !\(state\.panels && state\.panels\.settings\)\) return/);
   assert.match(content, /else if \(message\.type === "OPEN_LABELING"\) \{ bindVideoState\(\); openLabeling\(\); \}/);
   assert.doesNotMatch(content, /video\.currentTime\s*=/);
   assert.doesNotMatch(content, /video\.(?:play|pause)\s*\(/);

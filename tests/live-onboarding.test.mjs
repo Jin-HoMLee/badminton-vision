@@ -199,6 +199,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
     runtime: {
       lastError: null,
       getURL: (path) => `chrome-extension://test/${path}`,
+      getManifest: () => ({ name: "Badminton Vision", version: "0.1.0" }),
       sendMessage: (_message, callback) => callback?.(),
       onMessage: { addListener: (listener) => { onMessage = listener; messageListeners.push(listener); } }
     },
@@ -631,7 +632,7 @@ test("minimal live overlay keeps only detection evidence and one on-demand acces
   assert.equal(root.querySelectorAll("[data-bso-overlay-access]").length, 1, "minimal mode has one compact access point");
   assert.equal(root.querySelector("[data-bso-overlay-access]").getAttribute("aria-expanded"), "false");
   assert.equal(root.querySelector("[data-bso-overlay-menu]").getAttribute("hidden") !== null, true, "the shortcut menu is on demand");
-  for (const panel of ["stats", "map", "feed", "evidence", "controls"]) {
+  for (const panel of ["stats", "map", "feed", "evidence", "controls", "settings"]) {
     assert.equal(root.querySelector(`[data-bso-panel="${panel}"]`), null, `${panel} stays off the video by default`);
   }
   assert.equal(root.querySelector(".bv-runtime-note"), null);
@@ -2122,4 +2123,117 @@ test("S and E keyboard shortcuts and the Start/End controls both capture the liv
   const controlWindow = root.querySelector("[data-bso-label-window]").textContent;
   assert.ok(controlWindow.includes("01:21.000"), `Start captures the live clock: ${controlWindow}`);
   assert.ok(controlWindow.includes("01:35.250"), `End captures the live clock: ${controlWindow}`);
+});
+
+test("the settings panel mounts without inference and renders version, note, and links", async () => {
+  const session = await createSession();
+  session.flushStorage();
+  assert.equal(session.overlayRoot().querySelector('[data-bso-panel="settings"]'), null, "settings starts closed");
+  session.onMessage({ type: "SET_PANELS", panels: { settings: true }, requestId: "settings-open-1" });
+  const root = session.overlayRoot();
+  const panel = root.querySelector('[data-bso-panel="settings"]');
+  assert.ok(panel, "the settings panel mounts while inference is off (About content needs no runtime)");
+  assert.equal(session.runtimeStarts, 0, "opening settings never starts the analyzer runtime");
+  assert.equal(root.querySelector('[data-bso-panel="feed"]'), null, "no other panel mounts with it");
+  assert.ok(panel.querySelector(".bv-settings-about"), "the About block renders");
+  assert.ok(panel.querySelector(".bv-settings-row"), "the version row renders");
+  const version = panel.querySelector("[data-bso-extension-version]");
+  assert.equal(version.getAttribute("data-bso-extension-version"), "0.1.0", "the version comes from the extension manifest");
+  assert.equal(textOf(version), "0.1.0");
+  assert.match(textOf(panel), /Local-first analysis\./);
+  const link = panel.querySelector(".bv-settings-links").querySelectorAll("a")[0];
+  assert.ok(link, "the About link list renders");
+  assert.equal(link.getAttribute("href"), "https://github.com/Jin-HoMLee/badminton-vision");
+  assert.equal(link.getAttribute("rel"), "noreferrer");
+  assert.equal(link.getAttribute("target"), "_blank");
+  assert.match(textOf(link), /Project source & licenses/);
+
+  // The panel is standard movable furniture with collapse and close affordances.
+  assert.ok(panel.querySelector("[data-bso-panel-drag-handle]"), "settings has a header drag surface");
+  assert.ok(panel.querySelector("[data-bso-panel-resize-handle]"), "settings has a resize affordance");
+  const collapse = panel.querySelector("[data-bso-panel-collapse]");
+  assert.ok(collapse, "settings collapses from its header");
+  assert.equal(collapse.getAttribute("aria-expanded"), "true");
+  assert.equal(panel.getAttribute("data-bso-panel-collapsed"), "false");
+
+  // Close (x) is the distinct hide action and persists per video.
+  const close = panel.querySelector('[aria-label="Hide settings"]');
+  assert.ok(close, "settings has an explicit close action");
+  close.dispatchEvent({ type: "click" });
+  assert.equal(session.overlayRoot().querySelector('[data-bso-panel="settings"]'), null, "closing removes the panel");
+  assert.equal(session.storageWrites.at(-1).bvState.panelsByVideo["youtube:real-match"].settings, false, "the hide is stored for this video");
+});
+
+test("the settings panel stays available during setup and withholds only for a camera-cut reseed", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  live.onMessage({ type: "SET_PANELS", panels: { settings: true }, requestId: "settings-seed-1" });
+  assert.ok(live.overlayRoot().querySelector('[data-bso-panel="settings"]'), "settings is open before setup");
+
+  // User-initiated court setup is layered over the live surface; furniture
+  // such as settings stays mounted (matching stats/feed during setup).
+  live.onMessage({ type: "START_SEED", requestId: "settings-seed-2" });
+  let root = live.overlayRoot();
+  assert.ok(root.querySelector("[data-bso-court-seeding]"), "the setup surface renders");
+  assert.ok(root.querySelector('[data-bso-panel="settings"]'), "settings stays mounted during user-initiated setup");
+  buttonWithText(root, "Cancel").dispatchEvent({ type: "click", target: buttonWithText(root, "Cancel") });
+  assert.ok(live.overlayRoot().querySelector('[data-bso-panel="settings"]'), "settings remains after cancelling setup");
+
+  // A camera cut invalidates every stale layer over the new camera angle.
+  live.onMessage({ type: "CAMERA_CUT", requestId: "settings-cut-1" });
+  root = live.overlayRoot();
+  assert.ok(root.querySelector("[data-bso-court-seeding]"), "the reseed flow renders after a camera cut");
+  assert.equal(root.querySelector('[data-bso-panel="settings"]'), null, "settings withholds during the camera-cut reseed");
+  assert.equal(root.querySelector(".bv-runtime-evidence"), null, "raw evidence withholds during the reseed too");
+  buttonWithText(root, "Cancel").dispatchEvent({ type: "click", target: buttonWithText(root, "Cancel") });
+  assert.ok(live.overlayRoot().querySelector('[data-bso-panel="settings"]'), "settings returns when the reseed resolves");
+});
+
+test("the overlay access point opens the settings panel from the video", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  live.flushStorage();
+  let root = live.overlayRoot();
+  root.querySelector("[data-bso-overlay-access]").dispatchEvent({ type: "click" });
+  root = live.overlayRoot();
+  const shortcut = root.querySelector('[data-bso-overlay-shortcut="settings"]');
+  assert.ok(shortcut, "the access point menu lists Settings");
+  shortcut.dispatchEvent({ type: "click" });
+  root = live.overlayRoot();
+  assert.ok(root.querySelector('[data-bso-panel="settings"]'), "the shortcut opens the settings panel");
+  assert.equal(root.querySelector("[data-bso-overlay-access]").getAttribute("aria-expanded"), "false", "opening a panel closes the shortcut menu");
+  assert.equal(live.storageWrites.at(-1).bvState.panelsByVideo["youtube:real-match"].settings, true, "the opened panel preference is saved for this video");
+});
+
+test("the popup settings gear toggles the panel and the Panel Controls row stays wired", async () => {
+  const popup = await createPopupSession();
+  let gear = popup.app.querySelector("[data-bso-settings-toggle]");
+  assert.ok(gear, "the header gear renders");
+  assert.equal(Boolean(gear.disabled), false, "the gear is enabled on a watch page");
+  assert.equal(gear.getAttribute("aria-label"), "Show settings panel");
+  assert.equal(gear.className.includes("active"), false, "the gear is inactive while the panel is closed");
+  gear.dispatchEvent({ type: "click" });
+  assert.equal(popup.sent.at(-1).message.type, "SET_PANELS", "the gear messages the content script");
+  assert.equal(popup.sent.at(-1).message.panels.settings, true, "the gear opens the settings panel");
+  gear = popup.app.querySelector("[data-bso-settings-toggle]");
+  assert.equal(gear.getAttribute("aria-label"), "Hide settings panel");
+  assert.equal(gear.className.includes("active"), true, "the gear reflects the open panel");
+  gear.dispatchEvent({ type: "click" });
+  assert.equal(popup.sent.at(-1).message.panels.settings, false, "the gear closes the panel again");
+  assert.equal(popup.app.querySelector("[data-bso-settings-toggle]").getAttribute("aria-label"), "Show settings panel");
+
+  // The disclosure row is the same per-video toggle as the other panels.
+  const toggle = popup.app.querySelector("[data-bso-panel-controls-toggle]");
+  toggle.dispatchEvent({ type: "click" });
+  const settingsToggle = popup.app.querySelector('[aria-label="Toggle Settings"]');
+  assert.ok(settingsToggle, "Panel Controls lists a Settings toggle");
+  assert.equal(settingsToggle.getAttribute("aria-checked"), "false");
+  settingsToggle.dispatchEvent({ type: "click" });
+  assert.equal(popup.app.querySelector('[aria-label="Toggle Settings"]').getAttribute("aria-checked"), "true", "the disclosure row opens settings");
+  assert.equal(popup.sent.at(-1).message.panels.settings, true);
+
+  // Outside a watch page the gear stays disabled with an honest label.
+  const other = await createPopupSession({ tabUrl: "https://example.com/", tabTitle: "Example", videoInfo: null });
+  const offPageGear = other.app.querySelector("[data-bso-settings-toggle]");
+  assert.equal(Boolean(offPageGear.disabled), true, "settings is disabled without a watch page");
+  assert.equal(offPageGear.getAttribute("aria-label"), "Settings unavailable here");
 });

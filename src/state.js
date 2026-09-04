@@ -48,7 +48,16 @@
     // Evidence visibility is controlled in the popup's disclosure; it is not
     // an on-video panel. Keep panel furniture limited to actual overlay
     // surfaces so legacy evidence-panel state cannot mount a duplicate UI.
-    panels: { feed: false, stats: false, map: false, controls: false },
+    // The settings panel is furniture like the others: per-video visibility,
+    // collapse, and geometry, never part of the density presets.
+    panels: { feed: false, stats: false, map: false, controls: false, settings: false },
+    // Settings panel values (Area 4 Phase 1 ships the read-only About content:
+    // version and links). Phase 2 display/inference preferences belong in this
+    // one serializable object, mirroring the toggle-backed trackerSettings
+    // pattern. Settings are global preferences; the settings panel's open
+    // state, collapse, and geometry stay video-local through the panels,
+    // collapse, and layout maps below.
+    settings: {},
     // Explicit panel choices override density presets while the preference
     // still gives Balanced/Full a useful default presentation. Both the
     // effective values and overrides are scoped to the active video.
@@ -216,7 +225,7 @@
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
   }
 
-  var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls"];
+  var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls", "settings"];
 
   function copyPanelLayout(layout) {
     if (!layout || typeof layout !== "object") return null;
@@ -260,7 +269,7 @@
 
   // Panels that are overlay furniture (not the transient court-setup card)
   // get a header collapse/expand affordance; state mirrors layout persistence.
-  var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls"];
+  var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls", "settings"];
 
   function copyPanelCollapseState(collapsed) {
     var result = {};
@@ -302,7 +311,7 @@
 
   function copyEdit(edit) { return edit && typeof edit === "object" ? clone(edit) : null; }
 
-  var PANEL_VISIBILITY_KEYS = ["feed", "stats", "map", "controls"];
+  var PANEL_VISIBILITY_KEYS = ["feed", "stats", "map", "controls", "settings"];
   function copyPanelVisibility(panels) {
     var result = {};
     if (!panels || typeof panels !== "object") return result;
