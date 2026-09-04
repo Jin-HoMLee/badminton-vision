@@ -239,7 +239,8 @@ TensorFlow Hub and is not bundled). BlazePose is work in progress: its menu
 entry stays listed but grayed out and unselectable, and switches or stored
 preferences naming it are refused, because switching to it can freeze pose
 detection until the extension or the tab is reloaded. LiteOpenPose is the
-bundled production default. The versioned pose shape and deterministic multi-person association gates live
+bundled production default.
+The versioned pose shape and deterministic multi-person association gates live
 in `src/extension/common/player-tracking.js`; see `docs/runtime.md` for the
 contract, licensing notice, runtime smoke check, and canonical packaging
 details. The local shuttle candidate/trajectory adapter is loaded by the same

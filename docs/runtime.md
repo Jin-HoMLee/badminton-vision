@@ -170,8 +170,10 @@ describes the model and output shape but does not state a license, and the
 TensorFlow.js MoveNet repository's Apache-2.0 notice covers its adapter source,
 not necessarily Google's separately distributed weights. Until Google provides
 an explicit weight redistribution grant or a model package with a clear license
-and attribution notice, adding `model.json` or weight shards would violate the
-launch brief's licensing gate. Do not replace this gate with a CDN URL.
+and attribution notice, the extension must not bundle `model.json` or weight
+shards into the package. MoveNet therefore runs by fetching its checkpoint
+from TensorFlow Hub at run time instead of shipping it (see
+`vendor/tfjs/README.md` for that path).
 
 ## Pose model switcher and TensorFlow.js runtime
 

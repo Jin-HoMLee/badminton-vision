@@ -48,8 +48,11 @@ license is not cleared for redistribution, so vendoring it is not an option;
 BlazePose is Apache-2.0 and could be vendored, but hasn't been, mainly to
 avoid bundling its multi-megabyte weight shards into the extension package.
 `pose-model-selector.js`'s availability probe treats any `https://`
-`modelUrl` as available without a reachability check, so both show as
+`modelUrl` as available without a reachability check, so MoveNet shows as
 selectable regardless of whether the network fetch will actually succeed.
+BlazePose is the exception: its switch-back wedge is still open, so its entry
+is marked work in progress and the probe refuses it before any URL check
+instead of ever reporting it available.
 
 Two non-obvious things about that remote path, found by testing against the
 real hosted models rather than trusting the URLs or a mock:
