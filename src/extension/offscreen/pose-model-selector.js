@@ -166,6 +166,10 @@
     } catch (_) {
       return { modelId, available: false, reason: 'pose-model-artifact-url-invalid' };
     }
+    // For remote URLs (TensorFlow Hub), skip fetch test and assume available if runtime is ready
+    if (/^https?:/i.test(artifactUrl)) {
+      return { modelId, available: true, reason: '' };
+    }
     try {
       const response = await fetchFn(resolved, { method: 'GET', cache: 'force-cache' });
       if (response && (response.ok === true || response.status === 200 || response.status === 0)) {
