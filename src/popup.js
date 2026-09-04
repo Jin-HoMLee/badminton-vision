@@ -2,6 +2,7 @@
   var ui = window.BVUI;
   var root = document.getElementById("app");
   var state = window.BVState.initialExtensionState();
+  var fixtureDefaultTime = state.time;
   var expanded = false;
   var panelControlsExpanded = false;
   var disclosureFocusTarget = null;
@@ -365,16 +366,19 @@
     var statusState = state.enabled ? (runtimeFallback || runtimeStale ? "stale" : "live") : "ready";
     // The local runtime has no rally segmentation (it reports
     // rally-segmentation-not-available) and nothing in the live path writes
-    // state.rally, whose value is a fixture-era default. The chip therefore
-    // never passes that count off as live match state: the count is shown
-    // only in clearly labeled demo contexts (chrome-less fixture demo,
-    // fixture-probe analyzer) or from a runtime-reported rally id. A live
-    // production session reads as "Live analysis" and the detail spells out
-    // the accelerator.
-    var demoFixture = !chromeAvailable();
+    // state.rally, whose value is a fixture-era default; state.time holds a
+    // real media clock only once the content script's writer has run. The
+    // chip therefore never passes either default off as live state: the
+    // count renders as "Rally #N" only for a runtime-reported rally id, a
+    // production session reads as "Live analysis", the fixture-probe
+    // analyzer reads as the fixture analysis it is, and a starting or
+    // fallback session shows no count and no timestamp unless the media
+    // clock produced one. The detail spells out the accelerator as the
+    // capability it provides.
     var knownRallyId = runtimeStatus && runtimeStatus.result && runtimeStatus.result.rally && runtimeStatus.result.rally.state !== "unknown" && runtimeStatus.result.rally.id != null ? String(runtimeStatus.result.rally.id) : null;
-    var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : demoFixture || fixtureReady ? "Rally " + state.rally : knownRallyId != null ? "Rally #" + knownRallyId : productionReady ? "Live analysis" : "Analysis starting") : detected ? "Badminton match found" : "No YouTube match";
-    var statusDetail = state.enabled ? (runtimeStale && runtimeStatus && Number.isFinite(runtimeStatus.ageSeconds) ? "+" + runtimeStatus.ageSeconds.toFixed(1) + "s" : productionReady ? backendLabel(runtimeStatus.backend) : fixtureReady ? "fixture probe · not production CV" : state.time) : null;
+    var mediaClockWritten = typeof state.time === "string" && state.time !== fixtureDefaultTime;
+    var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : knownRallyId != null ? "Rally #" + knownRallyId : fixtureReady ? "Fixture analysis" : productionReady ? "Live analysis" : "Analysis starting") : detected ? "Badminton match found" : "No YouTube match";
+    var statusDetail = state.enabled ? (runtimeStale && runtimeStatus && Number.isFinite(runtimeStatus.ageSeconds) ? "+" + runtimeStatus.ageSeconds.toFixed(1) + "s" : productionReady ? backendLabel(runtimeStatus.backend) : fixtureReady ? "fixture probe · not production CV" : mediaClockWritten ? state.time : null) : null;
     var backendDetail = runtimeFallback
       ? (function () {
         var parts = [];

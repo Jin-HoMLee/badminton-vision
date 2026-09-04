@@ -594,6 +594,35 @@ test("popup quick wins: Panel Controls lead, live labels stay honest, Close stay
   assert.equal(textOf(tracked.app.querySelector(".bv-status-detail")).trim(), "WebGPU acceleration");
 });
 
+test("popup chip never renders the fixture-era count or timestamp as state", async () => {
+  // A fixture-probe analyzer session renders no static count: the fixture-era
+  // state.rally default (14) must not pass as a live value, so the chip names
+  // the fixture analyzer instead.
+  const fixture = await createPopupSession({
+    storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false },
+    runtimeStatus: {
+      phase: "live", inference: true, analyzer: "fixture-probe-v1",
+      backend: null, stale: false, frameTransport: "request-video-frame-callback",
+      result: { kind: "runtime-integration-probe", state: "partial", rally: { state: "unknown", reason: "rally-segmentation-not-available" } }
+    }
+  });
+  assert.equal(textOf(fixture.app.querySelector(".bv-status-label")).trim(), "Fixture analysis", "the fixture-probe chip names the analyzer without a static count");
+  assert.doesNotMatch(textOf(fixture.app.querySelector(".bv-status-chip")), /Rally\s*14/, "the fixture-era rally default never renders as a count");
+  assert.equal(textOf(fixture.app.querySelector(".bv-status-detail")).trim(), "fixture probe · not production CV", "the fixture detail stays explicit");
+  // Runtime still starting with no status published and an unwritten media
+  // clock: the fixture-era timestamp default is suppressed, not shown.
+  const starting = await createPopupSession({
+    storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false }
+  });
+  assert.equal(textOf(starting.app.querySelector(".bv-status-label")).trim(), "Analysis starting", "a session without runtime status reads as starting");
+  assert.equal(starting.app.querySelector(".bv-status-detail"), null, "the fixture-era timestamp default is not shown before the media clock writes state.time");
+  // The same starting state keeps a genuinely written media clock value.
+  const clocked = await createPopupSession({
+    storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false, time: "05:12.480" }
+  });
+  assert.equal(textOf(clocked.app.querySelector(".bv-status-detail")).trim(), "05:12.480", "a media clock value written into state stays visible while starting");
+});
+
 test("minimal live overlay keeps only detection evidence and one on-demand access point", async () => {
   const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
   live.flushStorage();

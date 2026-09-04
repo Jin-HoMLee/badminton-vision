@@ -174,13 +174,16 @@ next to the overlay quick surface: the popup sets which panels appear over the
 video (saved per video) while the video's **Panels** button offers the same
 panels as quick shortcuts during playback.
 
-The popup status chip never passes the fixture-era `state.rally` default off
-as live state: nothing in the live path writes it (rally segmentation reports
+The popup status chip never passes fixture-era defaults off as live state:
+nothing in the live path writes `state.rally` (rally segmentation reports
 unavailable), so a production session reads **Live analysis** with the
 accelerator spelled out as a capability (WebGPU acceleration / WebGL
-(fallback) / WASM (software)) unless the runtime reports a known rally id,
-which renders as **Rally #N**. The chrome-less fixture demo and the
-fixture-probe analyzer keep the demo count.
+(fallback) / WASM (software)); a runtime-reported rally id renders as
+**Rally #N**, and the fixture-probe analyzer reads as **Fixture analysis**
+(`fixture probe · not production CV`) — no demo or fixture context renders
+a static count. The chip's timestamp detail is the media clock only once
+the content script has written `state.time`; the unwritten `12:04.320`
+default never appears while a session is starting or in fallback.
 
 ## Court projection
 
