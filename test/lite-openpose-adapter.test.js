@@ -89,6 +89,52 @@ test('LiteRT backend selection records unsupported WebGL and falls back WebGPU t
   assert.equal(statuses.at(-1).type, 'backend-selected');
 });
 
+test('re-initialization after dispose reuses the one document WebGPU device (pose switch-back round trip)', async () => {
+  // Switching LiteOpenPose -> MoveNet -> LiteOpenPose disposes the first
+  // analyzer and initializes a second one on the same LiteRT engine. Chrome
+  // returns a DISTINCT GPUDevice per requestDevice() call, and LiteRT's wasm
+  // GPU session then straddles both devices: every run submits invalid
+  // command buffers and silently decodes zero poses (verified live in Chrome:
+  // "[Buffer] is associated with [Device], and cannot be used with [Device]"
+  // during CreateBindGroup after the switch-back, with no exception raised).
+  // The adapter must therefore request exactly ONE WebGPU device per
+  // document/gpu object and reuse it across analyzer instances.
+  const devices = [];
+  const boundDevices = [];
+  const gpu = {
+    async requestAdapter() {
+      return {
+        async requestDevice() {
+          const device = { label: `device-${devices.length + 1}` };
+          devices.push(device);
+          return device;
+        }
+      };
+    }
+  };
+  const environment = { navigator: { gpu }, location: { href: 'chrome-extension://test/offscreen/offscreen.html' } };
+  let compiled = 0;
+  const runtime = {
+    loaded: true,
+    setWebGpuDevice(device) { boundDevices.push(device); },
+    async loadAndCompile() {
+      compiled += 1;
+      return { isFullyAccelerated: true, async run() { return []; }, delete() {} };
+    }
+  };
+  const options = { runtime, environment, backendOrder: ['webgpu'], modelUrl: 'chrome-extension://test/offscreen/vendor/lite-openpose/pose_256.tflite' };
+  const first = new openPose.LiteOpenPoseAnalyzer(options);
+  assert.equal((await first.initialize()).available, true);
+  first.dispose();
+  const second = new openPose.LiteOpenPoseAnalyzer(options);
+  assert.equal((await second.initialize()).available, true);
+  second.dispose();
+  assert.equal(devices.length, 1, 're-initialization must reuse the document WebGPU device');
+  assert.equal(compiled, 2, 'each analyzer still compiles its own model');
+  assert.equal(boundDevices[0], devices[0], 'first init binds the requested device');
+  assert.equal(boundDevices[1], devices[0], 're-init binds the same device, never a second one');
+});
+
 test('analyzer loads local cleared artifact, tracks two players, resets camera IDs, and disposes runtime resources', async () => {
   const outputs = [heatmap([pose(3, 5), pose(22, 7)]), heatmap([pose(5, 5), pose(20, 7)]), heatmap([pose(5, 5)])];
   const deleted = [];
