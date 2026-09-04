@@ -12,10 +12,11 @@
  *   (blur + /8 Sobel scaling caps realistic edges near 60), so no strong
  *   seed ever existed and hysteresis emitted nothing on real frames.
  * - Hysteresis flood fill is iterative (explicit stack), never recursive.
- * - Hough peaks merge on BOTH angle and rho distance (with theta > 90
- *   normalized to 180 - theta and rho negated), so the two accumulator
- *   parameterizations of one near-vertical line collapse into one segment
- *   while genuinely distinct parallel court lines survive.
+ * - Hough peaks merge on BOTH angle and rho distance (with bins within
+ *   angleGroupTol of 180 normalized to 180 - theta and rho negated), so
+ *   the two accumulator parameterizations of one near-vertical line
+ *   collapse into one segment while genuinely distinct parallel court
+ *   lines survive.
  * - Segments are clipped to their actual edge-pixel support instead of being
  *   extended to the image borders, so guidance hugs visible line markings.
  */
@@ -247,8 +248,12 @@
   /** Accumulate (rho, theta) votes over edge pixels; return peaks >= threshold. */
   function houghLineTransform(edgeImage, rhoRes = 1, thetaRes = 1, votingThreshold = 45) {
     const { width, height, edges } = edgeImage;
+    // rho = x*cos + y*sin ranges over [-maxRho, +maxRho] for lines that
+    // pass through the image, so the accumulator spans that full range;
+    // halving it would blind every line whose supporting pixels sit more
+    // than half a diagonal from the origin (e.g. right-side court lines).
     const maxRho = Math.hypot(width, height);
-    const rhoSize = Math.ceil(maxRho / rhoRes);
+    const rhoSize = Math.ceil((2 * maxRho) / rhoRes);
     const thetaSize = Math.ceil(180 / thetaRes);
     const accumulator = new Uint32Array(rhoSize * thetaSize);
     for (let y = 0; y < height; y++) {
@@ -257,7 +262,7 @@
           for (let thetaDeg = 0; thetaDeg < 180; thetaDeg += thetaRes) {
             const theta = thetaDeg * (Math.PI / 180);
             const rho = x * Math.cos(theta) + y * Math.sin(theta);
-            const rhoIdx = Math.round((rho + maxRho / 2) / rhoRes);
+            const rhoIdx = Math.round((rho + maxRho) / rhoRes);
             const thetaIdx = Math.round(thetaDeg / thetaRes);
             if (rhoIdx >= 0 && rhoIdx < rhoSize && thetaIdx >= 0 && thetaIdx < thetaSize) {
               accumulator[thetaIdx * rhoSize + rhoIdx]++;
@@ -272,7 +277,7 @@
         const votes = accumulator[thetaIdx * rhoSize + rhoIdx];
         if (votes >= votingThreshold) {
           const theta = (thetaIdx * thetaRes) * (Math.PI / 180);
-          lines.push({ rho: rhoIdx * rhoRes - maxRho / 2, theta, votes, thetaDeg: thetaIdx * thetaRes });
+          lines.push({ rho: rhoIdx * rhoRes - maxRho, theta, votes, thetaDeg: thetaIdx * thetaRes });
         }
       }
     }
@@ -282,14 +287,18 @@
   /**
    * Merge near-duplicate peaks. A line is represented twice in the
    * accumulator when its angle approaches 180 (theta ~ 180 - theta_eff with
-   * negated rho), so comparisons normalize theta > 90 to 180 - theta with
-   * rho negated. Peaks within angleGroupTol degrees AND distanceGroupTol
-   * pixels of rho belong to one physical line; the strongest survives.
+   * negated rho), so comparisons normalize only bins within angleGroupTol
+   * of 180 to 180 - theta with rho negated; the smeared votes a level line
+   * leaves at theta 91..173 keep their positive rho and merge back into the
+   * true peak through the tolerance windows. Peaks within angleGroupTol
+   * degrees AND distanceGroupTol pixels of rho belong to one physical
+   * line; the strongest survives.
    */
   function mergeParallelPeaks(lines, angleGroupTol, distanceGroupTol) {
     const normalized = lines.map((line) => {
-      const thetaDeg = line.thetaDeg > 90 ? 180 - line.thetaDeg : line.thetaDeg;
-      const rho = line.thetaDeg > 90 ? -line.rho : line.rho;
+      const nearWrap = line.thetaDeg >= 180 - angleGroupTol;
+      const thetaDeg = nearWrap ? 180 - line.thetaDeg : line.thetaDeg;
+      const rho = nearWrap ? -line.rho : line.rho;
       return { line, thetaDeg, rho };
     });
     const sorted = normalized.slice().sort((a, b) => b.line.votes - a.line.votes);

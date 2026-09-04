@@ -191,6 +191,50 @@ test('regression: segments hug their support instead of spanning frame borders',
   assert.ok(bounded, 'at least one horizontal segment is clipped to its support');
 });
 
+test('regression: a level edge row emits one segment, not a folded smear twin', () => {
+  // Peaks the row leaves at theta just above 90 used to be folded to
+  // (180 - theta, -rho), which put them ~2y px away in rho from the true
+  // (90, +y) peak; they survived merging and were emitted as a second,
+  // overlapping near-horizontal ghost segment. The fold is only a valid
+  // duplicate collapse near the 0/180 wrap, so an unfolded smear must
+  // merge back into the true peak.
+  const width = 640;
+  const height = 360;
+  const edges = new Uint8Array(width * height);
+  for (let x = 40; x < 600; x++) edges[180 * width + x] = 255;
+  const hough = adapter.houghLineTransform({ width, height, edges }, 1, 1, 45);
+  assert.ok(hough.lines.length >= 1, 'row votes into peaks');
+  const top = hough.lines.slice().sort((a, b) => b.votes - a.votes).slice(0, 120);
+  const merged = adapter.mergeParallelPeaks(top, 6, 24);
+  assert.equal(merged.length, 1, `smear family merged into one peak, got ${merged.length}`);
+  const clipped = adapter.clipLinesToSupport(merged, { width, height, edges }, 2, 28);
+  const segments = adapter.supportedSegments(clipped, width, height, 28);
+  assert.equal(segments.length, 1, `one segment per stroke, got ${segments.length}`);
+  assert.ok(Math.abs(segments[0].angle - 90) <= 1, `segment near level, got ${segments[0].angle}`);
+  assert.ok(segments[0].length >= 500, `segment spans the row, got ${Math.round(segments[0].length)}px`);
+});
+
+test('regression: accumulator spans full -maxRho..+maxRho so off-centre vertical lines vote', () => {
+  // The accumulator used to index rho against maxRho/2, so pixels whose
+  // rho exceeded half the image diagonal (vertical lines beyond x ~ 0.57w
+  // in a 16:9 frame, e.g. right-side court lines) never cast a vote and
+  // the line was never detected.
+  const width = 640;
+  const height = 360;
+  const edges = new Uint8Array(width * height);
+  for (let y = 20; y < 340; y++) edges[y * width + 560] = 255;
+  const hough = adapter.houghLineTransform({ width, height, edges }, 1, 1, 45);
+  assert.ok(hough.lines.length >= 1, `column at x=560 votes, got ${hough.lines.length} peaks`);
+  const top = hough.lines.slice().sort((a, b) => b.votes - a.votes).slice(0, 120);
+  const merged = adapter.mergeParallelPeaks(top, 6, 24);
+  const clipped = adapter.clipLinesToSupport(merged, { width, height, edges }, 2, 28);
+  const segments = adapter.supportedSegments(clipped, width, height, 28);
+  assert.equal(segments.length, 1, `one segment, got ${segments.length}`);
+  assert.ok(Math.abs(segments[0].angle) <= 1 || Math.abs(segments[0].angle - 180) <= 1,
+    `segment near vertical, got ${segments[0].angle}`);
+  assert.ok(segments[0].length >= 250, `segment spans the column, got ${Math.round(segments[0].length)}px`);
+});
+
 test('detectCourtLines finds the synthetic court end to end', async () => {
   const frame = syntheticCourtFrame(640, 360);
   const result = await adapter.detectCourtLines(frame);
