@@ -1855,6 +1855,37 @@ test("court seeding offers tappable floating corner labels and 1-4 keyboard plac
   assert.equal(layer.querySelector("[data-bso-seed-guide]"), null);
 });
 
+test("the corner pill's advertised digit fires while the pill itself is focused", async () => {
+  // Tab focus lands on the floating corner pill (the first focusable node in
+  // the seed layer), and the pill's aria-keyshortcuts and title promise its
+  // own digit, so that key must place the corner even though the pill is a
+  // focused button. Out-of-order digits and every other focused control stay
+  // inert, keeping the yield contract intact.
+  const live = await createSession();
+  live.flushStorage();
+  live.onMessage({ type: "START_SEED", requestId: "pill-key-1" });
+  const root = () => live.overlayRoot();
+  const host = live.host();
+  const pill = () => root().querySelector("[data-bso-seed-corner-button]");
+  assert.equal(pill().getAttribute("aria-keyshortcuts"), "1");
+  assert.equal(live.emitKey("2", { target: pill() }), false, "an out-of-order digit is inert while the pill is focused");
+  assert.equal(host.getAttribute("data-bso-seed-count"), "0");
+  assert.equal(live.emitKey("1", { target: pill() }), true, "the pill's advertised digit fires while the pill is focused");
+  assert.equal(host.getAttribute("data-bso-seed-count"), "1");
+  const placed = live.storageWrites.at(-1).bvState.seedDraftPoints[0];
+  assert.ok(Math.abs(placed.x - 0.22) < 1e-9);
+  assert.ok(Math.abs(placed.y - (1 - (72 + 24) / 360)) < 1e-9, "the focused-pill digit seeds the clamped marked spot");
+  // The advanced pill advertises and fires its own next digit the same way.
+  assert.equal(pill().getAttribute("data-bso-seed-corner-button"), "1");
+  assert.equal(live.emitKey("2", { target: pill() }), true, "the next pill's advertised digit fires while it is focused");
+  assert.equal(host.getAttribute("data-bso-seed-count"), "2");
+  // Digits still yield to a focused card control: the step-2 pill's own digit
+  // stays inert while the card's Undo button has focus.
+  const undo = buttonWithText(root().querySelector("[data-bso-seed-card]"), "Undo");
+  assert.equal(live.emitKey("3", { target: undo }), false, "digits still yield to a focused card control");
+  assert.equal(host.getAttribute("data-bso-seed-count"), "2");
+});
+
 test("the floating corner pill paints above the seed card on small players", async () => {
   // At the default layout on the 640x360 player the setup card is clamped
   // against the control-strip reserve, so its opaque box covers the pill's

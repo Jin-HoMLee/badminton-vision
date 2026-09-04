@@ -2133,7 +2133,12 @@
       closeLabeling();
       return;
     }
-    if (isInteractiveTarget(event.target)) return;
+    // The focused corner pill advertises its own digit in aria-keyshortcuts
+    // and its title ("Press N for the same action"), so that key must fire
+    // while the pill itself is focused; every other focused control keeps
+    // yielding to native keys.
+    var currentSeedPillFocused = Boolean(state.seeding && event.target && typeof event.target.getAttribute === "function" && String(event.target.getAttribute("data-bso-seed-corner-button")) === String(seedPoints.length));
+    if (isInteractiveTarget(event.target) && !currentSeedPillFocused) return;
     if (key === "o" && state.enabled && !state.seeding) {
       event.preventDefault();
       if (!state.labeling) openLabeling();
