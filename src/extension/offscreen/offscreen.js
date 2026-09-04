@@ -885,6 +885,80 @@ async function handleGetAvailableModels(message) {
   return { ok: true, models, currentModel: poseModelSwitcher.getCurrentModel().id };
 }
 
+/**
+ * Handle Hough line detection for court calibration guidance.
+ * Detects court lines in a frame and returns their coordinates.
+ */
+async function handleHoughDetection(message) {
+  console.log("[Hough-Handler] Starting Hough detection");
+  if (!globalThis.BSOHoughCourtLinesAdapter) {
+    console.log("[Hough-Handler] Adapter unavailable!");
+    return { ok: false, lines: [], reason: 'hough-adapter-unavailable' };
+  }
+
+  try {
+    const { frameData, width, height } = message;
+    console.log("[Hough-Handler] Frame data:", { frameData: !!frameData, width, height });
+    if (!frameData || !width || !height) {
+      return { ok: false, lines: [], reason: 'invalid-frame-data' };
+    }
+
+    // Convert frameData back to ImageData if needed
+    let frame;
+    if (frameData instanceof ImageData) {
+      console.log("[Hough-Handler] Received ImageData directly");
+      frame = frameData;
+    } else if (frameData && frameData.data && typeof frameData.width === 'number' && typeof frameData.height === 'number') {
+      // frameData might be a serialized object with array data
+      // Create a new ImageData with the same dimensions and data
+      try {
+        console.log("[Hough-Handler] Creating ImageData from serialized object. Data length:", frameData.data ? frameData.data.length : 'undefined');
+        // Handle both Uint8ClampedArray and regular arrays
+        let dataArray = frameData.data;
+        if (Array.isArray(dataArray) && typeof Uint8ClampedArray !== 'undefined') {
+          dataArray = new Uint8ClampedArray(dataArray);
+        } else if (!Array.isArray(dataArray) && typeof Uint8ClampedArray !== 'undefined') {
+          // If it's already a typed array, convert to Uint8ClampedArray
+          dataArray = new Uint8ClampedArray(dataArray);
+        }
+        console.log("[Hough-Handler] Expected data length:", frameData.width * frameData.height * 4, "Actual:", dataArray.length);
+        frame = new ImageData(dataArray, frameData.width, frameData.height);
+      } catch (e) {
+        console.error('[Hough-Handler] Failed to create ImageData from frameData:', e);
+        return { ok: false, lines: [], reason: 'failed-to-create-imagedata' };
+      }
+    } else if (typeof OffscreenCanvas !== 'undefined') {
+      // If frameData is a bitmap or raw data, create a canvas and draw it
+      const canvas = new OffscreenCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return { ok: false, lines: [], reason: 'canvas-context-unavailable' };
+      }
+      // Assume frameData is a bitmap
+      ctx.drawImage(frameData, 0, 0);
+      frame = ctx.getImageData(0, 0, width, height);
+    } else {
+      return { ok: false, lines: [], reason: 'unsupported-frame-format' };
+    }
+
+    console.log("[Hough-Handler] Calling detectCourtLines...");
+    const result = await globalThis.BSOHoughCourtLinesAdapter.detectCourtLines(frame);
+    console.log("[Hough-Handler] detectCourtLines returned", result.lines.length, "lines");
+    return {
+      ok: true,
+      lines: result.lines || [],
+      config: result.config
+    };
+  } catch (error) {
+    console.error('Hough detection error:', error);
+    return {
+      ok: false,
+      lines: [],
+      reason: error instanceof Error ? error.message : 'hough-detection-failed'
+    };
+  }
+}
+
 function handle(message) {
   if (message.type === BSOProtocol.TYPES.SESSION_START) return handleSessionStart(message);
   if (message.type === BSOProtocol.TYPES.SESSION_END) return handleSessionEnd(message);
@@ -901,6 +975,20 @@ if (typeof chrome !== 'object' || !chrome.runtime || !chrome.runtime.onMessage |
   // MV3 offscreen context is required for message handling.
 } else {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Handle Hough line detection for calibration (only via relay from service-worker)
+  // The service worker relays the original 'detectHoughLines' message as 'detectHoughLinesRelay'
+  // to avoid listener collision where both service-worker and offscreen would respond to the same message
+  if (message && message.action === 'detectHoughLinesRelay') {
+    console.log("[Hough-Offscreen] Received detectHoughLinesRelay message");
+    Promise.resolve(handleHoughDetection(message)).then((result) => {
+      console.log("[Hough-Offscreen] Sending response with", result.lines ? result.lines.length : 0, "lines");
+      sendResponse(result);
+    }).catch((error) => {
+      console.log("[Hough-Offscreen] Error:", error);
+      sendResponse({ ok: false, lines: [], reason: error instanceof Error ? error.message : String(error) });
+    });
+    return true; // Keep the channel open for async response
+  }
   // Handle custom model switching messages (before protocol check)
   if (message && message.action === 'switchPoseModel') {
     Promise.resolve(handleModelSwitch(message)).then((result) => {

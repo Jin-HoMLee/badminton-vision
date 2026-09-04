@@ -349,6 +349,35 @@ chrome.runtime.onMessage.addListener((message) => {
   return false;
 });
 
+// Hough detection messages from content script need the offscreen document created first.
+// Content scripts cannot call chrome.offscreen.createDocument(), so the service worker
+// must ensure it exists before relaying Hough detection frames to the offscreen document.
+// IMPORTANT: Use a distinct relay action name to avoid listener collision. Both service-worker
+// and offscreen register listeners, but MV3 broadcasts to all matching listeners. We must
+// distinguish the relayed message so only the offscreen document processes it, not both.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.action === 'detectHoughLines') {
+    (async () => {
+      try {
+        const ready = await ensureOffscreenDocument();
+        if (!ready) {
+          sendResponse({ ok: false, error: 'Offscreen document unavailable: ' + (offscreenFailureReason || 'unknown') });
+          return;
+        }
+        // Relay the Hough detection request to the offscreen document with a distinct action name
+        // to avoid both offscreen and service-worker listeners responding to the same message
+        const relayMessage = { ...message, action: 'detectHoughLinesRelay' };
+        const response = await chrome.runtime.sendMessage(relayMessage);
+        sendResponse(response || { ok: false, error: 'No response from offscreen' });
+      } catch (error) {
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    })();
+    return true; // Keep the channel open for async sendResponse
+  }
+  return false;
+});
+
 // UI actions use this separate, deliberately small message surface. Runtime
 // envelopes stay on the versioned port protocol; the popup can read the last
 // sanitized capability snapshot without coupling itself to frame transport.
