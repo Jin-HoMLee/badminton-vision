@@ -5,6 +5,7 @@ const tracking = require('../src/extension/common/player-tracking.js');
 global.BSOProtocol = protocol;
 global.BSOPlayerTracking = tracking;
 const openPose = require('../src/extension/offscreen/lite-openpose-adapter.js');
+const racket = require('../src/extension/offscreen/efficientdet-racket-adapter.js');
 
 function heatmap(poses, { width = 32, height = 32 } = {}) {
   const values = new Float32Array(width * height * 19);
@@ -133,6 +134,73 @@ test('re-initialization after dispose reuses the one document WebGPU device (pos
   assert.equal(compiled, 2, 'each analyzer still compiles its own model');
   assert.equal(boundDevices[0], devices[0], 'first init binds the requested device');
   assert.equal(boundDevices[1], devices[0], 're-init binds the same device, never a second one');
+});
+
+test('pose and racket analyzers share one WebGPU device, including a racket run-failure retry', async () => {
+  // Chrome returns a DISTINCT GPUDevice per requestDevice() call, and both
+  // LiteRT adapters compile on the same runtime/engine per offscreen
+  // document. The racket detector compiles through the pose adapter's cached
+  // per-document device, so concurrent pose + racket initialization and a
+  // racket run-failure re-initialization must never call requestDevice twice.
+  const devices = [];
+  const boundDevices = [];
+  const gpu = {
+    async requestAdapter() {
+      return {
+        async requestDevice() {
+          const device = { label: `device-${devices.length + 1}` };
+          devices.push(device);
+          return device;
+        }
+      };
+    }
+  };
+  const environment = { navigator: { gpu }, location: { href: 'chrome-extension://test/offscreen/offscreen.html' } };
+  let compiled = 0;
+  class FakeTensor {
+    constructor(data, shape) { this.data = data; this.shape = shape; }
+  }
+  const runtime = {
+    loaded: true,
+    Tensor: FakeTensor,
+    setWebGpuDevice(device) { boundDevices.push(device); },
+    async loadAndCompile() {
+      compiled += 1;
+      if (compiled === 1) return { isFullyAccelerated: true, async run() { return []; }, delete() {} };
+      if (compiled === 2) return { isFullyAccelerated: true, async run() { throw new Error('device-lost'); }, delete() {} };
+      return {
+        isFullyAccelerated: true,
+        async run() {
+          return [
+            { shape: [1, 19206, 90], toTypedArray: () => new Float32Array(19206 * 90) },
+            { shape: [1, 19206, 4], toTypedArray: () => new Float32Array(19206 * 4) }
+          ];
+        },
+        delete() {}
+      };
+    }
+  };
+  const pose = new openPose.LiteOpenPoseAnalyzer({ runtime, environment, backendOrder: ['webgpu'], modelUrl: 'chrome-extension://test/offscreen/vendor/lite-openpose/pose_256.tflite' });
+  assert.equal((await pose.initialize()).available, true);
+  const detector = new racket.EfficientDetRacketDetector({ runtime, environment, backendOrder: ['webgpu'], onStatus: () => {} });
+  assert.equal((await detector.initialize()).available, true);
+  assert.equal(devices.length, 1, 'pose + racket initialization shares the one document WebGPU device');
+  assert.equal(compiled, 2, 'each analyzer compiles its own model');
+  assert.ok(boundDevices.every((device) => device === devices[0]), 'every compile binds the shared device');
+  const frame = { width: 2, height: 2, channels: 4, data: new Uint8Array(16) };
+  const failed = await detector.analyze({ sessionId: 'shared-device', requestId: 'shared-device:1', mediaTime: 1, frame });
+  assert.equal(failed.detectionMethod, null, 'a run that threw is not authoritative evidence');
+  assert.match(failed.reason, /device-lost/);
+  // The run-failure re-initialization compiles a fresh model on a later
+  // frame, but it must reuse the same cached device: one requestDevice total.
+  const recovered = await detector.analyze({ sessionId: 'shared-device', requestId: 'shared-device:2', mediaTime: 2, frame });
+  assert.equal(compiled, 3, 'the retry compiles a fresh model');
+  assert.equal(recovered.detectionMethod, 'efficientdet-lite0-tennis-racket', 'the recovered run is authoritative');
+  assert.equal(recovered.state, 'unknown');
+  assert.equal(devices.length, 1, 'the retry never requests a second device');
+  assert.ok(boundDevices.every((device) => device === devices[0]), 'the retry binds the same shared device');
+  pose.dispose();
+  detector.dispose();
 });
 
 test('analyzer loads local cleared artifact, tracks two players, resets camera IDs, and disposes runtime resources', async () => {

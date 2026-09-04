@@ -370,12 +370,19 @@
     };
   }
 
+  // Chrome returns a distinct GPUDevice per requestDevice() call and LiteRT's
+  // wasm GPU session binds one device per document, so a second device
+  // silently decodes nothing (see docs/runtime.md 'One WebGPU device per
+  // offscreen document'). The racket detector never requests a device itself:
+  // it compiles through the cached per-document device the LiteOpenPose
+  // adapter exports, so concurrent pose + racket initialization and a
+  // run-failure re-initialization reuse that one device instead of creating
+  // a second one. Without the shared provider (only loader-less embeddings)
+  // the WebGPU candidate is refused and the WASM candidate is used.
   async function webGpuDevice(environment) {
-    const gpu = environment?.navigator?.gpu;
-    if (!gpu || typeof gpu.requestAdapter !== 'function') throw new Error('WebGPU unavailable');
-    const adapter = await gpu.requestAdapter();
-    if (!adapter || typeof adapter.requestDevice !== 'function') throw new Error('WebGPU adapter unavailable');
-    return adapter.requestDevice();
+    const shared = defaultEnvironment?.BSOLiteOpenPoseAdapter;
+    if (!shared || typeof shared.webGpuDevice !== 'function') throw new Error('WebGPU unavailable');
+    return shared.webGpuDevice(environment);
   }
 
   function normalizeBackendResult(name, result) {
@@ -385,7 +392,7 @@
 
   /** Compile the racket artifact on the first usable backend (WebGPU then
    * WASM; LiteRT.js WebGL is reported as unsupported rather than mislabeled),
-   * mirroring the pose adapter's backend selection. */
+   * compiling WebGPU through the pose adapter's shared per-document device. */
   async function selectLiteRtBackend({ runtime, modelUrl, environment = defaultEnvironment, order = BACKENDS, backendProbe = null, onStatus = () => {} } = {}) {
     if (!runtime || typeof runtime.loadAndCompile !== 'function') return { backend: null, attempted: [], fallbacks: ['litert-runtime-unavailable'] };
     const candidates = Array.from(new Set((Array.isArray(order) ? order : BACKENDS).filter((name) => BACKENDS.includes(name))));

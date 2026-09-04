@@ -246,13 +246,18 @@ device straddles two devices: every `model.run` then submits invalid command
 buffers (`[Buffer] is associated with [Device], and cannot be used with
 [Device]` during `CreateBindGroup`) and silently decodes zero poses - no
 exception, no failed initialize, an `ok:true` switch that simply stops
-detecting. The adapter therefore requests exactly ONE WebGPU device per
-`navigator.gpu` object (cached, promise-safe, cleared when the device is
-lost) and reuses it across analyzer instances; each analyzer still compiles
-its own model. `test/lite-openpose-adapter.test.js` pins the round trip
-(init -> dispose -> init must not call `requestDevice` twice); the live
-extension verified the cross-device validation errors vanish and pose
-observations resume after the switch-back.
+detecting. The LiteOpenPose adapter therefore requests exactly ONE WebGPU
+device per `navigator.gpu` object (cached, promise-safe, cleared when the
+device is lost) and reuses it across analyzer instances; each analyzer still
+compiles its own model. The EfficientDet racket detector compiles through that
+same exported per-document device and never calls `requestAdapter`/
+`requestDevice` itself, so concurrent pose + racket initialization at session
+start and the racket detector's run-failure re-initialization reuse the one
+device instead of creating a second one. `test/lite-openpose-adapter.test.js`
+pins the round trip (init -> dispose -> init must not call `requestDevice`
+twice) and the pose + racket sharing; the live extension verified the
+cross-device validation errors vanish and pose observations resume after the
+switch-back.
 
 ## Shuttle candidate composition
 

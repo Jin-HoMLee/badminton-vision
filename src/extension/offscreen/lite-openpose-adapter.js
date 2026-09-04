@@ -346,6 +346,9 @@
   // keyed by the gpu object rather than held in a module global so analyzer
   // instances that share a document (or a test environment) share exactly one
   // device while independent environments never leak devices into each other.
+  // The EfficientDet racket detector compiles through this same exported
+  // device, so concurrent pose + racket initialization (and a racket
+  // run-failure re-initialization) never request a second device.
   const webGpuDevices = new WeakMap();
 
   async function webGpuDevice(environment) {
@@ -682,6 +685,7 @@
     createInputPixels,
     decodeLiteOpenPoseOutput,
     selectLiteRtBackend,
+    webGpuDevice,
     LiteOpenPoseAnalyzer,
     LiteRTAnalyzer: LiteOpenPoseAnalyzer
   });

@@ -242,6 +242,79 @@ test('a run exception is not authoritative and the detector re-initializes on th
   detector.dispose();
 });
 
+test('racket backend selection binds the shared document device and never requests its own', async () => {
+  const sharedDevice = { label: 'shared-document-device' };
+  const providerCalls = [];
+  const previous = global.BSOLiteOpenPoseAdapter;
+  global.BSOLiteOpenPoseAdapter = {
+    async webGpuDevice() { providerCalls.push(1); return sharedDevice; }
+  };
+  try {
+    const boundDevices = [];
+    let ownRequested = false;
+    const environment = {
+      navigator: {
+        gpu: {
+          async requestAdapter() { ownRequested = true; throw new Error('the racket adapter must never request its own adapter'); }
+        }
+      }
+    };
+    const runtime = {
+      loaded: true,
+      setWebGpuDevice(device) { boundDevices.push(device); },
+      async loadAndCompile() { return { isFullyAccelerated: true, async run() { return []; }, delete() {} }; }
+    };
+    const selected = await adapter.selectLiteRtBackend({
+      runtime,
+      modelUrl: 'chrome-extension://test/offscreen/vendor/efficientdet-lite0/efficientdet_lite0.tflite',
+      environment,
+      order: ['webgpu']
+    });
+    assert.equal(selected.backend, 'webgpu');
+    assert.equal(selected.model.isFullyAccelerated, true);
+    assert.equal(providerCalls.length, 1, 'the compile goes through the shared per-document device provider');
+    assert.deepEqual(boundDevices, [sharedDevice], 'the shared device is bound, never a fresh one');
+    assert.equal(ownRequested, false, 'the racket adapter must not call requestAdapter itself');
+  } finally {
+    if (previous === undefined) delete global.BSOLiteOpenPoseAdapter;
+    else global.BSOLiteOpenPoseAdapter = previous;
+  }
+});
+
+test('racket WebGPU compile is refused when no shared document device provider is loaded', async () => {
+  const previous = global.BSOLiteOpenPoseAdapter;
+  delete global.BSOLiteOpenPoseAdapter;
+  try {
+    let ownRequested = false;
+    const environment = {
+      navigator: {
+        gpu: {
+          async requestAdapter() { ownRequested = true; return { async requestDevice() { return {}; } }; }
+        }
+      }
+    };
+    const runtime = {
+      loaded: true,
+      setWebGpuDevice() {},
+      async loadAndCompile() { return { isFullyAccelerated: true, async run() { return []; }, delete() {} }; }
+    };
+    const selected = await adapter.selectLiteRtBackend({
+      runtime,
+      modelUrl: 'chrome-extension://test/offscreen/vendor/efficientdet-lite0/efficientdet_lite0.tflite',
+      environment,
+      order: ['webgpu', 'wasm']
+    });
+    assert.equal(selected.backend, 'wasm');
+    assert.deepEqual(selected.attempted.map((item) => [item.name, item.ok]), [
+      ['webgpu', false], ['wasm', true]
+    ]);
+    assert.equal(ownRequested, false, 'without the shared provider no WebGPU device is ever requested');
+  } finally {
+    if (previous === undefined) delete global.BSOLiteOpenPoseAdapter;
+    else global.BSOLiteOpenPoseAdapter = previous;
+  }
+});
+
 test('a completed run without racket boxes keeps the authoritative marker', async () => {
   class FakeTensor {
     constructor(data, shape) { this.data = data; this.shape = shape; }
