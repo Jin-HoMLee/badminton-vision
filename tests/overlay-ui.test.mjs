@@ -19,6 +19,39 @@ function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function parseCssRules(source) {
+  const text = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/@import[^;]+;/g, "");
+  const rules = [];
+  let depth = 0;
+  let ruleStart = -1;
+  let bodyStart = 0;
+  let cursor = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "{") {
+      if (depth === 0) { ruleStart = cursor; bodyStart = i + 1; }
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0 && ruleStart !== -1) {
+        const selector = text.slice(ruleStart, bodyStart - 1).replace(/\s+/g, " ").trim();
+        const declarations = Object.create(null);
+        for (const entry of text.slice(bodyStart, i).split(";")) {
+          const colon = entry.indexOf(":");
+          if (colon > 0) {
+            const property = entry.slice(0, colon).trim().toLowerCase();
+            if (property) declarations[property] = entry.slice(colon + 1).trim();
+          }
+        }
+        rules.push({ selector, declarations });
+        ruleStart = -1;
+        cursor = i + 1;
+      }
+    }
+  }
+  return rules;
+}
+
 class FakeNode {
   constructor(tagName = "div", nodeType = 1) {
     this.tagName = tagName.toUpperCase();
@@ -134,7 +167,7 @@ class FakeDocument extends FakeNode {
   getElementById(id) { return this.querySelector(`[id="${id}"]`); }
 }
 
-async function createPopupSession({ runtimeStatus = null } = {}) {
+async function createPopupSession({ runtimeStatus = null, poseModelSwitchReason = null } = {}) {
   const documentRef = new FakeDocument();
   const app = new FakeNode("main");
   app.setAttribute("id", "app");
@@ -142,6 +175,11 @@ async function createPopupSession({ runtimeStatus = null } = {}) {
   const sent = [];
   const manifest = JSON.parse(await read("manifest.json"));
   const runtime = { lastError: null, getURL: (path) => `chrome-extension://test/${path}`, getManifest: () => manifest };
+  if (poseModelSwitchReason !== null) {
+    runtime.sendMessage = (message, callback) => {
+      if (message && message.action === "switchPoseModel") callback({ ok: false, reason: poseModelSwitchReason, modelId: message.modelId });
+    };
+  }
   const chromeApi = {
     runtime,
     tabs: {
@@ -405,18 +443,24 @@ test("popup font packaging is local-only and records the supplied-system limitat
 });
 
 test("popup intro callouts collapse to a sentence summary with an accessible full-text tooltip", async () => {
-  const css = await read("src/styles.css");
-  const ui = await read("src/ui.js");
-  // Compact mode is an explicit ui.callout opt-in with the tooltip contract.
-  assert.match(ui, /data-bso-callout-compact/);
-  assert.match(ui, /role: "tooltip"/);
-  assert.match(ui, /tabindex: "0", "aria-describedby": tooltipId/);
-  // The stylesheet clamps the summary to one line (no layout overflow) and
-  // opens the tooltip on hover or keyboard focus of the copy.
-  assert.match(css, /\.bv-callout\[data-bso-callout-compact\][^{]*\{[^}]*text-overflow:\s*ellipsis/s);
-  assert.match(css, /\.bv-callout-tooltip\s*\{[^}]*display:\s*none/s);
-  assert.match(css, /\.bv-callout-copy:hover > \.bv-callout-tooltip,[^}]*:focus-within > \.bv-callout-tooltip \{\s*display:\s*block/s);
-  assert.match(css, /\.bv-callout-copy .bv-callout-body \{[^}]*font: var\(--type-ui-sm\)/s);
+  const rules = parseCssRules(await read("src/styles.css"));
+  const findRule = (selector) => rules.find((rule) => rule.selector === selector);
+  const summaryLine = findRule(".bv-callout[data-bso-callout-compact] .bv-callout-copy .bv-callout-body");
+  assert.ok(summaryLine, "compact callout styles the summary body line");
+  assert.equal(summaryLine.declarations["display"], "block");
+  assert.equal(summaryLine.declarations["overflow"], "hidden");
+  assert.equal(summaryLine.declarations["white-space"], "nowrap");
+  assert.equal(summaryLine.declarations["text-overflow"], "ellipsis");
+  const tooltipBase = findRule(".bv-callout-tooltip");
+  assert.ok(tooltipBase, "tooltip rule exists");
+  assert.equal(tooltipBase.declarations["display"], "none");
+  assert.equal(tooltipBase.declarations["position"], "absolute");
+  const tooltipReveal = rules.find((rule) =>
+    rule.selector.includes("data-bso-callout-compact") &&
+    rule.selector.includes(":hover > .bv-callout-tooltip") &&
+    rule.selector.includes(":focus-within > .bv-callout-tooltip"));
+  assert.ok(tooltipReveal, "hover and keyboard focus reveal the tooltip");
+  assert.equal(tooltipReveal.declarations["display"], "block");
 
   // The default popup session (watch page found, inference off) renders the
   // runtime-pending notice and the "Inference starts independently" guide
@@ -446,7 +490,28 @@ test("popup intro callouts collapse to a sentence summary with an accessible ful
   assert.equal(compact[0].querySelector(".bv-callout-body").children[0].textContent, "The local pose model is starting.");
   const runtimeTooltip = compact[0].querySelector(".bv-callout-tooltip");
   assert.equal(runtimeTooltip.children[0].textContent, "The local pose model is starting. Until evidence arrives, player, shuttle, shot, rally-end, and winner fields remain unknown.");
-  // The docs carry the shipping contract.
-  assert.match(await read("docs/overlay-ui.md"), /Popup info callout tooltips/);
-  assert.match(await read("docs/overlay-ui.md"), /data-bso-callout-compact/);
+});
+
+test("pose model switch failure keeps the cause in the tooltip with a concise standing line", async () => {
+  const popup = await createPopupSession({ poseModelSwitchReason: "the bundled pose runtime rejected the target model (404)." });
+  const select = popup.app.querySelector("[data-bso-model-selector]");
+  assert.ok(select, "model selector renders");
+  select.value = "movenet-multipose-lightning-v1";
+  select.dispatchEvent({ type: "change" });
+
+  const callout = popup.app.querySelector(".bv-model-section-body").children.find((child) => child.matches("[data-bso-callout-compact]"));
+  assert.ok(callout, "failed switch renders a compact callout in the model section");
+  assert.ok(callout.className.includes("bv-callout warn"));
+  const title = callout.querySelector("strong");
+  assert.ok(title && title.children[0].textContent.includes("Pose model not switched"));
+  const body = callout.querySelector(".bv-callout-body");
+  const standing = body.children[0].textContent;
+  const tipId = body.getAttribute("aria-describedby");
+  const full = callout.querySelector(`[id="${tipId}"]`).children[0].textContent;
+  assert.equal(standing, "The selected model could not start here.");
+  assert.ok(!standing.includes("rejected the target model"), "standing line stays concise without the dynamic cause");
+  assert.ok(full.startsWith(standing), "tooltip carries the full body starting at the standing line");
+  assert.ok(full.includes("rejected the target model (404)."), "tooltip carries the full cause");
+  assert.ok(full.includes("The previous model remains active."), "tooltip keeps the previous-model note");
+  assert.equal(popup.app.querySelector("[data-bso-model-selector]").value, "lightweight-openpose-lite-256-v1", "selector reverts to the previous model");
 });

@@ -231,9 +231,10 @@ remote import inside the shadow tree.
 
 ## Popup info callout tooltips
 
-The popup intro boxes (`ui.callout` with `tooltip: true` - the five status
-callouts for runtime, inference, court, camera cut, and action errors) no
-longer carry long persistent body text: the standing copy collapses to the
+The popup callout boxes carrying long explanatory copy (`ui.callout` with
+`tooltip: true` - the intro status callouts for runtime/inference, court,
+camera cut, action errors, and the pose-model switch failure box) no longer
+carry long persistent body text: the standing copy collapses to the
 body's first sentence and the full body opens in a tooltip on hover or
 keyboard focus. The summary line is the keyboard-focusable trigger
 (`tabindex="0"`) and its `aria-describedby` points at the sibling
@@ -244,7 +245,7 @@ never overflows its layout on the 360px popup width. The stylesheet shows the
 tooltip on `.bv-callout-copy:hover` / `:focus-within`; the contract markers
 are `data-bso-callout-compact`, `.bv-callout-body`, and `.bv-callout-tooltip`
 in `src/styles.css` and `src/ui.js`. Single-sentence bodies and callouts
-outside the popup intro are untouched; regression gates are in
+outside the popup are untouched; regression gates are in
 `tests/overlay-ui.test.mjs`.
 
 ## Toolbar icon packaging

@@ -444,7 +444,7 @@
     modelSelect.value = state.selectedPoseModel || 'lightweight-openpose-lite-256-v1';
     var modelHelper = ui.el('p', { className: 'bv-helper' }, ['Select the pose detection model. Lightweight OpenPose is bundled and cleared for redistribution; other models appear only when their local runtime and licensed model artifacts are available in this build.']);
     if (modelSwitchNotice && modelSwitchNotice.error) {
-      modelHelper = ui.callout('warn', 'Pose model not switched', 'The selected model could not start here: ' + modelSwitchNotice.error + '. The previous model remains active.');
+      modelHelper = ui.callout('warn', 'Pose model not switched', 'The selected model could not start here. The reported cause: ' + modelSwitchNotice.error + '. The previous model remains active.', { tooltip: true });
     } else if (poseModelReport && poseModelReport.ok) {
       var activeModel = poseModelReport.currentModel ? availabilityById[poseModelReport.currentModel] : null;
       modelHelper = ui.el('p', { className: 'bv-helper' }, [activeModel ? 'Active model: ' + activeModel.label + '.' : 'Model choices update when analysis is running.']);
