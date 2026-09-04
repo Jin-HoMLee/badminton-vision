@@ -85,15 +85,19 @@ by considering only the top 120 peaks.
 
 ## Usage in Calibration Flow
 
-1. User enters calibration mode (court seeding) and the content script starts
-   a 500ms detection loop
+1. Court seeding is active (initial setup, camera-cut re-seed, or a restored
+   in-progress setup after a page reload) and the content script runs a
+   500ms detection loop: the loop lifecycle is derived from the seeding
+   state in the content render path, the one place every seeding transition
+   passes through
 2. The content script captures the current frame at max 640px long edge and
    sends it to the service worker, which relays it to the offscreen document
 3. The offscreen document runs the Hough pipeline (see above)
 4. Detected lines render on the overlay's `.bv-hough-canvas` as light blue
    guidance strokes over the video while seeding stays active
-5. Fallback: manual 4-corner setup always remains available, and detection
-   stops cleanly when the user locks or cancels court setup
+5. Fallback: manual 4-corner setup always remains available. When seeding
+   ends (lock or cancel), the loop stops and the guidance canvas is cleared
+   so stale strokes cannot linger
 
 ## Testing with Real Videos
 
@@ -151,9 +155,16 @@ Near-vertical lines appear twice in the accumulator — around θ ≈ 0 with
 leaves on neighbouring θ bins can straddle either side of any fixed fold
 threshold, so no blanket angle fold is applied. Each peak is matched
 against a group reference in its own (θ, ρ) parameterization first and,
-when that matches no group, against the folded twin (180 − θ, −ρ), which
-collapses the wrap-seam duplicates while the smears of a single stroke
-merge back into their true peak through the native comparison. The
+when that matches no group, against the folded twin (180 − θ, −ρ) — but
+only for item/reference pairs that straddle the 0/180 seam (one θ within
+`angleGroupTolerance` of 0 and the other within `angleGroupTolerance` of
+180). Without that seam gate the folded comparison would also absorb
+genuinely distinct level lines: θ ≈ 90 is its own complement under
+(180 − θ), so two level rows mirror-symmetric about the frame centre
+have anti-matching offsets and would collapse into one group no matter
+how far apart they lie. With the gate the wrap-seam duplicates collapse
+while the smears of a single stroke merge back into their true peak
+through the native comparison. The
 perpendicular distance used for merging is measured from the frame centre
 along the line normal — not from the corner origin ρ measures — because
 ρ itself grows with distance from the origin, and an origin-anchored
