@@ -1077,29 +1077,65 @@
   function settingsFirstOpenPlacement(panel, viewport, rendered, result) {
     if (!root || typeof root.querySelectorAll !== "function" || !result || !panelLayoutApi || typeof panelLayoutApi.pixelPanelLayout !== "function") return result;
     var gap = Math.max(0, Number(panelLayoutApi.PANEL_MARGIN) || 0);
-    for (var guard = 0; guard < 6; guard += 1) {
-      var box = { left: result.left, top: result.top, width: result.width, height: result.height };
+    var siblings = [];
+    root.querySelectorAll("[data-bso-panel-layout]").forEach(function (other) {
+      if (other === panel) return;
+      var sibling = panelMetrics(panelContainer(other), other).rendered;
+      if (sibling.width > 0 && sibling.height > 0) siblings.push(sibling);
+    });
+    if (!siblings.length) return result;
+    var areaWidth = Math.max(1, Number(viewport.width) || 1);
+    var areaHeight = Math.max(1, Number(viewport.height) || 1);
+    var layoutFor = function (box) {
+      return {
+        x: box.left / areaWidth,
+        y: box.top / areaHeight,
+        width: box.width / areaWidth,
+        height: box.height / areaHeight
+      };
+    };
+    var overlapsAny = function (box) {
+      for (var index = 0; index < siblings.length; index += 1) {
+        var sibling = siblings[index];
+        if (box.left < sibling.left + sibling.width && sibling.left < box.left + box.width &&
+            box.top < sibling.top + sibling.height && sibling.top < box.top + box.height) return true;
+      }
+      return false;
+    };
+    var lowestOccupantBottom = function (box) {
       var below = -1;
-      root.querySelectorAll("[data-bso-panel-layout]").forEach(function (other) {
-        if (other === panel) return;
-        var sibling = panelMetrics(panelContainer(other), other).rendered;
-        if (sibling.width > 0 && sibling.height > 0 &&
-            box.left < sibling.left + sibling.width && sibling.left < box.left + box.width &&
+      for (var index = 0; index < siblings.length; index += 1) {
+        var sibling = siblings[index];
+        if (box.left < sibling.left + sibling.width && sibling.left < box.left + box.width &&
             box.top < sibling.top + sibling.height && sibling.top < box.top + box.height) {
           below = Math.max(below, sibling.top + sibling.height);
         }
-      });
-      if (below < 0) return result;
-      var stacked = panelLayoutApi.pixelPanelLayout({
-        x: result.layout.x,
-        y: (below + gap) / (viewport.height || 1),
-        width: result.layout.width,
-        height: result.layout.height
-      }, viewport, rendered, panelConstraints("settings"));
-      if (!stacked || stacked.top <= box.top) return result;
-      result = stacked;
+      }
+      return below;
+    };
+    var box = { left: result.left, top: result.top, width: result.width, height: result.height };
+    if (!overlapsAny(box)) return result;
+    var placed = result;
+    var cascadeFits = false;
+    for (var guard = 0; guard < 6; guard += 1) {
+      var below = lowestOccupantBottom(box);
+      if (below < box.top) {
+        cascadeFits = true;
+        break;
+      }
+      var stacked = panelLayoutApi.pixelPanelLayout(layoutFor({ left: box.left, top: below + gap, width: box.width, height: box.height }), viewport, rendered, panelConstraints("settings"));
+      if (!stacked) break;
+      if (stacked.top < below + gap - 0.5) {
+        if (stacked.top > box.top) placed = stacked;
+        break;
+      }
+      placed = stacked;
+      box = { left: stacked.left, top: stacked.top, width: stacked.width, height: stacked.height };
     }
-    return result;
+    if (cascadeFits) return placed;
+    var mirror = panelLayoutApi.pixelPanelLayout(layoutFor({ left: areaWidth - (result.left + result.width), top: result.top, width: result.width, height: result.height }), viewport, rendered, panelConstraints("settings"));
+    if (mirror && !overlapsAny({ left: mirror.left, top: mirror.top, width: mirror.width, height: mirror.height })) return mirror;
+    return placed;
   }
   function applyPanelLayout(container, panel, panelId, layout) {
     if (!panel || !panelLayoutApi || typeof panelLayoutApi.pixelPanelLayout !== "function") return null;
