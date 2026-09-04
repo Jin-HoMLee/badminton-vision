@@ -1781,6 +1781,80 @@ test("court setup keeps the player strip reachable and guides near corners above
   assert.ok(Number.parseFloat(card.style.top) + Number.parseFloat(card.style.height) <= stripTop + 1e-9, "dragging the setup card cannot cover the player strip");
 });
 
+test("court seeding offers tappable floating corner labels and 1-4 keyboard placement on small players", async () => {
+  // The 640x360 host puts the 72px strip reserve at y=288, so the nominal
+  // 82% near-corner row is inside the native controls. The floating pill and
+  // the number keys place each corner at its clamped marked spot instead,
+  // while direct layer clicks stay available for precise placement.
+  const live = await createSession();
+  live.flushStorage();
+  live.onMessage({ type: "START_SEED", requestId: "corner-pill-1" });
+  const root = () => live.overlayRoot();
+  const host = live.host();
+  const pill = () => root().querySelector("[data-bso-seed-corner-button]");
+  let layer = root().querySelector("[data-bso-court-seeding]");
+  assert.equal(layer.getAttribute("data-bso-seed-click-policy"), "layer-only");
+  assert.equal(pill().getAttribute("data-bso-seed-corner-button"), "0");
+  assert.equal(pill().getAttribute("data-bso-seed-corner"), "near-left");
+  assert.equal(pill().getAttribute("aria-label"), "Place the near left outer corner at the marked spot");
+  assert.equal(pill().getAttribute("aria-keyshortcuts"), "1");
+  assert.equal(textOf(pill()).trim(), "Near left outer corner");
+  assert.ok(Math.abs(Number.parseFloat(pill().style.top) - 239) < 0.01, "the near-corner pill floats above the strip");
+  assert.ok(Math.abs(Number.parseFloat(pill().style.left) - 140.8) < 0.01, "the pill is pinned to the corner column");
+  const card = layer.querySelector("[data-bso-seed-card]");
+  const tip = card.querySelector("[data-bso-seed-shortcuts]");
+  assert.ok(tip, "the seed card explains the corner number keys");
+  assert.equal(tip.querySelectorAll("kbd").length, 4);
+  assert.match(textOf(tip), /near left/);
+  assert.match(textOf(tip), /marked spot/);
+  // Number keys yield to focused card controls and only the current corner's
+  // key places a point.
+  const undo = buttonWithText(card, "Undo");
+  assert.equal(live.emitKey("1", { target: undo }), false, "focused card controls keep native keys");
+  assert.equal(host.getAttribute("data-bso-seed-count"), "0");
+  assert.equal(live.emitKey("2"), false, "an out-of-order corner key is inert");
+  assert.equal(host.getAttribute("data-bso-seed-count"), "0");
+  assert.equal(live.emitKey("1"), true, "the current corner's number key places it");
+  assert.equal(host.getAttribute("data-bso-seed-count"), "1");
+  const placed = live.storageWrites.at(-1).bvState.seedDraftPoints[0];
+  assert.ok(Math.abs(placed.x - 0.22) < 1e-9);
+  assert.ok(Math.abs(placed.y - (1 - (72 + 24) / 360)) < 1e-9, "the near corner lands at the clamped marked spot");
+  // The floating button advances to the next corner and flips to the
+  // right-anchored geometry; tapping it seeds like the number key.
+  let nextPill = pill();
+  assert.equal(nextPill.getAttribute("data-bso-seed-corner"), "near-right");
+  assert.ok(Math.abs(Number.parseFloat(nextPill.style.right) - 140.8) < 0.01);
+  nextPill.dispatchEvent({ type: "click", target: nextPill });
+  assert.equal(host.getAttribute("data-bso-seed-count"), "2");
+  // Far corners keep their nominal marked spot (already above the strip) and
+  // complete the flow through the 3/4 keys from the accessibility report.
+  const farRight = pill();
+  assert.equal(farRight.getAttribute("data-bso-seed-corner"), "far-right");
+  assert.ok(Math.abs(Number.parseFloat(farRight.style.right) - 236.8) < 0.01);
+  assert.ok(Math.abs(Number.parseFloat(farRight.style.top) - 93.8) < 0.01);
+  assert.equal(live.emitKey("3"), true);
+  assert.equal(host.getAttribute("data-bso-seed-count"), "3");
+  const farLeft = pill();
+  assert.equal(farLeft.getAttribute("data-bso-seed-corner"), "far-left");
+  assert.ok(Math.abs(Number.parseFloat(farLeft.style.left) - 236.8) < 0.01);
+  assert.equal(live.emitKey("4"), true);
+  assert.equal(host.getAttribute("data-bso-seed-count"), "4");
+  layer = root().querySelector("[data-bso-court-seeding]");
+  assert.equal(layer.getAttribute("data-bso-seed-lockable"), "true", "marked-spot placement fits the court");
+  assert.equal(pill(), null, "the floating button retires once every corner is placed");
+  assert.equal(layer.querySelector("[data-bso-seed-guide]"), null);
+  assert.equal(layer.querySelector("[data-bso-seed-shortcuts]"), null, "the shortcut tip retires with the last step");
+  // Undo restores the floating affordance for the corner that was removed.
+  buttonWithText(root(), "Undo").dispatchEvent({ type: "click", target: buttonWithText(root(), "Undo") });
+  assert.equal(pill().getAttribute("data-bso-seed-corner"), "far-left", "undo brings the corner pill back");
+  // Direct layer clicks remain untouched by the floating pill.
+  layer = root().querySelector("[data-bso-court-seeding]");
+  layer.dispatchEvent({ type: "click", target: layer, clientX: 120, clientY: 60 });
+  layer = root().querySelector("[data-bso-court-seeding]");
+  assert.equal(host.getAttribute("data-bso-seed-count"), "4");
+  assert.equal(layer.querySelector("[data-bso-seed-guide]"), null);
+});
+
 test("collapse and close are visually distinct header affordances on every panel", async () => {
   const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
   live.flushStorage();

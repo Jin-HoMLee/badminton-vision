@@ -137,11 +137,25 @@ The court-setup seed layer used to capture the whole video during the
 four-corner flow. It now ends at the reserve: `clip-path: inset(0 0
 var(--overlay-controls-reserve) 0)` keeps the strip clickable mid-setup
 (scrim included), and on small players the near-corner guide markers are
-clamped above the strip (`seedFlow` in `src/content.js`) so the guide itself
-stays clickable. The focused gates are `tests/panel-layout.test.mjs`
-(reserve geometry and the height cap) and `tests/live-onboarding.test.mjs`
-(strip control points, seed guide clamp, layer pass-through, and the
-drag/resize/collapse regression).
+clamped above the strip so the guide itself stays clickable. Because the
+clamped marked spot is the *only* reachable target when a corner would fall
+inside the strip, each seeding step also renders a floating corner-label
+button (`.bv-seed-corner-button`, `data-bso-seed-corner-button`) pinned to
+that marked spot and clamped fully above the reserve by the pure
+`placeSeedCornerButton` helper in `src/seed-card.js`. Tapping the button — or
+pressing the corner's number key (1 near left, 2 near right, 3 far right,
+4 far left, wired in `handleKeyboardShortcuts` in `src/content.js`) — places
+the point exactly at the marked spot, so calibration works on small players
+and from the keyboard; direct clicks on the layer still place points
+anywhere for precise mouse placement, and the keyboard tip is documented in
+the seed card itself (`data-bso-seed-shortcuts`). Only the next corner in
+the fixed seed order accepts these shortcuts, and a focused control always
+yields to native keys. The Hough guidance overlay and the existing layer
+click contract are untouched. The focused gates are
+tests/panel-layout.test.mjs (reserve geometry and the height cap),
+tests/seed-card.test.mjs (button geometry) and tests/live-onboarding.test.mjs
+(strip control points, seed guide clamp, layer pass-through, the
+pill/keyboard placement flow, and the drag/resize/collapse regression).
 
 ## Panel collapse, close, and evidence visibility
 

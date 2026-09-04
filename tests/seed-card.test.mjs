@@ -63,6 +63,68 @@ test("keyboard nudges use the same safe bounds as dragging", async () => {
   assert.ok(api.isWithinSeedCardBounds(down, viewport, card));
 });
 
+test("floating corner buttons pin to their corner and stay above the player strip", async () => {
+  const api = await seedCardModule();
+  const viewport = { width: 640, height: 360 }; // small player: strip top at 288
+  const button = { height: 40 };
+  const options = { reserve: 72 };
+  const stripTop = viewport.height - options.reserve;
+  const margin = api.SEED_BUTTON_MARGIN;
+  // Near-left corner on a small player: its marked spot is clamped to 264px
+  // and the pill floats above it, pinned to the corner and extending inward.
+  const nearLeft = api.placeSeedCornerButton({ x: 140.8, y: 264 }, viewport, button, options);
+  assert.equal(nearLeft.left, 140.8);
+  assert.equal(nearLeft.right, null);
+  assert.equal(nearLeft.top, 264 - api.SEED_RING_RADIUS - api.SEED_BUTTON_GAP);
+  const nearRight = api.placeSeedCornerButton({ x: 499.2, y: 264 }, viewport, button, options);
+  assert.equal(nearRight.left, null);
+  assert.equal(nearRight.right, 140.8, "right-side pills extend inward from the corner");
+  assert.equal(nearRight.top, nearLeft.top);
+  const farRight = api.placeSeedCornerButton({ x: 403.2, y: 118.8 }, viewport, button, options);
+  assert.equal(farRight.right, 236.8);
+  assert.equal(farRight.top, 118.8 - api.SEED_RING_RADIUS - api.SEED_BUTTON_GAP);
+  // A marked spot too high for an above pill flips the pill below the ring;
+  // every placement stays inside the video and clear of the strip.
+  const high = api.placeSeedCornerButton({ x: 320, y: 20 }, viewport, button, options);
+  assert.equal(high.left, 320);
+  assert.equal(high.top, 20 + api.SEED_RING_RADIUS + api.SEED_BUTTON_GAP + button.height);
+  for (const placement of [nearLeft, nearRight, farRight, high]) {
+    assert.ok(placement.top >= margin + button.height, "the pill never crosses the top edge");
+    assert.ok(placement.top <= stripTop - margin + 1e-9, "the pill never covers the native player strip");
+    const horizontal = placement.left != null ? placement.left : placement.right;
+    assert.ok(horizontal >= 0 && horizontal <= viewport.width - margin + 1e-9, "the pill stays inside the video width");
+  }
+  // Narrow players still keep every corner reachable.
+  const narrow = api.placeSeedCornerButton({ x: 280.8, y: 106 }, { width: 360, height: 202 }, button, options);
+  assert.ok(Math.abs(narrow.right - 79.2) < 1e-9);
+  assert.equal(narrow.top, 106 - api.SEED_RING_RADIUS - api.SEED_BUTTON_GAP);
+});
+
+test("court seeding ships a tappable corner label button and number-key help", async () => {
+  const [content, styles] = await Promise.all([
+    readFile(new URL("../src/content.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/styles.css", import.meta.url), "utf8")
+  ]);
+  // The floating pill names the corner in seed order and places it at the
+  // same marked spot as the number keys, without touching the layer click
+  // policy or the Hough guidance overlay.
+  assert.match(content, /data-bso-seed-corner-button/);
+  assert.match(content, /data-bso-seed-corner"/);
+  assert.match(content, /Place the .* outer corner at the marked spot/);
+  assert.match(content, /aria-keyshortcuts.: String\(index \+ 1\)/);
+  assert.match(content, /placeSeedCornerAtMarkedSpot/);
+  assert.match(content, /state\.seeding && seedPoints\.length < 4 && key >= "1" && key <= "4"/);
+  assert.match(content, /Number\(key\) - 1 === seedPoints\.length/);
+  assert.match(content, /data-bso-seed-click-policy.: "layer-only"/);
+  assert.match(content, /markedCornerSpot/);
+  assert.match(content, /data-bso-seed-shortcuts/);
+  assert.match(styles, /\.bv-seed-corner-button\s*\{[^}]*transform: translateY\(-100%\)/s);
+  assert.match(styles, /\.bv-seed-corner-button\s*\{[^}]*height: var\(--sp-10\)/s);
+  assert.match(styles, /\.bv-seed-corner-button\s*\{[^}]*border-radius: var\(--radius-pill\)/s);
+  assert.match(styles, /\.bv-seed-corner-button\s*\{[^}]*background: var\(--ink-900\)/s);
+  assert.match(styles, /\.bv-seed-card \.bv-seed-shortcuts\s*\{[^}]*display: flex/s);
+});
+
 test("seed-card rendering exposes readable contrast and accessible movement hooks", async () => {
   const [content, styles] = await Promise.all([
     readFile(new URL("../src/content.js", import.meta.url), "utf8"),
