@@ -8,12 +8,18 @@
  * loads or runs YOLO-World.
  *
  * What it does:
- *   1. Downloads the AGPL-3.0 Ultralytics YOLO-World small asset
- *      (`yolov8s-world.pt`) and exports it to ONNX at 640x640.
- *   2. Writes the artifact to src/extension/offscreen/vendor/yolo-world/
+ *   1. Downloads the AGPL-3.0 Ultralytics YOLO-World v2 asset
+ *      (`yolov8s-worldv2.pt`; the original `yolov8s-world.pt` cannot export
+ *      to ONNX in current Ultralytics) and exports it to ONNX at 640x640.
+ *   2. Bakes the racket vocabulary into the graph first (`model.set_classes(...)`
+ *      before `model.export(...)`), so the ONNX exposes exactly one NCHW
+ *      `images` input and one `output0` tensor of per-anchor rows: 4 box
+ *      coordinates + one class score per baked vocabulary entry (no
+ *      objectness column, no runtime text input).
+ *   3. Writes the artifact to src/extension/offscreen/vendor/yolo-world/
  *      as `yolo_world_s_open_vocab.onnx` and prints its SHA-256 so the
  *      MODEL-NOTICE provenance can be recorded.
- *   3. Optionally copies the onnxruntime-web dist assets (ort ESM + wasm)
+ *   4. Optionally copies the onnxruntime-web dist assets (ort ESM + wasm)
  *      into src/extension/offscreen/vendor/onnx/ so the offscreen document
  *      can load ONNX Runtime Web lazily from the extension package.
  *
@@ -54,10 +60,22 @@ for (let i = 0; i < args.length; i++) {
 }
 
 const VARIANTS = {
-  small: { model: 'yolov8s-world.pt', artifact: 'yolo_world_s_open_vocab.onnx', note: 'experimental picker default (2-6 s/frame measured in the offscreen document)' },
-  medium: { model: 'yolov8m-world.pt', artifact: 'yolo_world_m_open_vocab.onnx', note: 'heavier; not wired to a picker entry' },
-  large: { model: 'yolov8l-world.pt', artifact: 'yolo_world_l_open_vocab.onnx', note: 'heavier; not wired to a picker entry' }
+  small: { model: 'yolov8s-worldv2.pt', artifact: 'yolo_world_s_open_vocab.onnx', note: 'experimental picker default (2-6 s/frame measured in the offscreen document)' },
+  medium: { model: 'yolov8m-worldv2.pt', artifact: 'yolo_world_m_open_vocab.onnx', note: 'heavier; not wired to a picker entry' },
+  large: { model: 'yolov8l-worldv2.pt', artifact: 'yolo_world_l_open_vocab.onnx', note: 'heavier; not wired to a picker entry' }
 };
+
+// The racket vocabulary baked into the artifact by model.set_classes(...)
+// below. Keep in sync with DEFAULTS.prompts in
+// src/extension/offscreen/yolo-world-racket-adapter.js: each entry becomes
+// one output class channel, and the adapter validates the exported channel
+// count against this list, so a drift is loud, not silent.
+const RACKET_CLASSES = ['badminton racket', 'racket', "player's racket", 'racquet'];
+
+// Output layout of the exported graph (validated by the adapter at runtime):
+// input `images` NCHW float32 [1, 3, 640, 640]; output `output0` with dims
+// [1, 4 + len(RACKET_CLASSES), 8400], channel-major (4 box coordinates in
+// input-grid pixels followed by sigmoid class scores, no objectness column).
 
 const variantInfo = VARIANTS[variant];
 if (!variantInfo) {
@@ -129,15 +147,18 @@ async function main() {
   const exportScript = `
 import sys
 from ultralytics import YOLO
+RACKET_CLASSES = ${JSON.stringify(RACKET_CLASSES)}
 try:
     model = YOLO('${variantInfo.model}')
+    model.set_classes(RACKET_CLASSES)
     exported = model.export(format='onnx', imgsz=640, half=False, dynamic=False, opset=12, verbose=False)
     print('EXPORTED:' + str(exported))
+    print('BAKED_CLASSES:' + ','.join(RACKET_CLASSES))
 except Exception as error:
     print(f'Export failed: {error}', file=sys.stderr)
     sys.exit(1)
 `;
-  await run('python3', ['-c', exportScript], 'Downloading and exporting YOLO-World to ONNX');
+  await run('python3', ['-c', exportScript], 'Downloading and exporting YOLO-World to ONNX (racket vocabulary baked via set_classes)');
 
   const exportedSource = path.join(PROJECT_ROOT, `${variantInfo.model.replace('.pt', '.onnx')}`);
   const sourceFile = fs.existsSync(exportedSource) ? exportedSource : path.join(process.cwd(), `${variantInfo.model.replace('.pt', '.onnx')}`);
@@ -149,6 +170,7 @@ except Exception as error:
   fs.copyFileSync(sourceFile, targetFile);
   console.log(`\u2713 Artifact written to ${targetFile}`);
   console.log(`SHA-256: ${sha256Of(targetFile)}`);
+  console.log(`Baked racket vocabulary: ${RACKET_CLASSES.join(', ')}`);
   console.log('\nRecord that SHA-256 in src/extension/offscreen/vendor/yolo-world/MODEL-NOTICE.md if you prepare a distributable copy.');
 
   await copyOrtAssets();

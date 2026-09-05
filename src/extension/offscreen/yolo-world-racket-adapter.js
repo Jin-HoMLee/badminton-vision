@@ -6,10 +6,16 @@
  * production EfficientDet-Lite0 detector; it is NOT the shipped default.
  *
  * Licensing and provenance: the prepared ONNX artifact is produced from the
- * AGPL-3.0 Ultralytics `yolov8s-world.pt` asset by
- * `scripts/prepare-yolo-world.mjs` and is never distributed in the default
- * package; the vendor directory carries the license records
- * (`vendor/yolo-world/MODEL-NOTICE.md` and `vendor/yolo-world/LICENSE`).
+ * AGPL-3.0 Ultralytics YOLO-World v2 asset (`yolov8s-worldv2.pt`; the v1
+ * asset cannot export to ONNX in current Ultralytics) by
+ * `scripts/prepare-yolo-world.mjs`, which bakes the racket vocabulary into the
+ * graph with `model.set_classes(...)` before exporting. The artifact is never
+ * distributed in the default package; the vendor directory carries the license
+ * records (`vendor/yolo-world/MODEL-NOTICE.md` and `vendor/yolo-world/LICENSE`).
+ * The baked export has one NCHW `images` input and one `output0` tensor with
+ * per-anchor channels of 4 box coordinates plus one class score per baked
+ * vocabulary entry and no objectness column, so decode never relabels an
+ * unbaked or generic-vocabulary artifact's channels as rackets.
  * Selecting this model in the public build carries AGPL-3.0 source-disclosure
  * terms for anyone who redistributes the prepared artifact, which is why the
  * entry is experimental and opt-in only. The captain accepted that trade for
@@ -28,9 +34,11 @@
   'use strict';
 
   // The prepared artifact is produced locally from the AGPL-3.0 Ultralytics
-  // YOLO-World asset (yolov8s-world.pt) by scripts/prepare-yolo-world.mjs and
-  // is not part of the shipped default package. See
-  // vendor/yolo-world/MODEL-NOTICE.md for the exact provenance.
+  // YOLO-World v2 asset (yolov8s-worldv2.pt) by scripts/prepare-yolo-world.mjs
+  // and is not part of the shipped default package. The script bakes the
+  // racket vocabulary into the graph (model.set_classes(...) before export),
+  // so the ONNX exposes exactly one input and one output. See
+  // vendor/yolo-world/MODEL-NOTICE.md for the exact provenance and contract.
   const MODEL = Object.freeze({
     schema: 'bso.onnx.yolo-world.model.v1',
     id: 'yolo-world-racket-detector-v1',
@@ -41,9 +49,21 @@
     sourceAssetUrl: 'https://github.com/ultralytics/assets/releases',
     license: 'AGPL-3.0',
     licenseStatus: 'agpl-3.0-experimental-source-disclosure',
-    inputShape: [1, 640, 640, 3],
-    outputPredictionCount: 8400,
-    outputStride: 85, // 4 box coords + 1 objectness + 80 class scores
+    // Input: one `images` tensor, NCHW planar float32 in [0, 1] at 640x640
+    // (the standard Ultralytics ONNX export layout). The adapter fills the
+    // whole square grid from the bounded capture frame.
+    inputName: 'images',
+    inputShape: [1, 3, 640, 640],
+    inputLayout: 'NCHW',
+    // Output: one `output0` tensor, dims [1, 4 + classCount, anchorCount]:
+    // 4 box coordinates (cx, cy, w, h in input-grid pixels, decoded by the
+    // graph) followed by one sigmoid class score per baked vocabulary entry.
+    // A v8-style export has no objectness column, so classCount must equal
+    // the baked vocabulary size or the artifact was exported without
+    // set_classes and must not be decoded as a racket model.
+    outputName: 'output0',
+    boxCoordinates: 4,
+    outputAnchorCount: 8400, // YOLOv8 P3/P4/P5 anchor grid at a 640 input
     modelVariant: 'small',
     inferenceEngine: 'onnx-runtime-web',
     experimental: true
@@ -62,6 +82,10 @@
     iouThreshold: 0.45,
     maxDetections: 100,
     inputResolution: 640,
+    // The racket vocabulary baked into the prepared artifact by
+    // scripts/prepare-yolo-world.mjs (model.set_classes(...)); each entry
+    // becomes one output class channel, so this list must stay in sync with
+    // the prepare script.
     prompts: Object.freeze(['badminton racket', 'racket', 'player\'s racket', 'racquet'])
   });
 
@@ -185,16 +209,22 @@
   }
 
   /**
-   * Convert raw YOLO-style predictions ([x_center, y_center, width, height,
-   * confidence, ...]) into normalized, NMS-filtered detections. Deterministic.
+   * Convert raw YOLO-style rows ([x_center, y_center, width, height,
+   * confidence]) into normalized, NMS-filtered detections. The rows come from
+   * the model output and carry coordinates in the model's input grid: the
+   * input prep stretches any bounded source frame onto the square 640x640
+   * grid, and grid coordinate / grid size maps linearly back to the source
+   * frame's normalized space. Normalization therefore divides by the model
+   * grid size - never by the source frame's own pixel dimensions, whose size
+   * the decode must not depend on. Deterministic.
    */
-  function processDetections(rawOutput, imageWidth, imageHeight, options = {}) {
+  function processDetections(rawOutput, inputResolution = DEFAULTS.inputResolution, options = {}) {
     const confThresh = Number(options.confidenceThreshold) || DEFAULTS.confidenceThreshold;
     const iouThresh = Number(options.iouThreshold) || DEFAULTS.iouThreshold;
     const maxDets = Number(options.maxDetections) || DEFAULTS.maxDetections;
     if (!Array.isArray(rawOutput) || rawOutput.length === 0) return [];
-    const width = Number(imageWidth) || 1;
-    const height = Number(imageHeight) || 1;
+    const grid = Number(inputResolution);
+    const gridSize = Number.isFinite(grid) && grid > 0 ? grid : DEFAULTS.inputResolution;
     const candidates = [];
     for (const det of rawOutput) {
       if (!Array.isArray(det) || det.length < 5) continue;
@@ -206,10 +236,10 @@
       const boxHeight = Number(det[3]) || 0;
       candidates.push({
         bbox: {
-          x: clamp((xCenter - boxWidth / 2) / width),
-          y: clamp((yCenter - boxHeight / 2) / height),
-          width: clamp(boxWidth / width),
-          height: clamp(boxHeight / height)
+          x: clamp((xCenter - boxWidth / 2) / gridSize),
+          y: clamp((yCenter - boxHeight / 2) / gridSize),
+          width: clamp(boxWidth / gridSize),
+          height: clamp(boxHeight / gridSize)
         },
         confidence: clamp(confidence),
         original: { xc: det[0], yc: det[1], w: det[2], h: det[3], conf: det[4] }
@@ -227,7 +257,13 @@
 
   /**
    * Resize the bounded RGBA capture frame onto the 640px model grid and
-   * normalize RGB to [0, 1]. Deterministic and allocation-bounded.
+   * normalize RGB to [0, 1]. The output is planar NCHW (channel-major:
+   * index = channel * resolution^2 + y * resolution + x) matching the
+   * vocabulary-baked export's `images` input, whose declared layout is
+   * [1, 3, 640, 640]. The frame is stretched independently per axis onto the
+   * full square grid, so decoded box coordinates live in a uniform 640x640
+   * space and never depend on the source frame's own dimensions.
+   * Deterministic and allocation-bounded.
    */
   function createYoloInputPixels(pixels, resolution = DEFAULTS.inputResolution) {
     if (!pixels || !Number.isInteger(resolution) || resolution < 1) throw new TypeError('input pixels are unavailable');
@@ -240,7 +276,8 @@
     if (!Number.isInteger(channels) || channels < 3) throw new TypeError('source pixels require at least 3 channels');
     const data = pixels.data;
     if (!data || data.length < sourceWidth * sourceHeight * channels) throw new TypeError('source pixel buffer is truncated');
-    const output = new Float32Array(resolution * resolution * 3);
+    const plane = resolution * resolution;
+    const output = new Float32Array(plane * 3);
     for (let y = 0; y < resolution; y += 1) {
       const sourceY = Math.min(sourceHeight - 1, y * sourceHeight / resolution);
       const y0 = Math.floor(sourceY);
@@ -251,7 +288,6 @@
         const x0 = Math.floor(sourceX);
         const xWeight = sourceX - x0;
         const x1 = Math.min(sourceWidth - 1, x0 + 1);
-        const targetOffset = (y * resolution + x) * 3;
         for (let channel = 0; channel < 3; channel += 1) {
           const p00 = Number(data[(y0 * sourceWidth + x0) * channels + channel]) || 0;
           const p01 = Number(data[(y0 * sourceWidth + x1) * channels + channel]) || 0;
@@ -259,11 +295,63 @@
           const p11 = Number(data[(y1 * sourceWidth + x1) * channels + channel]) || 0;
           const top = p00 * (1 - xWeight) + p01 * xWeight;
           const bottom = p10 * (1 - xWeight) + p11 * xWeight;
-          output[targetOffset + channel] = (top * (1 - yWeight) + bottom * yWeight) / 255.0;
+          output[channel * plane + y * resolution + x] = (top * (1 - yWeight) + bottom * yWeight) / 255.0;
         }
       }
     }
     return output;
+  }
+
+  /**
+   * Decode the vocabulary-baked YOLO-World output tensor into per-anchor rows
+   * [x_center, y_center, width, height, confidence]. The `output0` tensor has
+   * dims [1, 4 + classCount, anchorCount] in channel-major row-major layout:
+   * channels 0-3 are the box coordinates decoded by the graph in the model's
+   * input-grid pixels and channels 4+ carry one sigmoid class score per baked
+   * vocabulary entry. A racket candidate is an anchor whose best
+   * vocabulary-channel score is positive. The actual tensor metadata is
+   * validated against the baked contract (channel count = 4 + vocabulary
+   * size, anchor count for the 640 grid), so a plain or objectness-style
+   * export is refused loudly instead of being misread as racket detections.
+   */
+  function decodeYoloOutput(output, options = {}) {
+    if (!output || !output.data || typeof output.data.length !== 'number') {
+      throw new Error('yolo-model-output-unavailable');
+    }
+    const vocabularySize = Number(options.vocabularySize) > 0 ? Number(options.vocabularySize) : DEFAULTS.prompts.length;
+    const dims = Array.isArray(output.dims) ? output.dims : (output.dims ? Array.from(output.dims) : []);
+    const expectedChannels = MODEL.boxCoordinates + vocabularySize;
+    const channelCount = Number(dims[1]);
+    const anchorCount = Number(dims[2]);
+    if (dims.length !== 3 || Number(dims[0]) !== 1 || !Number.isInteger(channelCount) || !Number.isInteger(anchorCount)) {
+      throw new Error(`yolo-model-output-contract-mismatch: output0 dims [${dims.join(', ')}] do not match the vocabulary-baked racket artifact [1, ${expectedChannels}, ${MODEL.outputAnchorCount}]`);
+    }
+    if (channelCount !== expectedChannels) {
+      throw new Error(`yolo-model-output-contract-mismatch: output0 has ${channelCount} channels but the racket-vocabulary artifact must have ${expectedChannels} (${MODEL.boxCoordinates} box coordinates + ${vocabularySize} baked class scores); the artifact was exported without set_classes and is not a racket detector`);
+    }
+    if (anchorCount !== MODEL.outputAnchorCount) {
+      throw new Error(`yolo-model-output-contract-mismatch: output0 has ${anchorCount} anchors but the 640x640 racket artifact must have ${MODEL.outputAnchorCount}`);
+    }
+    const data = output.data;
+    if (data.length < channelCount * anchorCount) throw new Error('yolo-model-output-truncated');
+    const detections = [];
+    for (let anchor = 0; anchor < anchorCount; anchor += 1) {
+      let confidence = 0;
+      for (let cls = 0; cls < vocabularySize; cls += 1) {
+        const score = Number(data[(MODEL.boxCoordinates + cls) * anchorCount + anchor]);
+        if (Number.isFinite(score) && score > confidence) confidence = score;
+      }
+      if (confidence > 0) {
+        detections.push([
+          Number(data[anchor]) || 0,
+          Number(data[anchorCount + anchor]) || 0,
+          Number(data[2 * anchorCount + anchor]) || 0,
+          Number(data[3 * anchorCount + anchor]) || 0,
+          confidence
+        ]);
+      }
+    }
+    return detections;
   }
 
   // A completed run that found no racket still carries the detector marker
@@ -336,6 +424,25 @@
       return { ort };
     } catch (_) {
       return { ort: null, reason: 'yolo-world-runtime-not-bundled' };
+    }
+  }
+
+  /**
+   * Check the session ort reports against the vocabulary-baked artifact
+   * contract before the model is committed as active: the graph must expose
+   * exactly the single `images` input (an extra text/embedding input means the
+   * export was not baked via set_classes) and the `output0` output. Backends
+   * that report no names are skipped; a mismatched feed still fails loudly at
+   * run time.
+   */
+  function validateSessionContract(session) {
+    const inputNames = Array.isArray(session && session.inputNames) ? session.inputNames : null;
+    const outputNames = Array.isArray(session && session.outputNames) ? session.outputNames : null;
+    if (inputNames && inputNames.length > 0 && (inputNames.length !== 1 || !inputNames.includes(MODEL.inputName))) {
+      throw new Error(`yolo-model-input-contract-mismatch: prepared artifact inputs are [${inputNames.join(', ')}], expected exactly "${MODEL.inputName}" (NCHW ${MODEL.inputShape.join('x')}); re-prepare with scripts/prepare-yolo-world.mjs so the racket vocabulary is baked via set_classes`);
+    }
+    if (outputNames && outputNames.length > 0 && !outputNames.includes(MODEL.outputName)) {
+      throw new Error(`yolo-model-output-contract-mismatch: prepared artifact outputs are [${outputNames.join(', ')}], expected "${MODEL.outputName}"`);
     }
   }
 
@@ -479,6 +586,7 @@
               };
               const session = await resolved.ort.InferenceSession.create(modelData, sessionOptions);
               if (!session || typeof session.run !== 'function') throw new Error('onnx session has no run()');
+              validateSessionContract(session);
               this.session = session;
               this.backend = backend;
               sessionCreated = true;
@@ -509,30 +617,6 @@
       return this.initialization;
     }
 
-    /**
-     * Parse the flat YOLO-style output buffer into per-prediction arrays.
-     * Row-major [prediction][4 box coords + 1 objectness + 80 class scores].
-     */
-    parseYoloOutput(outputArray) {
-      const numPredictions = MODEL.outputPredictionCount;
-      const stride = MODEL.outputStride;
-      const detections = [];
-      for (let i = 0; i < numPredictions; i += 1) {
-        const baseIdx = i * stride;
-        const confidence = Number(outputArray[baseIdx + 4]);
-        if (finite(confidence) && confidence > 0) {
-          detections.push([
-            Number(outputArray[baseIdx]) || 0,
-            Number(outputArray[baseIdx + 1]) || 0,
-            Number(outputArray[baseIdx + 2]) || 0,
-            Number(outputArray[baseIdx + 3]) || 0,
-            confidence
-          ]);
-        }
-      }
-      return detections;
-    }
-
     async infer(frame) {
       const pixels = await readFramePixels(frame, this.environment);
       if (!pixels) throw new Error('frame-pixels-unavailable');
@@ -540,17 +624,16 @@
         throw new Error('ONNX tensor/session API is unavailable');
       }
       const inputPixels = createYoloInputPixels(pixels);
-      const input = new this.ort.Tensor('float32', inputPixels, [1, DEFAULTS.inputResolution, DEFAULTS.inputResolution, 3]);
+      const input = new this.ort.Tensor('float32', inputPixels, MODEL.inputShape);
       let results = null;
       try {
-        results = await this.session.run({ images: input });
-        const output = results && results.output0;
+        results = await this.session.run({ [MODEL.inputName]: input });
+        const output = results && results[MODEL.outputName];
         if (!output || !output.data || typeof output.data.length !== 'number') {
-          throw new Error('No output tensor from YOLO-World model');
+          throw new Error(`No ${MODEL.outputName} tensor from YOLO-World model`);
         }
-        const flat = output.data;
-        const rawDetections = this.parseYoloOutput(typeof flat.slice === 'function' ? Array.from(flat) : flat);
-        return processDetections(rawDetections, pixels.width, pixels.height, {
+        const rawDetections = decodeYoloOutput(output, { vocabularySize: this.prompts.length });
+        return processDetections(rawDetections, DEFAULTS.inputResolution, {
           confidenceThreshold: this.confidenceThreshold,
           iouThreshold: this.iouThreshold,
           maxDetections: this.maxDetections
@@ -637,6 +720,7 @@
     ORT_WASM_PATH,
     computeIoU,
     processDetections,
+    decodeYoloOutput,
     racketDetection,
     readFramePixels,
     createYoloInputPixels,

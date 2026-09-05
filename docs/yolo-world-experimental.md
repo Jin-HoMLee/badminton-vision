@@ -15,7 +15,7 @@ implementation and licensing details live in
 | Role | Shipped default; selected when nothing is changed | Opt-in picker entry |
 | Artifact | Vendored Apache-2.0 tflite (committed, in the default package) | AGPL-3.0 Ultralytics asset, prepared locally, never in the default package |
 | Speed | Real-time (live play) | Research-measured ~2-6 s/frame (archive-grade, **not** for live play) |
-| Detection | COCO class-42 "tennis racket" boxes | Zero-shot text prompts (`badminton racket`, `racket`, ...) |
+| Detection | COCO class-42 "tennis racket" boxes | YOLO-World zero-shot racket vocabulary (`badminton racket`, `racket`, ...) baked into the export at prepare time |
 | Licensing | Apache-2.0, cleared for redistribution | AGPL-3.0 source disclosure applies to anyone who redistributes the prepared artifact |
 
 ## Why it is labeled experimental
@@ -43,12 +43,24 @@ npm run build                                    # packages the prepared assets 
 
 `scripts/prepare-yolo-world.mjs`:
 
-1. downloads the AGPL-3.0 `yolov8s-world.pt` Ultralytics asset and exports it
-   to ONNX at 640x640;
+1. downloads the AGPL-3.0 `yolov8s-worldv2.pt` Ultralytics asset (the v2
+   asset; the original `yolov8s-world.pt` cannot export to ONNX in current
+   Ultralytics) and bakes the racket vocabulary into the graph with
+   `model.set_classes([...])` before exporting it to ONNX at 640x640;
 2. writes `src/extension/offscreen/vendor/yolo-world/yolo_world_s_open_vocab.onnx`
    and prints its SHA-256;
 3. copies the onnxruntime-web ESM/wasm files into
    `src/extension/offscreen/vendor/onnx/`.
+
+The baking step matters: because `set_classes` runs before `model.export`, the
+rackets' text embeddings are constants in the ONNX graph. The artifact is then
+a fixed racket-vocabulary detector with exactly one input (`images`, NCHW
+`[1, 3, 640, 640]`) and one output (`output0`, per-anchor rows of 4 box
+coordinates + one class score per baked vocabulary entry - no objectness
+column, no runtime text input). The offscreen adapter validates those input/
+output shapes against the real session and tensor metadata on every run, so a
+plain (unbaked, e.g. 80-class) export is refused with an explicit reason
+instead of misreading generic classes as rackets.
 
 `npm run build` copies those assets into `dist/` only when they exist, so the
 default package stays exactly as before.
@@ -78,3 +90,7 @@ never constructed, parsed, or slowed by the experimental entry.
   want to compare rather than playing live.
 - Detection evidence stays local: nothing is uploaded, and results keep the
   same overlay/feed/export surfaces as the production path.
+
+Detected boxes are reported in the same normalized coordinates as the
+production detector (full source frame, 0..1), so the two models' boxes can be
+compared directly on the same frames.

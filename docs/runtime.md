@@ -272,6 +272,21 @@ public build carries the AGPL-3.0 source-disclosure terms recorded in
 [`docs/yolo-world-experimental.md`](yolo-world-experimental.md) for the
 captain's compare-on-own-footage workflow.
 
+The prepared YOLO-World artifact is not an interactive text-prompt model:
+`scripts/prepare-yolo-world.mjs` bakes the racket vocabulary into the graph
+with `model.set_classes(...)` before `model.export(...)` (using the
+`yolov8s-worldv2.pt` asset - the v1 asset cannot export to ONNX in current
+Ultralytics). The ONNX therefore has one NCHW `images` input (`[1, 3, 640, 640]`,
+planar `[0, 1]` pixels) and one `output0` tensor (`[1, 4 + classCount, 8400]`
+channel-major: 4 box coordinates decoded in input-grid pixels plus one sigmoid
+class score per baked vocabulary entry, no objectness column). The adapter
+validates the session's reported input/output names at activation and the
+actual output channel/anchor counts on every run, so an artifact exported
+without `set_classes` is refused loudly instead of misread; box coordinates
+are normalized by the 640 grid size (never by the source frame's own
+pixels), which maps them back to full-source-frame normalized space
+regardless of the source resolution.
+
 ### One WebGPU device per offscreen document
 
 LiteOpenPose re-initializes on a fresh analyzer every time the user switches
