@@ -462,6 +462,40 @@ test("a camera cut invalidates the guidance and starts a fresh burst for the new
   assert.ok(houghCtx.clears >= clearsBefore + 1, "the camera cut cleared stale guidance strokes");
 });
 
+test("a player geometry change mid-seeding re-scales the guidance strokes to the new box", async () => {
+  // The burst has already stopped when the user changes player geometry
+  // (fullscreen/theater toggle, window resize), so no pass response will
+  // arrive to re-measure the guidance canvas. The strokes are normalized to
+  // the frame, so re-rendering them at the live video rect keeps guidance
+  // aligned with the content without running a new burst.
+  const session = await createSession();
+  session.flushStorage();
+  session.onMessageSafe({ type: "START_SEED", requestId: "burst-geometry-1" });
+  await until(() => session.sent.length === 4, { what: "burst to complete" });
+  const ctx = session.houghCtx();
+  await until(() => (ctx?.strokes || 0) > 0, { what: "guidance strokes at the initial geometry" });
+  const node = session.houghCanvasNode();
+  assert.equal(node.style.width, "640px", "guidance canvas matches the initial 640x360 player box");
+  assert.equal(node.width, 640, "guidance backing store matches the initial player box");
+
+  // Grow the player (e.g. entering fullscreen) after the burst finished.
+  session.video.rect = { left: 0, top: 0, width: 1280, height: 720 };
+  session.documentRef.dispatchEvent({ type: "fullscreenchange" });
+
+  assert.equal(session.sent.length, 4, "a geometry change re-renders guidance, it does not re-run the burst");
+  assert.equal(node.style.width, "1280px", "guidance canvas follows the new player width");
+  assert.equal(node.style.height, "720px", "guidance canvas follows the new player height");
+  assert.equal(node.width, 1280, "guidance backing store follows the new player box");
+  const scaled = ctx.segments.at(-1);
+  assert.ok(scaled, "the guidance was re-stroked at the new geometry");
+  const move = scaled.find(([op]) => op === "move");
+  const line = scaled.find(([op]) => op === "line");
+  assert.ok(Math.abs(move[1] - 0.08 * 1280) < 1e-6 && Math.abs(move[2] - 0.93 * 720) < 1e-6,
+    "strokes scale to the new box width/height");
+  assert.ok(Math.abs(line[1] - 0.92 * 1280) < 1e-6 && Math.abs(line[2] - 0.93 * 720) < 1e-6,
+    "stroke endpoints re-project onto the new box");
+});
+
 test("a reloaded in-progress seeding session restores with one guidance burst", async () => {
   // Persisted state captured mid-seeding (two corners already placed) after a
   // page reload: content restores the flow and runs the one-shot burst once.

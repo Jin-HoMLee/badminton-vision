@@ -8632,6 +8632,7 @@
         : "none";
       host.setAttribute("data-bso-video-geometry", "rendered-content-box");
       resizeOverlayCanvas(rect.width, rect.height);
+      if (state.seeding) resizeHoughCanvas(rect.width, rect.height);
       refreshPanelLayouts();
     }
     function scheduleVideoPosition() {
