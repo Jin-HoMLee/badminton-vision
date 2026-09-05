@@ -15,6 +15,8 @@
   var pendingDispatches = [];
   var poseModelReport = null;
   var modelSwitchNotice = null;
+  var racketModelReport = null;
+  var racketModelSwitchNotice = null;
   // The detected block shows the real current tab: title/channel/duration come
   // from the tab and the content script's published bvVideoInfo. The demo
   // fixture stays available only as a clearly labeled fallback.
@@ -60,6 +62,31 @@
   // re-select it; it falls back to the production default model.
   function selectablePoseModel(value) {
     return isWipPoseModel(value) ? DEFAULT_POSE_MODEL : value;
+  }
+
+  // Racket-model selector catalog, mirrored from the offscreen selector's
+  // AVAILABLE_MODELS ids. EfficientDet-Lite0 is the bundled production
+  // default. YOLO-World is an EXPERIMENTAL entry (AGPL-3.0 Ultralytics asset,
+  // source disclosure applies; research-measured ~2-6 s/frame, archive-grade,
+  // not for live play); it stays listed so the captain can compare it on his
+  // own footage, but it can never become the default.
+  var RACKET_MODEL_ENTRIES = [
+    { value: "efficientdet-lite0-racket-v1", label: "EfficientDet-Lite0 (Production)" },
+    { value: "yolo-world-racket-detector-v1", label: "YOLO-World Open-Vocabulary (Experimental)", experimental: true }
+  ];
+  var DEFAULT_RACKET_MODEL = "efficientdet-lite0-racket-v1";
+  var RACKET_MODEL_EXPERIMENTAL_NOTE = "Experimental: AGPL-3.0 Ultralytics asset with source-disclosure terms; research-measured ~2-6 s/frame (archive-grade, not for live play).";
+  function racketModelEntry(value) {
+    for (var index = 0; index < RACKET_MODEL_ENTRIES.length; index += 1) {
+      if (RACKET_MODEL_ENTRIES[index].value === value) return RACKET_MODEL_ENTRIES[index];
+    }
+    return null;
+  }
+  // A stored preference naming a racket model that is not in the catalog
+  // (unknown id) must never re-select it; it falls back to the production
+  // default. Experimental models are selectable entries, never defaults.
+  function selectableRacketModel(value) {
+    return racketModelEntry(value) ? value : DEFAULT_RACKET_MODEL;
   }
 
   function chromeAvailable() { return typeof chrome !== "undefined"; }
@@ -146,6 +173,28 @@
   function writePoseModelPreference(modelId) {
     if (!chromeAvailable() || !chrome.storage || !chrome.storage.local || typeof chrome.storage.local.set !== "function") return;
     try { chrome.storage.local.set({ bvSelectedPoseModel: String(modelId) }); } catch (_) {}
+  }
+  function writeRacketModelPreference(modelId) {
+    if (!chromeAvailable() || !chrome.storage || !chrome.storage.local || typeof chrome.storage.local.set !== "function") return;
+    try { chrome.storage.local.set({ bvSelectedRacketModel: String(modelId) }); } catch (_) {}
+  }
+  // Ask the offscreen analyzer which racket models can actually run here and
+  // which one is active, then reflect that in the racket model selector. The
+  // probe only reports models whose adapter, runtime, and local artifact
+  // exist; the experimental YOLO-World entry reports an explicit unavailable
+  // reason when its prepared runtime/artifact are not bundled.
+  function refreshRacketModelReport() {
+    if (!chromeAvailable() || !chrome.runtime || typeof chrome.runtime.sendMessage !== "function") return;
+    chrome.runtime.sendMessage({ action: "getAvailableRacketModels" }, function (response) {
+      if (!response || !Array.isArray(response.models)) return;
+      racketModelReport = response;
+      if (response.ok && response.currentModel && state.selectedRacketModel !== response.currentModel) {
+        state.selectedRacketModel = selectableRacketModel(response.currentModel);
+        persist();
+        writeRacketModelPreference(state.selectedRacketModel);
+      }
+      render();
+    });
   }
   // Ask the offscreen analyzer which pose models can actually run here and
   // which one is active, then reflect that in the model selector. The probe
@@ -531,6 +580,71 @@
     var modelSectionContent = ui.el('div', { className: 'bv-model-section-body' }, [modelHelper, modelSelect]);
     var modelSection = section(ui.el('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-4)' } }, ['Pose Detection Model']), modelSectionContent);
 
+    // Racket detection model section. Mirrors the pose model section; the
+    // production EfficientDet entry is the default and the experimental
+    // YOLO-World entry is labeled and disabled with its reason when its
+    // prepared runtime/artifact are not bundled.
+    var racketModelSelectHandler = function (event) {
+      var previousModel = state.selectedRacketModel || DEFAULT_RACKET_MODEL;
+      var selectedModel = event.target.value;
+      if (!selectedModel || selectedModel === previousModel) return;
+      state.selectedRacketModel = selectedModel;
+      racketModelSwitchNotice = null;
+      persist();
+      writeRacketModelPreference(selectedModel);
+      if (typeof chrome !== 'undefined' && chrome.runtime && typeof chrome.runtime.sendMessage === 'function') {
+        chrome.runtime.sendMessage({ action: 'switchRacketModel', modelId: selectedModel }, function (response) {
+          if (!response) return; // Offscreen analyzer not reachable; the stored preference applies when analysis starts.
+          if (response.ok) {
+            console.log('Racket model switched to:', selectedModel);
+          } else {
+            // The offscreen analyzer stayed on its previous model, so the
+            // selector and the stored preference converge back to it.
+            console.warn('Racket model switch failed:', response.reason);
+            racketModelSwitchNotice = { error: response.reason || 'model-unavailable', modelId: selectedModel };
+            state.selectedRacketModel = previousModel;
+            persist();
+            writeRacketModelPreference(previousModel);
+            render();
+          }
+        });
+      }
+    };
+    var racketAvailabilityById = {};
+    if (racketModelReport && Array.isArray(racketModelReport.models)) {
+      racketModelReport.models.forEach(function (model) { racketAvailabilityById[model.id] = model; });
+    }
+    var racketModelOptions = RACKET_MODEL_ENTRIES.map(function (opt) {
+      var known = racketAvailabilityById[opt.value];
+      // An option is disabled only when the offscreen probe reports it
+      // unavailable (the currently active model stays selectable).
+      var disabled = Boolean(known && !known.available && state.selectedRacketModel !== opt.value);
+      var title = null;
+      var label = opt.label;
+      if (opt.experimental) {
+        title = RACKET_MODEL_EXPERIMENTAL_NOTE + (disabled && known && known.reason ? ' Unavailable: ' + known.reason : '');
+      } else if (disabled && known && known.reason) {
+        title = 'Unavailable: ' + known.reason;
+      }
+      return ui.el('option', { value: opt.value, disabled: disabled, title: title }, [label]);
+    });
+    var racketModelSelect = ui.el('select', {
+      className: 'bv-model-selector',
+      value: state.selectedRacketModel || DEFAULT_RACKET_MODEL,
+      onChange: racketModelSelectHandler,
+      'data-bso-racket-model-selector': 'true'
+    }, racketModelOptions);
+    racketModelSelect.value = state.selectedRacketModel || DEFAULT_RACKET_MODEL;
+    var racketModelHelper = ui.el('p', { className: 'bv-helper' }, ['Select the racket detection model. EfficientDet-Lite0 is the bundled production default and draws real tennis-racket boxes from the vendored Apache-2.0 artifact. YOLO-World is an experimental zero-shot alternative (AGPL-3.0 Ultralytics asset, source disclosure applies): research-measured at roughly 2-6 s per frame, archive-grade and not for live play, and it is only selectable once its prepared artifact and ONNX Runtime are bundled locally.']);
+    if (racketModelSwitchNotice && racketModelSwitchNotice.error) {
+      racketModelHelper = ui.callout('warn', 'Racket model not switched', 'The selected racket model could not start here. The reported cause: ' + racketModelSwitchNotice.error + '. The previous model remains active.', { tooltip: true });
+    } else if (racketModelReport && racketModelReport.ok) {
+      var activeRacketModel = racketModelReport.currentModel ? racketAvailabilityById[racketModelReport.currentModel] : null;
+      racketModelHelper = ui.el('p', { className: 'bv-helper' }, [activeRacketModel ? 'Active racket model: ' + activeRacketModel.label + '.' : 'Racket model choices update when analysis is running.']);
+    }
+    var racketModelSectionContent = ui.el('div', { className: 'bv-model-section-body' }, [racketModelHelper, racketModelSelect]);
+    var racketModelSection = section(ui.el('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-4)' } }, ['Racket Detection Model']), racketModelSectionContent);
+
     var primaryLabel = state.enabled ? "Open overlay" : "Turn on inference";
     var primary = ui.button(primaryLabel, { variant: "primary", full: true, icon: state.enabled ? "layout" : "play", disabled: !detected, title: !detected ? "Open a YouTube watch page first" : null, onClick: function () { dispatch({ type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, { type: state.enabled ? "OPEN_OVERLAY" : "ENABLE" }, finishAction); } });
     primary.setAttribute("data-bso-action", state.enabled ? "open-overlay" : "enable");
@@ -546,7 +660,7 @@
     // Panel Controls precedes Evidence visibility: panels are the containers
     // a viewer picks first, evidence layers are the finer-grained content
     // drawn over the video; density and pose model stay below both.
-    root.replaceChildren(header, intro, panelSection, trackerSection, densitySection, modelSection, actions);
+    root.replaceChildren(header, intro, panelSection, trackerSection, densitySection, modelSection, racketModelSection, actions);
     restoreDisclosureFocus();
     restorePanelControlsFocus();
   }
@@ -570,7 +684,7 @@
       // action in this small window is queued and replayed against the stored
       // video-local state rather than being overwritten by the read callback.
       render();
-      if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvRuntimeStatus", "bvVideoInfo", "bvSelectedPoseModel"], function (result) {
+      if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvRuntimeStatus", "bvVideoInfo", "bvSelectedPoseModel", "bvSelectedRacketModel"], function (result) {
         if (result && result.bvState) {
           state = detected
             ? window.BVState.stateForVideo(result.bvState, activeVideoKey)
@@ -601,16 +715,23 @@
         // could store BlazePose before the entry was disabled) must not
         // re-select it either: the same filter guards both preference stores.
         state.selectedPoseModel = selectablePoseModel(state.selectedPoseModel);
+        if (result && result.bvSelectedRacketModel) state.selectedRacketModel = selectableRacketModel(result.bvSelectedRacketModel);
+        // An unknown racket-model id persisted inside bvState must not re-select
+        // either; the same catalog filter guards both preference stores. The
+        // experimental YOLO-World id is a valid catalog entry and is preserved.
+        state.selectedRacketModel = selectableRacketModel(state.selectedRacketModel);
         stateHydrated = true;
         persist();
         render();
         refreshPoseModelReport();
+        refreshRacketModelReport();
         replayPendingDispatches();
       }); else {
         state.videoKey = activeVideoKey;
         stateHydrated = true;
         render();
         refreshPoseModelReport();
+        refreshRacketModelReport();
         replayPendingDispatches();
       }
     });

@@ -235,6 +235,61 @@ visibility as per-keypoint confidence; z is never treated as a confidence
 score. The TF.js adapters accept the serializable RGBA frame transport
 (stable Chrome) as well as ImageBitmap frames.
 
+### Racket model selector and the experimental YOLO-World entry
+
+`offscreen/racket-model-selector.js` mirrors the pose-model selector for the
+racket component. When the production composition is active, the popup's
+**Racket Detection Model** selector talks to the offscreen document through
+two non-protocol actions: `switchRacketModel` (with `modelId`) and
+`getAvailableRacketModels`. The switcher owns the active racket detector
+instance and hands it to `LocalPoseShuttleAnalyzer` (the analyzer's
+`setRacketAnalyzer` swaps it mid-session after the usual probe -> prepare ->
+idle-wait -> commit sequence). The committed model id is stored under the
+`bvSelectedRacketModel` key and is re-applied at every `session.start`, with
+fallback-and-converge to the production default when a stored model cannot
+activate.
+
+The default (and only shipped) racket model is the production
+`efficientdet-lite0-racket-v1` detector described below; an untouched user
+constructs exactly that detector and starts no other racket analyzer. The
+YOLO-World adapter module is loaded with the offscreen document so the
+picker can keep the experimental entry listed and probed with an explicit
+reason, but its analyzer is constructed only when the experimental model
+activates. The **experimental** `yolo-world-racket-detector-v1` entry revives
+the YOLO-World MVP as an opt-in comparison model: it runs the open-vocabulary
+YOLO-World detector (AGPL-3.0 Ultralytics asset, artifact prepared locally by
+`scripts/prepare-yolo-world.mjs`) on ONNX Runtime Web, which is loaded lazily
+only when that model activates. It is research-measured at roughly 2-6 s/frame
+in the offscreen document - archive-grade, not for live play - which the popup
+entry states, and it is only selectable when its prepared runtime and artifact
+are bundled; otherwise the option stays listed and reports an explicit
+unavailable reason (mirroring the pose picker's semantics) instead of being
+silently dropped. Both racket detectors emit the same evidence envelope and
+mark it with a `detectionMethod` carried on the analyzer identity, so the
+composition's acceptance gate is model-neutral and the overlay draws either
+model's boxes through the same path. Licensing: the EfficientDet artifact is
+Apache-2.0 and vendored; the YOLO-World prepared artifact is AGPL-3.0 and is
+never committed to or shipped from the default package - selecting it in a
+public build carries the AGPL-3.0 source-disclosure terms recorded in
+`offscreen/vendor/yolo-world/MODEL-NOTICE.md` and `LICENSE`. See
+[`docs/yolo-world-experimental.md`](yolo-world-experimental.md) for the
+captain's compare-on-own-footage workflow.
+
+The prepared YOLO-World artifact is not an interactive text-prompt model:
+`scripts/prepare-yolo-world.mjs` bakes the racket vocabulary into the graph
+with `model.set_classes(...)` before `model.export(...)` (using the
+`yolov8s-worldv2.pt` asset - the v1 asset cannot export to ONNX in current
+Ultralytics). The ONNX therefore has one NCHW `images` input (`[1, 3, 640, 640]`,
+planar `[0, 1]` pixels) and one `output0` tensor (`[1, 4 + classCount, 8400]`
+channel-major: 4 box coordinates decoded in input-grid pixels plus one sigmoid
+class score per baked vocabulary entry, no objectness column). The adapter
+validates the session's reported input/output names at activation and the
+actual output channel/anchor counts on every run, so an artifact exported
+without `set_classes` is refused loudly instead of misread; box coordinates
+are normalized by the 640 grid size (never by the source frame's own
+pixels), which maps them back to full-source-frame normalized space
+regardless of the source resolution.
+
 ### One WebGPU device per offscreen document
 
 LiteOpenPose re-initializes on a fresh analyzer every time the user switches

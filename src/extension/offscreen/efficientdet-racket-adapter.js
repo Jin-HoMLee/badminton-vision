@@ -495,6 +495,11 @@
         id: MODEL.id,
         version: MODEL.version,
         kind: MODEL.kind,
+        // Evidence-marker contract shared with the YOLO-World experimental
+        // detector: each racket analyzer declares the detectionMethod its
+        // evidence envelopes carry, so the composition accepts evidence from
+        // whichever detector is active without branching on model ids.
+        detectionMethod: 'efficientdet-lite0-tennis-racket',
         model: 'MediaPipe EfficientDet-Lite0 (COCO float16)',
         modelVersion: MODEL.version,
         localArtifact: MODEL.modelUrl,

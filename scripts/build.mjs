@@ -47,9 +47,16 @@ const runtimeFiles = [
   ["offscreen/movenet-adapter.js", "offscreen/movenet-adapter.js"],
   ["offscreen/blazepose-adapter.js", "offscreen/blazepose-adapter.js"],
   ["offscreen/pose-model-selector.js", "offscreen/pose-model-selector.js"],
+  ["offscreen/racket-model-selector.js", "offscreen/racket-model-selector.js"],
   ["offscreen/lite-runtime-loader.js", "offscreen/lite-runtime-loader.js"],
   ["offscreen/lite-openpose-adapter.js", "offscreen/lite-openpose-adapter.js"],
   ["offscreen/efficientdet-racket-adapter.js", "offscreen/efficientdet-racket-adapter.js"],
+  // The experimental YOLO-World racket adapter (AGPL-3.0, never the default)
+  // ships its code and license records; the prepared ONNX artifact and the
+  // ONNX Runtime Web assets are copied only when present locally (see below).
+  ["offscreen/yolo-world-racket-adapter.js", "offscreen/yolo-world-racket-adapter.js"],
+  ["offscreen/vendor/yolo-world/LICENSE", "offscreen/vendor/yolo-world/LICENSE"],
+  ["offscreen/vendor/yolo-world/MODEL-NOTICE.md", "offscreen/vendor/yolo-world/MODEL-NOTICE.md"],
   // The bounded local shuttle adapter is loaded by offscreen.html and composed
   // with production pose results; it has no model weights or network path.
   ["offscreen/shuttle-tracking-adapter.js", "offscreen/shuttle-tracking-adapter.js"],
@@ -269,6 +276,25 @@ await copyFile(join(root, "manifest.json"), join(dist, "manifest.json"));
 for (const [source, destination] of runtimeFiles) await copyFile(join(extension, source), join(dist, destination));
 for (const [source, destination] of mlPipelineFiles) await copyFile(join(src, "ml-pipeline", source), join(dist, destination));
 for (const file of designSystemFiles) await copyFile(join(designSystem, file), join(dist, "design-system", file));
+// The experimental YOLO-World prepared artifact and its ONNX Runtime Web
+// assets are optional local assets (created by scripts/prepare-yolo-world.mjs
+// under src/extension/offscreen/vendor/yolo-world/ and .../vendor/onnx/). They
+// are never part of the committed default package; when present they are
+// copied so a locally prepared extension can run the experimental model.
+async function copyOptionalTree(sourceDirectory, destinationDirectory) {
+  let entries;
+  try {
+    entries = await listFiles(sourceDirectory);
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return;
+    throw error;
+  }
+  for (const file of entries) {
+    await copyFile(file, join(destinationDirectory, relative(sourceDirectory, file)));
+  }
+}
+await copyOptionalTree(join(extension, 'offscreen/vendor/onnx'), join(dist, 'offscreen/vendor/onnx'));
+await copyOptionalTree(join(extension, 'offscreen/vendor/yolo-world'), join(dist, 'offscreen/vendor/yolo-world'));
 await writeContentBundle(join(dist, "content.bundle.js"));
 
 const manifest = JSON.parse(await readFile(join(dist, "manifest.json"), "utf8"));
@@ -337,7 +363,7 @@ for (const match of offscreenHtml.matchAll(/<script\b[^>]*\bsrc\s*=\s*["']([^"']
   }
   try { await stat(join(dist, scriptFile)); } catch { throw new Error(`Packed offscreen document references a missing script: ${script}`); }
 }
-for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "blazepose-adapter.js", "pose-model-selector.js", "vendor/tfjs/tf.min.js", "lite-runtime-loader.js", "lite-openpose-adapter.js", "efficientdet-racket-adapter.js", "shuttle-tracking-adapter.js", "hough-court-lines-adapter.js", "../ml-pipeline/onnx-runtime.js", "../ml-pipeline/adapters/blazepose-adapter.js", "../ml-pipeline/adapters/yolov8-shuttle-adapter.js", "../ml-pipeline/adapters/tracknet-processor.js", "../ml-pipeline/inference-pipeline.js", "../ml-pipeline/adapters/onnx-inference-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
+for (const script of ["../common/protocol.js", "../common/player-tracking.js", "movenet-adapter.js", "blazepose-adapter.js", "pose-model-selector.js", "racket-model-selector.js", "vendor/tfjs/tf.min.js", "lite-runtime-loader.js", "lite-openpose-adapter.js", "efficientdet-racket-adapter.js", "yolo-world-racket-adapter.js", "shuttle-tracking-adapter.js", "hough-court-lines-adapter.js", "../ml-pipeline/onnx-runtime.js", "../ml-pipeline/adapters/blazepose-adapter.js", "../ml-pipeline/adapters/yolov8-shuttle-adapter.js", "../ml-pipeline/adapters/tracknet-processor.js", "../ml-pipeline/inference-pipeline.js", "../ml-pipeline/adapters/onnx-inference-adapter.js", "fixture-model.js", "analyzer.js", "offscreen.js"]) {
   if (!offscreenHtml.includes(`src="${script}"`)) throw new Error(`Packed offscreen document is missing ${script}`);
 }
 await assertNoRemoteDependencies(dist);

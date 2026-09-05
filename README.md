@@ -260,6 +260,16 @@ or the pose capability. Provenance, the strict class filter, and the
 fallback contract are in [`docs/runtime.md`](docs/runtime.md) and the vendored
 `MODEL-NOTICE.md` under `src/extension/offscreen/vendor/efficientdet-lite0/`.
 
+The racket detector is selectable exactly like the pose model: the popup's
+**Racket Detection Model** control chooses EfficientDet-Lite0 (the bundled
+production default) or the **experimental** YOLO-World open-vocabulary entry
+(AGPL-3.0 Ultralytics asset, artifact prepared locally with
+`scripts/prepare-yolo-world.mjs`; research-measured at roughly 2-6 s/frame,
+archive-grade and not for live play; license records under
+`src/extension/offscreen/vendor/yolo-world/`). The workflow for comparing
+both detectors on your own footage is in
+[`docs/yolo-world-experimental.md`](docs/yolo-world-experimental.md).
+
 `src/runtime.js` is the read-only playback boundary and UI seam. It reads
 `currentTime`, frame metadata, dimensions, and playback state; it does not
 assign playback properties, call player controls, or style the video.
