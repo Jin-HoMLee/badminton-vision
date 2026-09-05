@@ -82,6 +82,7 @@
     iouThreshold: 0.45,
     maxDetections: 100,
     inputResolution: 640,
+    maxRunRetries: 1,
     // The racket vocabulary baked into the prepared artifact by
     // scripts/prepare-yolo-world.mjs (model.set_classes(...)); each entry
     // becomes one output class channel, so this list must stay in sync with
@@ -459,6 +460,7 @@
       confidenceThreshold = DEFAULTS.confidenceThreshold,
       iouThreshold = DEFAULTS.iouThreshold,
       maxDetections = DEFAULTS.maxDetections,
+      maxRunRetries = DEFAULTS.maxRunRetries,
       prompts = DEFAULTS.prompts,
       onStatus = () => {}
     } = {}) {
@@ -473,6 +475,7 @@
       this.confidenceThreshold = confidenceThreshold;
       this.iouThreshold = iouThreshold;
       this.maxDetections = maxDetections;
+      this.maxRunRetries = Number.isInteger(maxRunRetries) && maxRunRetries >= 0 ? maxRunRetries : DEFAULTS.maxRunRetries;
       this.prompts = Array.isArray(prompts) ? prompts.slice() : DEFAULTS.prompts.slice();
       this.onStatus = typeof onStatus === 'function' ? onStatus : () => {};
       this.ort = null;
@@ -480,6 +483,7 @@
       this.backend = null;
       this.initialization = null;
       this.failed = null;
+      this.runFailures = 0;
       this.inFlight = false;
       this.inFlightMediaTime = null;
       this.identity = Object.freeze({
@@ -666,6 +670,7 @@
         const initialized = await this.initialize();
         if (!initialized.available) return unavailableEvidence(initialized.reason || 'model-unavailable');
         const detections = await this.infer(sample.frame);
+        this.runFailures = 0;
         if (!Array.isArray(detections) || !detections.length) return unknownEvidence('no-yolo-world-racket-detection');
         return {
           state: 'tracked',
@@ -682,13 +687,14 @@
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         this.failed = reason;
-        // A run that threw did not complete, so this frame's evidence is not
-        // authoritative. Drop the session and cached initialization so the
-        // next frame retries from scratch instead of silently suppressing
-        // evidence for the rest of the session.
+        this.runFailures += 1;
         dispose(this.session);
         this.session = null;
-        this.initialization = null;
+        if (this.runFailures > this.maxRunRetries) {
+          this.initialization = Promise.resolve({ available: false, reason, fallbacks: [] });
+        } else {
+          this.initialization = null;
+        }
         this.status({ type: 'inference-failure', sessionId, requestId, mediaTime, reason });
         return unavailableEvidence(reason);
       } finally {

@@ -388,6 +388,59 @@ test('invalid media times are refused before inference and a run exception drops
   assert.equal(recovered.detections[0].bbox.x, 0.6);
 });
 
+test('consecutive run failures are bounded: retries stop re-fetching the artifact and report unavailable', async () => {
+  const created = [];
+  let creates = 0;
+  let fetches = 0;
+  const { ort, environment } = ortHarness({
+    runThrows: 'persistent-run-failure',
+    fetchImpl: async () => {
+      fetches += 1;
+      return { ok: true, status: 200, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer };
+    },
+    createSession: () => {
+      creates += 1;
+      const next = {
+        released: false,
+        inputNames: ['images'],
+        outputNames: ['output0'],
+        async run() { throw new Error('persistent-run-failure'); },
+        release() { this.released = true; }
+      };
+      created.push(next);
+      return next;
+    }
+  });
+  const analyzer = new adapter.YoloWorldRacketAnalyzer({ environment });
+  for (const mediaTime of [1, 2, 3, 4, 5]) {
+    const result = await analyzer.analyze({ sessionId: 's9', requestId: `r${mediaTime}`, mediaTime, frame: frame() });
+    assert.equal(result.state, 'unknown');
+    assert.equal(result.detectionMethod, null);
+    assert.match(result.reason, /persistent-run-failure/);
+  }
+  // The first failure allows one from-scratch retry; the second consecutive
+  // failure exhausts the budget. Later frames must never re-fetch the large
+  // local artifact or rebuild the session for a failure that cannot recover.
+  assert.equal(creates, 2);
+  assert.equal(fetches, 2);
+  assert.ok(created.every((session) => session.released === true));
+  // A successful run elsewhere resets the retry budget, and an explicit model
+  // re-activation (a fresh analyzer instance, as the racket switcher builds)
+  // starts with a clean budget instead of inheriting the exhausted state.
+  ort.InferenceSession.create = async () => ({
+    released: false,
+    inputNames: ['images'],
+    outputNames: ['output0'],
+    async run() { return { output0: outputWithDetection() }; },
+    release() { this.released = true; }
+  });
+  const fresh = new adapter.YoloWorldRacketAnalyzer({ environment });
+  const recovered = await fresh.analyze({ sessionId: 's10', requestId: 'r10', mediaTime: 6, frame: frame(1280, 720) });
+  assert.equal(recovered.state, 'tracked');
+  assert.equal(recovered.detectionMethod, 'yolo-world-open-vocab-racket');
+  assert.equal(recovered.detections[0].bbox.x, 0.6);
+});
+
 test('racketDetection clamps and normalizes bounding boxes', () => {
   const detection = adapter.racketDetection({ x: -0.4, y: 2, width: 3, height: -1 }, 1.7, 'racket-0');
   assert.equal(detection.bbox.x, 0);
