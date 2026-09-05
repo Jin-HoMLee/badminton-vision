@@ -6322,6 +6322,10 @@
       // Selected pose detection model for multi-model system
       // Default is lightweight-openpose-lite-256-v1 (production model)
       selectedPoseModel: 'lightweight-openpose-lite-256-v1',
+      // Selected racket detection model for multi-model system
+      // Default is efficientdet-lite0-racket-v1 (production model); the
+      // experimental YOLO-World entry is never the default.
+      selectedRacketModel: 'efficientdet-lite0-racket-v1',
     };
   
     function clone(value) {

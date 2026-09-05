@@ -167,7 +167,7 @@ class FakeDocument extends FakeNode {
   getElementById(id) { return this.querySelector(`[id="${id}"]`); }
 }
 
-async function createPopupSession({ runtimeStatus = null, poseModelSwitchReason = null, storedPoseModel = null, nestedPoseModel = null } = {}) {
+async function createPopupSession({ runtimeStatus = null, poseModelSwitchReason = null, storedPoseModel = null, nestedPoseModel = null, racketModelSwitchReason = null, racketReport = null, storedRacketModel = null, nestedRacketModel = null } = {}) {
   const documentRef = new FakeDocument();
   const app = new FakeNode("main");
   app.setAttribute("id", "app");
@@ -181,6 +181,12 @@ async function createPopupSession({ runtimeStatus = null, poseModelSwitchReason 
     if (poseModelSwitchReason !== null && message && message.action === "switchPoseModel") {
       callback({ ok: false, reason: poseModelSwitchReason, modelId: message.modelId });
     }
+    if (racketModelSwitchReason !== null && message && message.action === "switchRacketModel") {
+      callback({ ok: false, reason: racketModelSwitchReason, modelId: message.modelId });
+    }
+    if (racketReport !== null && message && message.action === "getAvailableRacketModels") {
+      callback(racketReport);
+    }
   };
   const chromeApi = {
     runtime,
@@ -193,6 +199,8 @@ async function createPopupSession({ runtimeStatus = null, poseModelSwitchReason 
         const stored = { bvState: { videoKey: "youtube:real-match", enabled: false, seeded: false }, bvRuntimeStatus: runtimeStatus };
         if (storedPoseModel !== null) stored.bvSelectedPoseModel = storedPoseModel;
         if (nestedPoseModel !== null) stored.bvState.selectedPoseModel = nestedPoseModel;
+        if (storedRacketModel !== null) stored.bvSelectedRacketModel = storedRacketModel;
+        if (nestedRacketModel !== null) stored.bvState.selectedRacketModel = nestedRacketModel;
         callback(stored);
       },
       set: (_value, callback) => callback?.()
@@ -572,4 +580,79 @@ test("a stored MoveNet preference still re-selects its model", async () => {
   const popup = await createPopupSession({ storedPoseModel: "movenet-multipose-lightning-v1" });
   const select = popup.app.querySelector("[data-bso-model-selector]");
   assert.equal(select.value, "movenet-multipose-lightning-v1", "only work-in-progress models are filtered out of stored preferences");
+});
+
+test("the racket model selector mirrors the pose picker and marks the experimental YOLO-World entry", async () => {
+  const racketReport = {
+    ok: true,
+    currentModel: "efficientdet-lite0-racket-v1",
+    models: [
+      { id: "efficientdet-lite0-racket-v1", label: "EfficientDet-Lite0 (Production)", available: true, reason: "", current: true, experimental: false },
+      { id: "yolo-world-racket-detector-v1", label: "YOLO-World Open-Vocabulary (Experimental)", available: false, reason: "onnx-runtime-web-not-loaded", current: false, experimental: true }
+    ]
+  };
+  const popup = await createPopupSession({ racketReport });
+  const select = popup.app.querySelector("[data-bso-racket-model-selector]");
+  assert.ok(select, "the racket model selector is rendered");
+  assert.equal(select.value, "efficientdet-lite0-racket-v1", "the production default is active");
+  const byValue = {};
+  select.querySelectorAll("option").forEach((option) => { byValue[option.getAttribute("value")] = option; });
+  assert.ok(byValue["efficientdet-lite0-racket-v1"], "EfficientDet keeps its menu entry");
+  assert.ok(!byValue["efficientdet-lite0-racket-v1"].disabled, "the production default stays selectable");
+  const yolo = byValue["yolo-world-racket-detector-v1"];
+  assert.ok(yolo, "YOLO-World keeps its experimental menu entry");
+  assert.equal(yolo.disabled, true, "the experimental entry is disabled when its runtime is not bundled");
+  assert.match(yolo.getAttribute("title"), /Experimental/, "the entry is clearly labeled experimental");
+  assert.match(yolo.getAttribute("title"), /AGPL-3\.0/, "the license implication is surfaced in the tooltip");
+  assert.match(yolo.getAttribute("title"), /2-6 s\/frame/, "the measured per-frame cost is surfaced");
+  assert.match(yolo.getAttribute("title"), /Unavailable: onnx-runtime-web-not-loaded/, "the specific unavailable reason is surfaced");
+});
+
+test("a stored experimental racket preference hydrates, and an unknown id falls back to the production default", async () => {
+  const stored = await createPopupSession({ storedRacketModel: "yolo-world-racket-detector-v1" });
+  const select = stored.app.querySelector("[data-bso-racket-model-selector]");
+  assert.equal(select.value, "yolo-world-racket-detector-v1", "a valid stored experimental preference is preserved at hydration");
+  const unknown = await createPopupSession({ storedRacketModel: "some-retired-model-id" });
+  const unknownSelect = unknown.app.querySelector("[data-bso-racket-model-selector]");
+  assert.equal(unknownSelect.value, "efficientdet-lite0-racket-v1", "an unknown stored id falls back to the production default");
+  const nested = await createPopupSession({ nestedRacketModel: "some-retired-model-id" });
+  const nestedSelect = nested.app.querySelector("[data-bso-racket-model-selector]");
+  assert.equal(nestedSelect.value, "efficientdet-lite0-racket-v1", "an unknown nested bvState id falls back too");
+});
+
+test("a failed racket model switch keeps the cause in the tooltip with a concise standing line", async () => {
+  const racketReport = {
+    ok: true,
+    currentModel: "efficientdet-lite0-racket-v1",
+    models: [
+      { id: "efficientdet-lite0-racket-v1", label: "EfficientDet-Lite0 (Production)", available: true, reason: "", current: true, experimental: false },
+      { id: "yolo-world-racket-detector-v1", label: "YOLO-World Open-Vocabulary (Experimental)", available: true, reason: "", current: false, experimental: true }
+    ]
+  };
+  const popup = await createPopupSession({ racketReport, racketModelSwitchReason: "the prepared artifact probe could not reach the local ONNX file (404)." });
+  const select = popup.app.querySelector("[data-bso-racket-model-selector]");
+  select.value = "yolo-world-racket-detector-v1";
+  select.dispatchEvent({ type: "change" });
+  const bodies = popup.app.querySelectorAll(".bv-model-section-body");
+  const racketBody = bodies.find((body) => body.querySelector("[data-bso-racket-model-selector]"));
+  assert.ok(racketBody, "the racket model section body is present");
+  const compact = racketBody.querySelector("[data-bso-callout-compact]");
+  assert.ok(compact, "the failure renders a compact callout in the racket model section");
+  assert.ok(compact.className.includes("bv-callout warn"));
+  const title = compact.querySelector("strong");
+  assert.ok(title && title.children[0].textContent.includes("Racket model not switched"));
+  const body = compact.querySelector(".bv-callout-body");
+  const standing = body.children[0].textContent;
+  const tipId = body.getAttribute("aria-describedby");
+  const full = compact.querySelector(`[id="${tipId}"]`).children[0].textContent;
+  assert.equal(standing, "The selected racket model could not start here.");
+  assert.ok(!standing.includes("prepared artifact probe"), "standing line stays concise without the dynamic cause");
+  assert.ok(full.startsWith(standing), "tooltip carries the full body starting at the standing line");
+  assert.ok(full.includes("prepared artifact probe could not reach the local ONNX file (404)."), "tooltip carries the full cause");
+  assert.ok(full.includes("The previous model remains active."), "tooltip keeps the previous-model note");
+  const reverted = popup.app.querySelector("[data-bso-racket-model-selector]");
+  assert.equal(reverted.value, "efficientdet-lite0-racket-v1", "the selector reverts to the previous model");
+  const switches = popup.runtimeMessages.filter((message) => message.action === "switchRacketModel");
+  assert.equal(switches.length, 1);
+  assert.equal(switches[0].modelId, "yolo-world-racket-detector-v1", "the user's selection is what reached the offscreen analyzer");
 });

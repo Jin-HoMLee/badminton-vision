@@ -1,4 +1,4 @@
-/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter, BSOLiteOpenPoseAdapter, BSOBlazePoseTfjsAdapter, BSoPoseModelSelector, BSOShuttleTrackingAdapter, BSOOnnxInferenceAdapter, BSOEfficientDetRacketAdapter */
+/* global chrome, BSOProtocol, BSOFixtureAnalyzer, BSOMoveNetAdapter, BSOLiteOpenPoseAdapter, BSOBlazePoseTfjsAdapter, BSoPoseModelSelector, BSOShuttleTrackingAdapter, BSOOnnxInferenceAdapter, BSOEfficientDetRacketAdapter, BSOYoloWorldRacketAdapter, BSoRacketModelSelector */
 'use strict';
 
 const ANALYZER_FALLBACK = 'fixture-probe-v1';
@@ -164,6 +164,30 @@ class LocalPoseShuttleAnalyzer {
     if (!nextPoseAnalyzer || typeof nextPoseAnalyzer.analyze !== 'function') throw new TypeError('A production pose analyzer is required');
     this.poseAnalyzer = nextPoseAnalyzer;
     if (Object.hasOwn(this.poseAnalyzer, 'onStatus')) this.poseAnalyzer.onStatus = (value) => this.status({ component: 'pose', ...value });
+    return this.refreshCompositionIdentity();
+  }
+
+  /**
+   * Swap the racket component of the composition (used when the user switches
+   * racket models mid-session). The caller owns the previous analyzer's
+   * lifecycle: the racket model switcher disposes it when the switch commits.
+   * The experimental YOLO-World detector satisfies the same analyze()/identity
+   * contract as the EfficientDet detector, so the swap never special-cases a
+   * model id.
+   */
+  setRacketAnalyzer(nextRacketAnalyzer) {
+    if (nextRacketAnalyzer && typeof nextRacketAnalyzer.analyze !== 'function') throw new TypeError('A racket analyzer must expose analyze(frameSample)');
+    this.racketAnalyzer = nextRacketAnalyzer || null;
+    if (this.racketAnalyzer && Object.hasOwn(this.racketAnalyzer, 'onStatus')) this.racketAnalyzer.onStatus = (value) => this.status({ component: 'racket', ...value });
+    return this.refreshCompositionIdentity();
+  }
+
+  /**
+   * Rebuild the composition identity, capability details, and initialization
+   * state after a component swap. Initialization is cleared so the next
+   * initialize() re-runs against the new component set.
+   */
+  refreshCompositionIdentity() {
     this.identity = Object.freeze({
       ...(this.poseAnalyzer.identity || { id: 'lightweight-openpose-lite-256-v1', version: 1, kind: 'local-litert-tflite-multipose' }),
       composition: 'pose-plus-shuttle-v1',
@@ -305,7 +329,21 @@ class LocalPoseShuttleAnalyzer {
         this.status({ component: 'racket', type: 'detection-failed', sessionId, reason: error instanceof Error ? error.message : String(error) });
       }
     }
-    const racketEvidenceFromDetector = racketResult && typeof racketResult === 'object' && racketResult.detectionMethod === 'efficientdet-lite0-tennis-racket'
+    // Evidence is accepted only when the active racket analyzer marked it
+    // with its own detectionMethod (real boxes, or an honest unknown when the
+    // run found no racket). The marker travels on the analyzer identity, so
+    // the EfficientDet default and the experimental YOLO-World detector both
+    // feed the same composition gate without model-id branching. Analyzers
+    // without an identity marker (legacy stubs) keep the historical
+    // EfficientDet-only acceptance.
+    const activeRacketMethod = this.racketAnalyzer && this.racketAnalyzer.identity && typeof this.racketAnalyzer.identity.detectionMethod === 'string'
+      ? this.racketAnalyzer.identity.detectionMethod
+      : null;
+    const racketEvidenceFromDetector = racketResult && typeof racketResult === 'object' &&
+      typeof racketResult.detectionMethod === 'string' && racketResult.detectionMethod &&
+      (activeRacketMethod === null
+        ? racketResult.detectionMethod === 'efficientdet-lite0-tennis-racket'
+        : racketResult.detectionMethod === activeRacketMethod)
       ? racketResult
       : null;
 
@@ -406,17 +444,63 @@ const poseModelSwitcher = Boolean(globalThis.BSoPoseModelSelector) && Boolean(Pr
   })()
   : null;
 
+// The racket model switcher owns the active racket detector the same way the
+// pose switcher owns the pose analyzer. Its default model is exactly the
+// production EfficientDet-Lite0 detector, so an untouched user starts (and
+// stays) on the shipped path with no added per-frame work. The experimental
+// YOLO-World model is instantiated only when the user prepares its runtime
+// and artifact and explicitly selects it (see racket-model-selector.js).
+const racketModelSwitcher = Boolean(globalThis.BSoRacketModelSelector) && Boolean(RacketDetector) && Boolean(ShuttleAdapter) && !onnxInferenceEnabled
+  ? (() => {
+    try {
+      return new globalThis.BSoRacketModelSelector.RacketModelSwitcher({
+        initialModelId: globalThis.BSoRacketModelSelector.DEFAULT_RACKET_MODEL,
+        environment: globalThis,
+        onModelChange: (result) => {
+          // The preference is committed only when the model actually
+          // activated; a failed switch never rewrites the stored choice.
+          if (result && result.ok && typeof result.modelId === 'string') {
+            persistRacketModelPreference(result.modelId);
+          }
+        },
+        onStatus: (status) => {
+          if (globalThis.BSOOffscreenLogger && typeof globalThis.BSOOffscreenLogger.debug === 'function') {
+            globalThis.BSOOffscreenLogger.debug('racket-model-selector', status);
+          }
+        }
+      });
+    } catch (error) {
+      if (globalThis.BSOOffscreenLogger && typeof globalThis.BSOOffscreenLogger.error === 'function') {
+        globalThis.BSOOffscreenLogger.error('racket-model-selector-init', error instanceof Error ? error.message : String(error));
+      }
+      return null;
+    }
+  })()
+  : null;
+
+// The racket analyzer handed to the live composition. When the switcher is
+// present it supplies the active detector instance (default: EfficientDet);
+// when it is absent (selector module or adapter not loaded) the analyzer
+// falls back to its own default construction, preserving the pre-selector
+// behavior exactly.
+function resolvedRacketAnalyzer() {
+  const current = racketModelSwitcher && typeof racketModelSwitcher.getCurrentModel === 'function'
+    ? racketModelSwitcher.getCurrentModel()
+    : null;
+  return current && current.analyzer ? current.analyzer : undefined;
+}
+
 // The cleared local LiteRT analyzer is the only production selection. The
 // deterministic fixture is selected only when the explicit diagnostics flag
 // is present; it is never silently substituted after a model or backend
 // failure, which keeps capability identity honest.
 const diagnosticFixture = globalThis.BSO_DIAGNOSTIC_FIXTURE === true;
 let activeAnalyzer = poseModelSwitcher && poseModelSwitcher.getCurrentModel().analyzer
-  ? new LocalPoseShuttleAnalyzer({ environment: globalThis, poseAnalyzer: poseModelSwitcher.getCurrentModel().analyzer, onStatus: analyzerStatus })
+  ? new LocalPoseShuttleAnalyzer({ environment: globalThis, poseAnalyzer: poseModelSwitcher.getCurrentModel().analyzer, racketAnalyzer: resolvedRacketAnalyzer(), onStatus: analyzerStatus })
   : onnxInferenceEnabled
     ? new OnnxInferenceAnalyzer({ environment: globalThis, inferenceConfig: onnxInferenceConfig, onStatus: analyzerStatus })
     : ProductionAnalyzer && ShuttleAdapter
-      ? new LocalPoseShuttleAnalyzer({ environment: globalThis, onStatus: analyzerStatus })
+      ? new LocalPoseShuttleAnalyzer({ environment: globalThis, racketAnalyzer: resolvedRacketAnalyzer(), onStatus: analyzerStatus })
       : ProductionAnalyzer
         ? new ProductionAnalyzer({ environment: globalThis })
         : diagnosticFixture && FixtureAnalyzer ? new FixtureAnalyzer() : new MockAnalyzer();
@@ -597,6 +681,21 @@ async function handleSessionStart(message) {
         }
       } catch (_) {
         persistPoseModelPreference(poseModelSwitcher.getCurrentModel().id);
+      }
+    }
+    // The stored racket-model preference is re-applied the same way. The
+    // default is the production EfficientDet detector; an experimental
+    // YOLO-World preference only re-activates when its runtime and artifact
+    // are present, and otherwise converges back to the production default.
+    if (racketModelSwitcher && activeAnalyzer instanceof LocalPoseShuttleAnalyzer) {
+      try {
+        const storedRacketModel = await readStoredRacketModelPreference();
+        if (storedRacketModel && storedRacketModel !== racketModelSwitcher.getCurrentModel().id) {
+          const committed = await commitRacketModelSwitch(storedRacketModel);
+          if (!committed.ok) persistRacketModelPreference(racketModelSwitcher.getCurrentModel().id);
+        }
+      } catch (_) {
+        persistRacketModelPreference(racketModelSwitcher.getCurrentModel().id);
       }
     }
     let initialized;
@@ -857,9 +956,40 @@ function readStoredPoseModelPreference() {
   });
 }
 
+function persistRacketModelPreference(modelId) {
+  if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local ||
+      typeof chrome.storage.local.set !== 'function') return;
+  try {
+    chrome.storage.local.set({ bvSelectedRacketModel: String(modelId) });
+  } catch (_) { /* preference persistence must never break inference */ }
+}
+
+function readStoredRacketModelPreference() {
+  return new Promise((resolve) => {
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local ||
+        typeof chrome.storage.local.get !== 'function') {
+      resolve(null);
+      return;
+    }
+    try {
+      chrome.storage.local.get('bvSelectedRacketModel', (result) => {
+        const stored = result && typeof result.bvSelectedRacketModel === 'string' ? result.bvSelectedRacketModel : null;
+        resolve(stored || null);
+      });
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
 function isPoseSwitchingComposition() {
   return Boolean(poseModelSwitcher) && activeAnalyzer instanceof LocalPoseShuttleAnalyzer &&
     typeof activeAnalyzer.setPoseAnalyzer === 'function';
+}
+
+function isRacketSwitchingComposition() {
+  return Boolean(racketModelSwitcher) && activeAnalyzer instanceof LocalPoseShuttleAnalyzer &&
+    typeof activeAnalyzer.setRacketAnalyzer === 'function';
 }
 
 async function waitForFrameIdle() {
@@ -960,6 +1090,107 @@ async function handleGetAvailableModels(message) {
   return { ok: true, models, currentModel: poseModelSwitcher.getCurrentModel().id };
 }
 
+function announceRacketModelChange(modelId) {
+  const identity = activeAnalyzer.identity || {};
+  const details = activeAnalyzer.capabilityDetails || {};
+  const ready = activeAnalyzer.initializationState?.available !== false;
+  const config = globalThis.BSoRacketModelSelector && globalThis.BSoRacketModelSelector.AVAILABLE_MODELS
+    ? globalThis.BSoRacketModelSelector.AVAILABLE_MODELS[modelId]
+    : null;
+  for (const [sessionId] of sessions) {
+    const session = sessions.get(sessionId);
+    if (!session) continue;
+    void send(BSOProtocol.createRuntimeStatus({
+      sessionId,
+      phase: ready ? 'ready' : 'fallback',
+      message: ready
+        ? `Racket detection model is now ${(config && config.label) || modelId}.`
+        : 'The selected racket model could not start; pose, shuttle, and the previous racket evidence continue.',
+      capabilities: capabilityState(session.capabilities, {
+        inference: ready,
+        analyzer: ready ? identity.id || modelId : 'none',
+        backend: details.backend || null,
+        fallbacks: details.fallbacks || [],
+        shuttle: details.shuttle || null
+      }),
+      reason: 'racket-model-switched'
+    }));
+  }
+}
+
+/**
+ * Activate a racket model on the live composition, mirroring the pose-model
+ * switch. The target model is probed and initialized before the active
+ * detector is touched, so an unavailable model (missing ONNX Runtime Web,
+ * missing local artifact, backend failure) leaves the current detector
+ * serving frames and reports ok:false. The experimental YOLO-World model can
+ * never displace the EfficientDet default through this path unless the user
+ * explicitly selected it and every prerequisite is present.
+ */
+async function commitRacketModelSwitch(modelId) {
+  if (!racketModelSwitcher) {
+    return { ok: false, reason: 'racket-model-selector-unavailable' };
+  }
+  if (!isRacketSwitchingComposition()) {
+    return { ok: false, reason: 'racket-model-switching-unavailable-in-current-mode' };
+  }
+  if (racketModelSwitcher.getCurrentModel().id === modelId) {
+    return { ok: true, modelId, message: 'Model already active', changed: false };
+  }
+  const probe = await racketModelSwitcher.probeModelAvailability(modelId);
+  if (!probe.available) {
+    return { ok: false, modelId, reason: probe.reason, changed: false };
+  }
+  // Prepare and initialize the target while the current detector keeps
+  // serving frames; then wait for idle sessions so the synchronous commit
+  // never disposes a detector that is still running a frame.
+  const prepared = await racketModelSwitcher.prepareModel(modelId);
+  if (!prepared.ok) {
+    return { ok: false, modelId, reason: prepared.reason, changed: false };
+  }
+  if (prepared.alreadyActive) {
+    return { ok: true, modelId, message: 'Model already active', changed: false };
+  }
+  await waitForFrameIdle();
+  const committed = racketModelSwitcher.commitModel(modelId, prepared.prepared);
+  if (committed.ok && activeAnalyzer instanceof LocalPoseShuttleAnalyzer) {
+    activeAnalyzer.setRacketAnalyzer(racketModelSwitcher.getCurrentModel().analyzer);
+    announceRacketModelChange(modelId);
+  } else if (!committed.ok && prepared.prepared && typeof prepared.prepared.dispose === 'function') {
+    prepared.prepared.dispose();
+  }
+  return committed;
+}
+
+function handleRacketModelSwitch(message) {
+  const modelId = typeof message?.modelId === 'string' ? message.modelId.trim() : '';
+  if (!modelId) {
+    return Promise.resolve({ ok: false, reason: 'no-model-id-specified' });
+  }
+  return commitRacketModelSwitch(modelId);
+}
+
+async function handleGetAvailableRacketModels(message) {
+  if (!racketModelSwitcher || !globalThis.BSoRacketModelSelector) {
+    return { ok: false, models: [], reason: 'racket-model-selector-unavailable' };
+  }
+  const selector = globalThis.BSoRacketModelSelector;
+  const models = [];
+  for (const modelId of Object.keys(selector.AVAILABLE_MODELS || {})) {
+    const probe = await racketModelSwitcher.probeModelAvailability(modelId);
+    const config = selector.AVAILABLE_MODELS[modelId];
+    models.push({
+      id: modelId,
+      label: config.label,
+      experimental: Boolean(config.experimental),
+      available: probe.available,
+      reason: probe.available ? '' : probe.reason,
+      current: racketModelSwitcher.getCurrentModel().id === modelId
+    });
+  }
+  return { ok: true, models, currentModel: racketModelSwitcher.getCurrentModel().id };
+}
+
 /**
  * Handle Hough line detection for court calibration guidance.
  * Detects court lines in a frame and returns their coordinates.
@@ -1041,6 +1272,8 @@ function handle(message) {
   // Handle custom model switching messages (non-protocol messages)
   if (message.action === 'switchPoseModel') return handleModelSwitch(message);
   if (message.action === 'getAvailablePoseModels') return handleGetAvailableModels(message);
+  if (message.action === 'switchRacketModel') return handleRacketModelSwitch(message);
+  if (message.action === 'getAvailableRacketModels') return handleGetAvailableRacketModels(message);
   return Promise.resolve();
 }
 
@@ -1075,6 +1308,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message && message.action === 'getAvailablePoseModels') {
     Promise.resolve(handleGetAvailableModels(message)).then((result) => {
+      sendResponse(result);
+    }).catch((error) => {
+      sendResponse({ ok: false, models: [], reason: error instanceof Error ? error.message : String(error) });
+    });
+    return true; // Keep the channel open for async response
+  }
+  if (message && message.action === 'switchRacketModel') {
+    Promise.resolve(handleRacketModelSwitch(message)).then((result) => {
+      sendResponse(result);
+    }).catch((error) => {
+      sendResponse({ ok: false, reason: error instanceof Error ? error.message : String(error) });
+    });
+    return true; // Keep the channel open for async response
+  }
+  if (message && message.action === 'getAvailableRacketModels') {
+    Promise.resolve(handleGetAvailableRacketModels(message)).then((result) => {
       sendResponse(result);
     }).catch((error) => {
       sendResponse({ ok: false, models: [], reason: error instanceof Error ? error.message : String(error) });
