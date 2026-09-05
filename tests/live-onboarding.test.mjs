@@ -22,6 +22,7 @@ const contentBundleSources = [
   "src/review.js",
   "src/state.js",
   "src/ui.js",
+  "src/hough-guidance.js",
   "src/content.js"
 ];
 
@@ -233,7 +234,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
   context.removeEventListener = (name, listener) => { windowListeners[name] = (windowListeners[name] || []).filter((item) => item !== listener); };
   const files = bundle
     ? []
-    : ["src/state.js", "analysis/index.js", "src/calibration.js", "src/panel-layout.js", "src/seed-card.js", "src/fixtures.js", "src/review.js", "src/analysis.js", "src/ui.js", "src/content.js"];
+    : ["src/state.js", "analysis/index.js", "src/calibration.js", "src/panel-layout.js", "src/seed-card.js", "src/fixtures.js", "src/review.js", "src/analysis.js", "src/ui.js", "src/hough-guidance.js", "src/content.js"];
   if (!bundle) {
     context.BVRuntime = {
       startIntegratedRuntime: (options = {}) => {
