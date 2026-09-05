@@ -78,8 +78,9 @@ its tooltip - the same availability semantics the pose picker uses. When the
 model cannot activate, the selector reverts to the previous (default
 EfficientDet) model and the popup explains the cause; a stored YOLO-World
 preference only re-activates when the assets are present, and otherwise
-converges back to the production default. The EfficientDet default path is
-never constructed, parsed, or slowed by the experimental entry.
+converges back to the production default. When present but not selected, the
+experimental entry never constructs, starts, or slows the EfficientDet
+default path.
 
 ## Comparing both detectors on your footage
 

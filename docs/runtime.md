@@ -251,8 +251,11 @@ activate.
 
 The default (and only shipped) racket model is the production
 `efficientdet-lite0-racket-v1` detector described below; an untouched user
-constructs exactly that detector and no other racket code is parsed or
-started. The **experimental** `yolo-world-racket-detector-v1` entry revives
+constructs exactly that detector and starts no other racket analyzer. The
+YOLO-World adapter module is loaded with the offscreen document so the
+picker can keep the experimental entry listed and probed with an explicit
+reason, but its analyzer is constructed only when the experimental model
+activates. The **experimental** `yolo-world-racket-detector-v1` entry revives
 the YOLO-World MVP as an opt-in comparison model: it runs the open-vocabulary
 YOLO-World detector (AGPL-3.0 Ultralytics asset, artifact prepared locally by
 `scripts/prepare-yolo-world.mjs`) on ONNX Runtime Web, which is loaded lazily
