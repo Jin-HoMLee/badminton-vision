@@ -125,6 +125,7 @@ const contentBundleSources = [
   "src/review.js",
   "src/state.js",
   "src/ui.js",
+  "src/hough-guidance.js",
   "src/content.js"
 ];
 

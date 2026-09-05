@@ -14,6 +14,10 @@
   var data = window.BVFixtures;
   var calibrationApi = window.BVCalibration;
   var seedCardApi = window.BVSeedCard;
+  // The one-shot Hough guidance policy/consensus module is bundled before the
+  // content entrypoint. Direct-source recovery/tests may run an older partial
+  // bundle, so tolerate its absence: bursts then fall back to per-pass lines.
+  var houghGuidance = window.BVHoughGuidance || null;
   // The packed MV3 bundle loads this pure helper before the content entrypoint.
   // Keep direct-source recovery/tests tolerant of an older partial bundle.
   var panelLayoutApi = window.BVPanelLayout || null;
@@ -82,8 +86,16 @@
   var video = null;
   var overlayCanvas = null;
   var houghCanvas = null;  // Separate canvas for Hough detection lines during calibration
-  var houghLines = [];  // Store detected Hough court lines
-  var houghDetectionInterval = null;  // Periodic Hough detection during calibration
+  var houghLines = [];  // Store detected Hough court lines (latest pass or consensus)
+  // One-shot burst state: a burst is a short chain of temporally spaced
+  // detection passes that stops by itself, so nothing polls while the user
+  // is thinking between corner clicks. houghBurstToken is a generation
+  // counter: bumping it cancels any in-flight chain (stop, camera cut, or a
+  // newer trigger superseding the burst).
+  var houghBurstToken = 0;
+  var houghBurstActive = false;
+  var houghBurstTimer = null;
+  var houghBurstPassLines = [];
   var domObserver = null;
   var navigationListeners = [];
   var mediaTimeListener = null;
@@ -181,6 +193,11 @@
       calibration = null;
       seedPoints = [];
       clearPanelGesture();
+      // A camera cut changes the scene: the old scene's guidance lines are
+      // invalid, so clear them and start a fresh one-shot burst for the
+      // re-seed before the next result renders.
+      stopHoughDetectionLoop();
+      startHoughDetectionLoop();
       persist();
       if (!state.labeling) render();
     }
@@ -594,141 +611,45 @@
     }
     return true;
   }
-  function requestHoughDetection() {
-    // Capture current video frame and request Hough line detection
-    if (!video || !hasChrome() || !chrome.runtime) {
-      console.log("[Hough] Cannot request detection: video/chrome/runtime unavailable");
-      return;
-    }
-
-    try {
-      // Capture the current frame at a bounded resolution. Court-line guidance
-      // is drawn in normalized coordinates, so a 640px long edge keeps the
-      // messaging payload ~4x smaller than a full 1080p frame at the same
-      // line quality. Full-resolution RGBA arrays through JSON messaging are
-      // the dominant cost of the 500ms detection cycle.
-      var MAX_CAPTURE_EDGE = 640;
-      var canvas = document.createElement("canvas");
-      var videoWidth = video.videoWidth || video.width || 1;
-      var videoHeight = video.videoHeight || video.height || 1;
-
-      if (videoWidth <= 0 || videoHeight <= 0) {
-        console.log("[Hough] Cannot request detection: invalid video dimensions", videoWidth, "x", videoHeight);
+  // ---------------------------------------------------------------------------
+  // One-shot Hough guidance burst. Court guidance lines still appear on the
+  // seed layer while court seeding is active (as before), but instead of a
+  // 500ms detection interval running for the whole session, ONE short burst
+  // of temporally spaced passes runs per recalibration event - seeding start,
+  // a corner mutation that invalidates the fit, a camera cut, or an explicit
+  // re-setup/re-detect - aggregates its votes into a consensus set, then
+  // stops. The court is static per camera scene (research report section
+  // 5.1), so the aggregated lines stay valid until the next invalidation:
+  // zero steady-state CPU between bursts.
+  function houghBurstConfig(name, fallback) {
+    return houghGuidance && houghGuidance.CONFIG && houghGuidance.CONFIG[name] != null ? houghGuidance.CONFIG[name] : fallback;
+  }
+  function houghBurstPasses() {
+    var passes = Number(houghBurstConfig("passes", 4));
+    return Number.isFinite(passes) ? Math.max(1, Math.min(8, Math.round(passes))) : 4;
+  }
+  function houghBurstDelay(name, fallback) {
+    var delay = Number(houghBurstConfig(name, fallback));
+    return Number.isFinite(delay) && delay >= 0 ? delay : fallback;
+  }
+  function refreshHoughCanvas() {
+    // Redraw the guidance canvas at the current host (or video) geometry.
+    // resizeHoughCanvas resizes the canvas itself and only strokes while
+    // court seeding is active, so a redraw is idempotent and safe to call
+    // from any pass response or the consensus finalize.
+    if (host && typeof host.getBoundingClientRect === "function") {
+      var hostRect = host.getBoundingClientRect();
+      if (hostRect.width > 0 && hostRect.height > 0) {
+        resizeHoughCanvas(hostRect.width, hostRect.height);
         return;
       }
-
-      var captureScale = Math.min(1, MAX_CAPTURE_EDGE / Math.max(videoWidth, videoHeight));
-      var captureWidth = Math.max(2, Math.round(videoWidth * captureScale));
-      var captureHeight = Math.max(2, Math.round(videoHeight * captureScale));
-      canvas.width = captureWidth;
-      canvas.height = captureHeight;
-      var ctx = canvas.getContext("2d");
-      if (!ctx) {
-        console.log("[Hough] Cannot get canvas context");
-        return;
-      }
-
-      ctx.drawImage(video, 0, 0, captureWidth, captureHeight);
-      var imageData = ctx.getImageData(0, 0, captureWidth, captureHeight);
-
-      // Convert ImageData to a serializable object for chrome.runtime.sendMessage
-      // ImageData might not serialize properly through MV3 messaging
-      var frameObject = {
-        data: Array.from(imageData.data),  // Convert Uint8ClampedArray to regular array for serialization
-        width: imageData.width,
-        height: imageData.height
-      };
-
-      console.log("[Hough] Sending frame:", { width: captureWidth, height: captureHeight, dataLength: frameObject.data.length });
-
-      // Send frame to offscreen script for Hough detection
-      try {
-        // Check if extension context is still valid before sending
-        if (!chrome.runtime || !chrome.runtime.sendMessage) {
-          console.log("[Hough] Extension context invalidated, stopping Hough detection");
-          stopHoughDetectionLoop();
-          return;
-        }
-
-        chrome.runtime.sendMessage({
-          action: "detectHoughLines",
-          frameData: frameObject,
-          width: captureWidth,
-          height: captureHeight
-        }, function (response) {
-          // Check for extension context errors
-          if (chrome.runtime.lastError) {
-            var errorMsg = chrome.runtime.lastError.message || String(chrome.runtime.lastError);
-            if (errorMsg.indexOf("Extension context invalidated") >= 0 || errorMsg.indexOf("context") >= 0) {
-              console.log("[Hough] Extension context error, stopping detection:", errorMsg);
-              stopHoughDetectionLoop();
-              return;
-            }
-            console.error("Hough detection error:", errorMsg);
-            return;
-          }
-          if (!response) {
-            console.log("[Hough] No response from offscreen script");
-            return;
-          }
-          console.log("[Hough] Response received:", response);
-          if (response && response.ok && Array.isArray(response.lines)) {
-            console.log("[Hough] Detected", response.lines.length, "lines");
-            houghLines = response.lines;
-            // Trigger a redraw of the Hough canvas
-            // Use host geometry if available, otherwise use video geometry
-            if (host && typeof host.getBoundingClientRect === "function") {
-              var hostRect = host.getBoundingClientRect();
-              if (hostRect.width > 0 && hostRect.height > 0) {
-                console.log("[Hough] Redrawing Hough canvas with host rect:", hostRect.width, "x", hostRect.height);
-                resizeHoughCanvas(hostRect.width, hostRect.height);
-              } else {
-                // Host not positioned yet, try to use video geometry instead
-                if (video && typeof video.getBoundingClientRect === "function") {
-                  var videoRect = video.getBoundingClientRect();
-                  console.log("[Hough] Host not positioned, using video rect:", videoRect.width, "x", videoRect.height);
-                  resizeHoughCanvas(videoRect.width, videoRect.height);
-                } else {
-                  console.log("[Hough] Cannot redraw: neither host nor video positioned");
-                }
-              }
-            } else {
-              console.log("[Hough] Cannot redraw: host not ready");
-            }
-          } else {
-            console.log("[Hough] Invalid response - ok:", response && response.ok, "lines:", response && response.lines);
-          }
-        });
-      } catch (sendError) {
-        var errMessage = sendError && sendError.message ? String(sendError.message) : String(sendError);
-        if (errMessage.indexOf("Extension context invalidated") >= 0) {
-          console.log("[Hough] Extension context invalidated during sendMessage, stopping Hough detection");
-          stopHoughDetectionLoop();
-          return;
-        }
-        console.error("[Hough] Error sending message:", sendError);
-      }
-    } catch (error) {
-      console.error("Error requesting Hough detection:", error);
+    }
+    if (video && typeof video.getBoundingClientRect === "function") {
+      var videoRect = video.getBoundingClientRect();
+      if (videoRect.width > 0 && videoRect.height > 0) resizeHoughCanvas(videoRect.width, videoRect.height);
     }
   }
-
-  function startHoughDetectionLoop() {
-    if (houghDetectionInterval !== null || typeof setInterval !== "function") return;
-    // Request Hough detection every 500ms during calibration
-    houghDetectionInterval = setInterval(function () {
-      if (state && state.seeding && video) {
-        requestHoughDetection();
-      }
-    }, 500);
-  }
-
-  function stopHoughDetectionLoop() {
-    if (houghDetectionInterval !== null) {
-      if (typeof clearInterval === "function") clearInterval(houghDetectionInterval);
-      houghDetectionInterval = null;
-      houghLines = [];
-    }
+  function houghClearGuidanceCanvas() {
     // Clear any last guidance strokes immediately. A detection response can
     // arrive after stop and redraw, but without this the previous frame's
     // strokes stay visible until the next seeding session.
@@ -739,17 +660,205 @@
       }
     }
   }
-
-  // The detection loop must run exactly while the court-seeding flow is
-  // active, no matter how seeding began (Set up court action, camera-cut
-  // invalidation, or a restored in-progress session after a page reload).
-  // Render is the single place every seeding transition passes through.
-  function syncHoughDetectionLoop() {
-    if (state && state.seeding) {
-      if (houghDetectionInterval === null) startHoughDetectionLoop();
-    } else if (houghDetectionInterval !== null) {
-      stopHoughDetectionLoop();
+  // A recalibration event re-runs the one-shot burst. A newer trigger
+  // supersedes an in-flight burst: bumping the generation token makes the
+  // old chain's pending timers and any late pass responses no-ops.
+  function startHoughDetectionLoop() {
+    if (!state || !state.seeding) return false;
+    if (typeof setTimeout !== "function" || typeof clearTimeout !== "function") return false;
+    if (houghBurstTimer !== null) {
+      clearTimeout(houghBurstTimer);
+      houghBurstTimer = null;
     }
+    houghBurstToken += 1;
+    var token = houghBurstToken;
+    houghBurstActive = true;
+    houghBurstPassLines = [];
+    runHoughBurstPass(token, 0);
+    return true;
+  }
+  function runHoughBurstPass(token, passIndex) {
+    if (!houghBurstActive || token !== houghBurstToken || !state || !state.seeding) return;
+    if (passIndex >= houghBurstPasses()) return finalizeHoughBurst(token);
+    // requestHoughDetection returns false only when the environment cannot
+    // capture right now (no video/canvas context/runtime). A burst is
+    // one-shot, so a capture failure ends it here; the next recalibration
+    // event (e.g. the user's first corner click once the video is ready)
+    // re-runs the burst.
+    var dispatched = requestHoughDetection(token, passIndex);
+    if (!dispatched) return finalizeHoughBurst(token);
+    // Watchdog: a dispatched pass that never answers (wedged offscreen
+    // document) must not strand the burst for the whole seeding session.
+    houghBurstTimer = setTimeout(function () {
+      if (houghBurstTimer !== null) houghBurstTimer = null;
+      finalizeHoughBurst(token);
+    }, houghBurstDelay("stallMs", 2500));
+  }
+  function completeHoughPass(token, passIndex, lines) {
+    if (!houghBurstActive || token !== houghBurstToken) return;
+    if (houghBurstTimer !== null) {
+      clearTimeout(houghBurstTimer);
+      houghBurstTimer = null;
+    }
+    houghBurstPassLines[passIndex] = Array.isArray(lines) ? lines : [];
+    // A pass with lines refreshes the guidance immediately, so the first
+    // guidance appears as soon as the first pass answers. Empty passes keep
+    // the last known scene lines: blanking on one occluded frame would
+    // flicker, and the consensus finalize below is authoritative either way.
+    if (Array.isArray(lines) && lines.length > 0) {
+      houghLines = lines;
+      refreshHoughCanvas();
+    }
+    if (!state || !state.seeding) return stopHoughDetectionLoop();
+    var nextPass = passIndex + 1;
+    if (nextPass < houghBurstPasses()) {
+      // Chain the next pass on this one's response so passes are temporally
+      // spaced (at least spacingMs plus the detection time) and the offscreen
+      // document never queues two detections.
+      houghBurstTimer = setTimeout(function () {
+        if (houghBurstTimer !== null) houghBurstTimer = null;
+        runHoughBurstPass(token, nextPass);
+      }, houghBurstDelay("spacingMs", 300));
+    } else {
+      finalizeHoughBurst(token);
+    }
+  }
+  function finalizeHoughBurst(token) {
+    if (!houghBurstActive || token !== houghBurstToken) return;
+    houghBurstActive = false;
+    if (houghBurstTimer !== null) {
+      clearTimeout(houghBurstTimer);
+      houghBurstTimer = null;
+    }
+    var passLines = houghBurstPassLines;
+    houghBurstPassLines = [];
+    if (!state || !state.seeding) return;
+    // Aggregate the burst's votes into one consensus set. When the burst
+    // found nothing (e.g. the court was fully occluded the whole time), keep
+    // whatever guidance is already displayed: it is scene-valid until an
+    // invalidation event clears it.
+    var merged = houghGuidance && typeof houghGuidance.mergeBurstLines === "function"
+      ? houghGuidance.mergeBurstLines(passLines)
+      : [];
+    if (Array.isArray(merged) && merged.length > 0) {
+      houghLines = merged;
+      refreshHoughCanvas();
+    }
+  }
+  function stopHoughDetectionLoop() {
+    houghBurstActive = false;
+    houghBurstToken += 1; // invalidate any in-flight chain
+    if (houghBurstTimer !== null) {
+      if (typeof clearTimeout === "function") clearTimeout(houghBurstTimer);
+      houghBurstTimer = null;
+    }
+    houghBurstPassLines = [];
+    houghLines = [];
+    houghClearGuidanceCanvas();
+  }
+  function requestHoughDetection(token, passIndex) {
+    // Capture the current video frame and request one Hough detection pass.
+    if (!video || !hasChrome() || !chrome.runtime) {
+      console.log("[Hough] Cannot request detection: video/chrome/runtime unavailable");
+      return false;
+    }
+
+    try {
+      // Capture the current frame at a bounded resolution. Court-line guidance
+      // is drawn in normalized coordinates, so a 640px long edge keeps the
+      // messaging payload ~4x smaller than a full 1080p frame at the same
+      // line quality; RGBA arrays through JSON messaging dominate each pass,
+      // and a one-shot burst bounds how often that cost repeats.
+      var MAX_CAPTURE_EDGE = Number(houghBurstConfig("captureEdge", 640)) || 640;
+      var canvas = document.createElement("canvas");
+      var videoWidth = video.videoWidth || video.width || 1;
+      var videoHeight = video.videoHeight || video.height || 1;
+
+      if (videoWidth <= 0 || videoHeight <= 0) {
+        console.log("[Hough] Cannot request detection: invalid video dimensions", videoWidth, "x", videoHeight);
+        return false;
+      }
+
+      var captureScale = Math.min(1, MAX_CAPTURE_EDGE / Math.max(videoWidth, videoHeight));
+      var captureWidth = Math.max(2, Math.round(videoWidth * captureScale));
+      var captureHeight = Math.max(2, Math.round(videoHeight * captureScale));
+      canvas.width = captureWidth;
+      canvas.height = captureHeight;
+      var ctx = canvas.getContext("2d");
+      if (!ctx) {
+        console.log("[Hough] Cannot get canvas context");
+        return false;
+      }
+
+      ctx.drawImage(video, 0, 0, captureWidth, captureHeight);
+      var imageData = ctx.getImageData(0, 0, captureWidth, captureHeight);
+
+      // ImageData might not serialize properly through MV3 messaging, so send
+      // a plain serializable frame object.
+      var frameObject = {
+        data: Array.from(imageData.data), // Convert Uint8ClampedArray to a regular array for serialization
+        width: imageData.width,
+        height: imageData.height
+      };
+
+      // Send the frame to the offscreen script for Hough detection. The
+      // service worker relays it to the offscreen document, which answers
+      // with the detected (normalized) court lines.
+      try {
+        if (!chrome.runtime || !chrome.runtime.sendMessage) {
+          console.log("[Hough] Extension context invalidated, stopping Hough detection");
+          stopHoughDetectionLoop();
+          return false;
+        }
+        chrome.runtime.sendMessage({
+          action: "detectHoughLines",
+          frameData: frameObject,
+          width: captureWidth,
+          height: captureHeight
+        }, function (response) {
+          // A stopped or superseded burst ignores late responses entirely.
+          if (!houghBurstActive || token !== houghBurstToken) return;
+          if (chrome.runtime && chrome.runtime.lastError) {
+            var errorMsg = chrome.runtime.lastError.message || String(chrome.runtime.lastError);
+            if (errorMsg.indexOf("Extension context invalidated") >= 0 || errorMsg.indexOf("context") >= 0) {
+              console.log("[Hough] Extension context error, stopping detection:", errorMsg);
+              stopHoughDetectionLoop();
+              return;
+            }
+            console.error("Hough detection error:", errorMsg);
+            return completeHoughPass(token, passIndex, null);
+          }
+          if (!response || !response.ok || !Array.isArray(response.lines)) {
+            console.log("[Hough] No valid detection response for burst pass", passIndex);
+            return completeHoughPass(token, passIndex, null);
+          }
+          console.log("[Hough] Burst pass", passIndex, "detected", response.lines.length, "lines");
+          completeHoughPass(token, passIndex, response.lines);
+        });
+        return true;
+      } catch (sendError) {
+        var errMessage = sendError && sendError.message ? String(sendError.message) : String(sendError);
+        if (errMessage.indexOf("Extension context invalidated") >= 0) {
+          console.log("[Hough] Extension context invalidated during sendMessage, stopping Hough detection");
+          stopHoughDetectionLoop();
+          return false;
+        }
+        console.error("[Hough] Error sending message:", sendError);
+        return false;
+      }
+    } catch (error) {
+      console.error("Error requesting Hough detection:", error);
+      return false;
+    }
+  }
+
+  // Render-time safety net only. Bursts are started by the recalibration
+  // event handlers (seeding start, corner mutation, camera cut, explicit
+  // re-setup, or a restored in-progress session). This hook only guarantees
+  // that an ended seeding session (lock, cancel, skip-to-manual, disable,
+  // navigation) stops any in-flight burst and clears the guidance canvas.
+  function syncHoughDetectionLoop() {
+    if (!state || !state.seeding) stopHoughDetectionLoop();
   }
 
   function resetVideoLocalState(reason) {
@@ -891,6 +1000,7 @@
       : "none";
     host.setAttribute("data-bso-video-geometry", "rendered-content-box");
     resizeOverlayCanvas(rect.width, rect.height);
+    if (state.seeding) resizeHoughCanvas(rect.width, rect.height);
     refreshPanelLayouts();
   }
   function scheduleVideoPosition() {
@@ -1413,6 +1523,9 @@
     if (seedPoints.length === 4) fitSeedPoints();
     persist();
     render();
+    // Placing a corner mutates the in-progress fit, so re-run the one-shot
+    // guidance burst to refresh the scene lines for the new setup state.
+    startHoughDetectionLoop();
   }
   function startCourtSetup() {
     state = window.BVState.reduceExtensionState(state, { type: "START_SEED" });
@@ -1422,7 +1535,7 @@
     calibration = null;
     persist();
     render();
-    // Start periodic Hough detection during calibration
+    // Start the one-shot Hough guidance burst for the new seeding session.
     startHoughDetectionLoop();
   }
   function undoSeedPoint() {
@@ -1432,6 +1545,8 @@
     state.calibrationError = null;
     persist();
     render();
+    // Undoing a corner invalidates the in-progress fit; refresh the guidance.
+    startHoughDetectionLoop();
   }
   function resetSeed() {
     state = window.BVState.reduceExtensionState(state, { type: "RESET_COURT" });
@@ -1440,6 +1555,8 @@
     calibration = null;
     persist();
     render();
+    // Reset court clears the fitted corner set, so re-run the guidance burst.
+    startHoughDetectionLoop();
   }
   function cancelSeeding() {
     state.seedDraftPoints = [];
@@ -1534,6 +1651,8 @@
       if (seedPoints.length === 4) fitSeedPoints();
       persist();
       render();
+      // Corner input changed the fit, so refresh the one-shot guidance.
+      startHoughDetectionLoop();
     });
     return layer;
   }
@@ -2342,6 +2461,10 @@
       draft = newDraft();
     }
     restoreCalibrationState();
+    // A restored in-progress seeding session (a page reload or an external
+    // state update) gets the same one-shot guidance burst as a fresh seeding
+    // start; the render path only stops guidance, it never starts it.
+    if (state.seeding) startHoughDetectionLoop();
     if (state.enabled) startRuntime();
     persist();
   }
@@ -2386,6 +2509,10 @@
       clearPanelGesture();
       seedPoints = [];
       persist(); render();
+      // The camera scene changed: clear the old guidance and re-run the
+      // one-shot burst for the new angle's re-seed.
+      stopHoughDetectionLoop();
+      startHoughDetectionLoop();
     }
   }
   function handleMessage(message) {

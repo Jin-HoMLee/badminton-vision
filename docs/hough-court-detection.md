@@ -78,26 +78,48 @@ count stay below `minSupportSpan` are dropped.
 ### Performance
 
 At the bounded 640px capture used by the content script the full pipeline
-runs in roughly 60-160ms per frame on a 2020-era laptop; the detection loop
-runs on a 500ms interval during calibration. The largest cost is the Hough
-vote loop over edge pixels (180 theta bins each); the merge step is bounded
-by considering only the top 120 peaks.
+runs in roughly 60-160ms per frame on a 2020-era laptop. The largest cost is
+the Hough vote loop over edge pixels (180 theta bins each); the merge step is
+bounded by considering only the top 120 peaks.
+
+Calibration never runs this cost continuously. Court calibration is a
+one-shot burst flow (see below): each recalibration event runs ONE burst of
+4 temporally spaced passes (~60-160ms each, spaced by the response chain plus
+300ms), aggregates the results, and then stops - zero steady-state CPU
+between bursts. If a full-resolution pass were ever needed, downscaling the
+guidance frame ~0.5x cuts the cost ~4x while line geometry survives; the
+content script already captures at a bounded 640px long edge.
 
 ## Usage in Calibration Flow
 
-1. Court seeding is active (initial setup, camera-cut re-seed, or a restored
-   in-progress setup after a page reload) and the content script runs a
-   500ms detection loop: the loop lifecycle is derived from the seeding
-   state in the content render path, the one place every seeding transition
-   passes through
-2. The content script captures the current frame at max 640px long edge and
-   sends it to the service worker, which relays it to the offscreen document
-3. The offscreen document runs the Hough pipeline (see above)
-4. Detected lines render on the overlay's `.bv-hough-canvas` as light blue
-   guidance strokes over the video while seeding stays active
-5. Fallback: manual 4-corner setup always remains available. When seeding
-   ends (lock or cancel), the loop stops and the guidance canvas is cleared
-   so stale strokes cannot linger
+1. Court seeding is active (initial setup, a corner mutation that invalidates
+   the fit, a camera-cut re-seed, or a restored in-progress setup after a
+   page reload). The content script runs ONE short burst of temporally
+   spaced detection passes (default 4, chained on each pass's response so the
+   offscreen document never queues two detections), then stops by itself -
+   nothing polls while the user thinks between corner clicks. The court is
+   static per camera scene (research report section 5.1), so the aggregated
+   guidance stays valid until the next invalidation. The burst policy and the
+   consensus math live in `src/hough-guidance.js` (`BVHoughGuidance`), loaded
+   into the content bundle before `src/content.js`; the cadence is read from
+   `CONFIG` at burst time.
+2. Each pass captures the current frame at max 640px long edge and sends it
+   to the service worker, which relays it to the offscreen document
+3. The offscreen document runs the Hough pipeline (see above) per frame
+4. Each pass with lines refreshes the guidance immediately; when the burst
+   finishes, its passes are merged into a consensus set (lines confirmed on
+   at least `minPasses` distinct passes, near-duplicates merged by angle and
+   line distance) that replaces the per-pass strokes. Empty passes keep the
+   last known scene lines so a momentarily occluded frame never blanks the
+   guidance
+5. The guidance strokes render on the overlay's `.bv-hough-canvas` as light
+   blue guidance lines over the video while seeding stays active
+6. The next burst fires only on a recalibration event: seeding start (or an
+   explicit re-setup of an already calibrated court), a corner place/undo/
+   reset, or a camera cut - a camera cut first clears the old scene's lines
+   (stop) and then starts a fresh burst for the new angle. When seeding ends
+   (lock or cancel), the burst is stopped and the guidance canvas is cleared
+   so stale strokes cannot linger; the render path is a stop-only safety net
 
 ## Testing with Real Videos
 

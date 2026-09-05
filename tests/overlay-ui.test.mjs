@@ -279,6 +279,7 @@ async function createContentSession() {
     "src/review.js",
     "src/state.js",
     "src/ui.js",
+    "src/hough-guidance.js",
     "src/content.js"
   ];
   for (const file of files) vm.runInContext(await read(file), context, { filename: file });
