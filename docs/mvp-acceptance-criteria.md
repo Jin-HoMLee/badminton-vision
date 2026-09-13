@@ -67,11 +67,12 @@ path in this build, with the acceptance decision recorded below.
       with a hover/focus tooltip for the full text (intro status, court,
       camera-cut, action-error, pose-model-switch-failure callouts)
 
-**Notes.** All items observed directly in the live session except the
-Compare-to-pro check and the popup-gear-vs-access-point equivalence, which
-were confirmed by source inspection plus one successful click each (the
-`disabled: true` segmented option in `src/summary.js`, and
-`data-bso-settings-toggle` firing without error). Evidence:
+**Notes.** All items were observed directly in the live session. The popup
+gear button (`[data-bso-settings-toggle]`, aria-label `Show settings panel`)
+changed the overlay panel list from `[]` to `["settings"]` immediately after
+the click. On the Summary page, **Compare to pro** was disabled with
+`aria-checked: "false"` before the click, and remained disabled with the same
+`aria-checked` value afterward, confirming that the option is inert. Evidence:
 `docs/evidence/mvp-acceptance-2026-09-13/01-popup-initial.png`. A real defect
 was found and fixed here — see §9 item 1 (negative test) below.
 

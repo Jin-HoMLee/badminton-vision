@@ -1887,12 +1887,15 @@
         this.rateListener = null;
         this.pauseListener = null;
         this.playListener = null;
+        this.visibilityListener = null;
+        this.pagehideListener = null;
         this.metadataListener = null;
         this.sessionId = null;
         this.capabilities = null;
         this.synchronizer = null;
         this.lastMediaTime = null;
         this.paused = false;
+        this.pageHidden = false;
       }
   
       start() {
@@ -1925,8 +1928,12 @@
           if (this.overlay) this.overlay.setStatus('Waiting', 'YouTube video unavailable');
           return;
         }
+        const initiallyPaused = Boolean(video.paused);
+        const initiallyHidden = Boolean(this.document && typeof this.document.visibilityState === 'string'
+          && this.document.visibilityState !== 'visible');
         this.video = video;
-        this.paused = Boolean(video.paused);
+        this.paused = false;
+        this.pageHidden = false;
         this.sessionId = this.newSessionId();
         this.synchronizer = new BSOSynchronization.MediaTimestampSynchronizer({
           sessionId: this.sessionId,
@@ -1946,11 +1953,22 @@
         };
         this.pauseListener = () => this.handlePause(video);
         this.playListener = () => this.handlePlay(video);
+        this.visibilityListener = () => {
+          if (this.document && this.document.visibilityState !== 'visible') this.handlePause(video, 'hidden');
+          else this.handlePlay(video);
+        };
+        this.pagehideListener = () => this.handlePause(video, 'pagehide');
         this.metadataListener = () => this.overlay && this.overlay.refresh();
         video.addEventListener('ratechange', this.rateListener);
         video.addEventListener('pause', this.pauseListener);
         video.addEventListener('play', this.playListener);
         video.addEventListener('loadedmetadata', this.metadataListener);
+        if (this.document && typeof this.document.addEventListener === 'function') {
+          this.document.addEventListener('visibilitychange', this.visibilityListener);
+        }
+        if (this.window && typeof this.window.addEventListener === 'function') {
+          this.window.addEventListener('pagehide', this.pagehideListener);
+        }
         const captureCapability = BSOCapabilities.detectCapture(video, globalThis);
         const offscreenAvailable = Boolean(this.chrome && this.chrome.offscreen && typeof this.chrome.offscreen.createDocument === 'function');
         const frameTransport = BSOFrameTransport && typeof BSOFrameTransport.selectTransport === 'function'
@@ -1983,8 +2001,9 @@
             ? (frame) => BSOFrameTransport.prepareFrame(frame, { mode: frameTransport, environment: globalThis })
             : null
         });
-        this.capture.start();
-        if (this.paused) this.handlePause(video);
+        if (initiallyPaused) this.handlePause(video, 'paused');
+        else if (initiallyHidden) this.handlePause(video, 'hidden');
+        else this.capture.start();
         if (reason === 'video-replaced') this.handleNavigation('video-replaced');
       }
   
@@ -1996,9 +2015,17 @@
         if (this.pauseListener) this.video.removeEventListener('pause', this.pauseListener);
         if (this.playListener) this.video.removeEventListener('play', this.playListener);
         if (this.metadataListener) this.video.removeEventListener('loadedmetadata', this.metadataListener);
+        if (this.visibilityListener && this.document && typeof this.document.removeEventListener === 'function') {
+          this.document.removeEventListener('visibilitychange', this.visibilityListener);
+        }
+        if (this.pagehideListener && this.window && typeof this.window.removeEventListener === 'function') {
+          this.window.removeEventListener('pagehide', this.pagehideListener);
+        }
         this.rateListener = null;
         this.pauseListener = null;
         this.playListener = null;
+        this.visibilityListener = null;
+        this.pagehideListener = null;
         this.metadataListener = null;
         this.bridge.end(reason);
         this.video = null;
@@ -2007,20 +2034,23 @@
         this.synchronizer = null;
         this.lastMediaTime = null;
         this.paused = false;
+        this.pageHidden = false;
         this.onSessionReset(reason || 'video-detached');
         if (this.overlay) this.overlay.detach();
       }
   
-      handlePause(video = this.video) {
-        if (!video || video !== this.video || this.paused) return;
+      handlePause(video = this.video, reason = 'paused') {
+        if (!video || video !== this.video) return;
+        if (reason === 'pagehide') this.pageHidden = true;
+        if (this.paused) return;
         this.paused = true;
         if (this.capture) this.capture.stop();
-        this.bridge.end('paused');
+        this.bridge.end(reason);
         this.sessionId = this.newSessionId();
-        if (this.synchronizer) this.synchronizer.reset(this.sessionId, 'paused');
+        if (this.synchronizer) this.synchronizer.reset(this.sessionId, reason);
         this.lastMediaTime = null;
-        this.onSessionReset('paused');
-        const view = { result: null, ageSeconds: null, stale: true, reason: 'paused' };
+        this.onSessionReset(reason);
+        const view = { result: null, ageSeconds: null, stale: true, reason };
         if (this.overlay) {
           this.overlay.setSynchronizedView(view, null);
           this.overlay.setStatus('Paused', 'waiting for playback');
@@ -2029,7 +2059,10 @@
       }
   
       handlePlay(video = this.video) {
-        if (!video || video !== this.video) return;
+        if (!video || video !== this.video || this.pageHidden) return;
+        if (this.document && typeof this.document.visibilityState === 'string'
+          && this.document.visibilityState !== 'visible') return;
+        if (video.paused) return;
         this.paused = false;
         this.bridge.start(this.sessionId, this.capabilities || {});
         if (this.capture) this.capture.sessionId = this.sessionId;

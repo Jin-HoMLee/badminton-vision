@@ -83,9 +83,18 @@ test('pausing the runtime clears the displayed result and resuming accepts fresh
   } };
   try {
     const listeners = Object.create(null);
+    const createEventTarget = () => ({
+      addEventListener(name, listener) { (this.listeners[name] ||= []).push(listener); },
+      removeEventListener(name, listener) { this.listeners[name] = (this.listeners[name] || []).filter((item) => item !== listener); },
+      dispatch(name) { (this.listeners[name] || []).slice().forEach((listener) => listener({ type: name, target: this })); },
+      listeners: Object.create(null)
+    });
+    const documentRef = createEventTarget();
+    documentRef.visibilityState = 'visible';
+    const windowRef = createEventTarget();
     const video = {
       currentTime: 2,
-      paused: false,
+      paused: true,
       playbackRate: 1,
       videoWidth: 2,
       videoHeight: 2,
@@ -103,11 +112,19 @@ test('pausing the runtime clears the displayed result and resuming accepts fresh
       setSynchronizedView(view, currentMediaTime) { displayed.push({ view, currentMediaTime }); }
     };
     const controller = new RuntimeController({
+      documentRef,
+      windowRef,
       bridge: { start() {}, end() {} },
       overlay,
       onSessionReset: (reason) => resets.push(reason)
     });
     controller.setVideo(video);
+    assert.equal(captureCalls.start, 0);
+    assert.equal(captureCalls.stop, 1);
+    assert.equal(displayed.at(-1).view.result, null);
+
+    video.paused = false;
+    video.dispatch('play');
     assert.equal(captureCalls.start, 1);
 
     controller.handleMediaTime(2);
@@ -122,17 +139,44 @@ test('pausing the runtime clears the displayed result and resuming accepts fresh
     controller.handleMessage(first);
     assert.equal(displayed.at(-1).view.result.requestId, 'frame-1');
 
+    documentRef.visibilityState = 'hidden';
+    documentRef.dispatch('visibilitychange');
+    assert.equal(displayed.at(-1).view.result, null);
+    assert.equal(resets.at(-1), 'hidden');
+    assert.equal(captureCalls.stop, 2);
+
+    documentRef.visibilityState = 'visible';
+    documentRef.dispatch('visibilitychange');
+    assert.equal(captureCalls.start, 2);
+    controller.handleMediaTime(2.05);
+    const hiddenFresh = protocol.createAnalyzerResult({
+      sessionId: controller.sessionId,
+      requestId: 'frame-hidden',
+      mediaTime: 2.05,
+      analyzer: 'local-pose',
+      inferenceAvailable: true,
+      result: { state: 'tracked', players: [], tracking: null }
+    });
+    controller.handleMessage(hiddenFresh);
+    assert.equal(displayed.at(-1).view.result.requestId, 'frame-hidden');
+
     const prePauseSessionId = controller.sessionId;
     video.paused = true;
     video.dispatch('pause');
     assert.equal(displayed.at(-1).view.result, null);
     assert.equal(resets.at(-1), 'paused');
-    assert.equal(captureCalls.stop, 1);
+    assert.equal(captureCalls.stop, 3);
+
+    documentRef.visibilityState = 'hidden';
+    documentRef.dispatch('visibilitychange');
+    documentRef.visibilityState = 'visible';
+    documentRef.dispatch('visibilitychange');
+    assert.equal(captureCalls.start, 2);
 
     video.paused = false;
     video.currentTime = 2.1;
     video.dispatch('play');
-    assert.equal(captureCalls.start, 2);
+    assert.equal(captureCalls.start, 3);
     controller.handleMediaTime(2.1);
     const late = protocol.createAnalyzerResult({
       sessionId: prePauseSessionId,
@@ -154,6 +198,15 @@ test('pausing the runtime clears the displayed result and resuming accepts fresh
     });
     controller.handleMessage(second);
     assert.equal(displayed.at(-1).view.result.requestId, 'frame-2');
+
+    windowRef.dispatch('pagehide');
+    assert.equal(displayed.at(-1).view.result, null);
+    assert.equal(resets.at(-1), 'pagehide');
+    assert.equal(captureCalls.stop, 4);
+    const startsBeforePagehidePlay = captureCalls.start;
+    video.paused = false;
+    video.dispatch('play');
+    assert.equal(captureCalls.start, startsBeforePagehidePlay);
   } finally {
     if (previousCapabilities === undefined) delete global.BSOCapabilities;
     else global.BSOCapabilities = previousCapabilities;
