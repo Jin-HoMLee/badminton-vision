@@ -317,6 +317,7 @@
       if (this.document && typeof this.document.visibilityState === 'string'
         && this.document.visibilityState !== 'visible') return;
       if (video.paused) return;
+      if (!this.paused) return;
       this.paused = false;
       this.bridge.start(this.sessionId, this.capabilities || {});
       if (this.capture) this.capture.sessionId = this.sessionId;

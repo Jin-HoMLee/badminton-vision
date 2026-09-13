@@ -82,6 +82,7 @@ test('pausing the runtime clears the displayed result and resuming accepts fresh
     stop() { captureCalls.stop += 1; }
   } };
   try {
+    const bridgeCalls = { start: 0, end: 0 };
     const listeners = Object.create(null);
     const createEventTarget = () => ({
       addEventListener(name, listener) { (this.listeners[name] ||= []).push(listener); },
@@ -114,7 +115,10 @@ test('pausing the runtime clears the displayed result and resuming accepts fresh
     const controller = new RuntimeController({
       documentRef,
       windowRef,
-      bridge: { start() {}, end() {} },
+      bridge: {
+        start() { bridgeCalls.start += 1; },
+        end() { bridgeCalls.end += 1; }
+      },
       overlay,
       onSessionReset: (reason) => resets.push(reason)
     });
@@ -126,6 +130,7 @@ test('pausing the runtime clears the displayed result and resuming accepts fresh
     video.paused = false;
     video.dispatch('play');
     assert.equal(captureCalls.start, 1);
+    assert.equal(bridgeCalls.start, 2);
 
     controller.handleMediaTime(2);
     const first = protocol.createAnalyzerResult({
@@ -147,7 +152,9 @@ test('pausing the runtime clears the displayed result and resuming accepts fresh
 
     documentRef.visibilityState = 'visible';
     documentRef.dispatch('visibilitychange');
+    video.dispatch('play');
     assert.equal(captureCalls.start, 2);
+    assert.equal(bridgeCalls.start, 3);
     controller.handleMediaTime(2.05);
     const hiddenFresh = protocol.createAnalyzerResult({
       sessionId: controller.sessionId,

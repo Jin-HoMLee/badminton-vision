@@ -354,12 +354,16 @@ path:
    navigated away from.
    **Result: PASS.** The runtime now listens for native pause/play events,
    stops capture and resets the displayed result to `unknown` on pause, then
-   resumes accepting fresh frames on play. The behavior is covered by the
-   runtime regression test in `test/bridge.test.js`; the earlier 30-minute
-   soak log predates this reset and its paused samples are retained as
-   pre-fix evidence. The soak's repeated tab-switch cycles (video hidden
-   behind a blank tab, then restored) never produced a duplicate overlay host
-   or a stuck/stale visible state on return.
+   resumes accepting fresh frames on play. The pause behavior remains covered
+   by the runtime regression test in `test/bridge.test.js`; the earlier
+   30-minute soak log predates this reset and its paused samples are retained
+   as pre-fix evidence. The visibilitychange/pagehide sub-behavior is verified
+   by the same automated regression case, not by a fresh manual click-through:
+   the in-progress fix commit was not independently pullable before push
+   because the pipeline checkout's branch ref had not advanced. The soak's
+   repeated tab-switch cycles (video hidden behind a blank tab, then restored)
+   never produced a duplicate overlay host or a stuck/stale visible state on
+   return.
 
    **Known deferred limitation.** `bvRuntimeStatus` is not scoped to the
    active tab URL in the same way as `bvVideoInfo`, so a status persisted for
