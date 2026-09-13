@@ -1,16 +1,17 @@
 # Live Chrome smoke check
 
-This is the repeatable local E2E path for the unpacked MV3 package. It must use
-only a separate dedicated Chrome instance through `chrome-devtools-axi`; never
-attach to the operator's ordinary browser, reuse its profile, or copy account
-data. Run the commands from the repository root. The dedicated instance must
-have a clean temporary profile and be launched outside this checklist by the
-browser-test supervisor.
+This is the repeatable local E2E path for the canonical MV3 package and its
+packed release artifact. It must use only a separate dedicated Chrome instance
+through `chrome-devtools-axi`; never attach to the operator's ordinary browser,
+reuse its profile, or copy account data. Run the commands from the repository
+root. The dedicated instance must have a clean temporary profile and be
+launched outside this checklist by the browser-test supervisor.
 
 ## 1. Build and install/reload
 
 ```sh
 npm run build
+npm run pack
 export CHROME_DEVTOOLS_AXI_AUTO_CONNECT=0
 export AXI=/Users/jin-holee/.pi/agent/bin/chrome-devtools-axi
 # Point chrome-devtools-axi at the separately launched dedicated instance.
@@ -25,11 +26,12 @@ $AXI snapshot --full
 ```
 
 The expected Badminton Vision card is an **Unpacked extension**, version
-`0.1.0`, with no `Errors` button. If it is not installed, the one native UI
-step is manual: click **Load unpacked** on `chrome://extensions`, choose this
-worktree's `dist/` directory in Chrome's file picker, and confirm **Open**.
-Do not use a second browser or a filesystem/automation workaround. For a
-package already loaded from this worktree, click its **Reload** button instead.
+`0.1.0`, with no `Errors` button. `npm run pack` additionally writes
+`badminton-vision-extension-v0.1.0.zip` at the repository root. If the
+unpacked package is not installed, the normal UI step is manual: click **Load
+unpacked** on `chrome://extensions`, choose this worktree's `dist/` directory
+in Chrome's file picker, and confirm **Open**. For a package already loaded
+from this worktree, click its **Reload** button instead.
 
 Chrome-branded 152 currently ignores the command-line `--load-extension` and
 `--disable-extensions-except` flags in this remote-debugging setup (even when
@@ -39,6 +41,17 @@ that same profile. Verify the card appears under **All extensions** before
 opening YouTube; a transient “Extension loaded” toast alone is not sufficient.
 The profile should be `/tmp/badminton-playing-ui-stability-chrome` (or the
 supervisor's equivalent), not the operator's logged-in profile.
+
+For the packed offline gate, extract
+`badminton-vision-extension-v0.1.0.zip` into a fresh directory, compare the
+extracted file set byte-for-byte with `dist/`, and load that extracted
+directory. The dedicated browser supervisor may use the native picker or the
+raw CDP `Extensions.loadUnpacked` command for this directory; the latter is
+the automated path for a packed artifact and must be followed by a fresh
+extension-card check. Apply `Network.emulateNetworkConditions({offline:true})`
+to the YouTube page, offscreen document, and service worker before exercising
+the local LiteOpenPose and EfficientDet paths, then restore network conditions
+afterward.
 
 ### CDP boundary and agent procedure
 

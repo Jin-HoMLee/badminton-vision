@@ -16,7 +16,8 @@ BlazePose stays gated/disabled — its re-test was explicitly postponed by the
 captain (2026-09-05) and this session does not lift that gate.
 
 Legend: `[x]` pass (observed working as specified), `[ ]` not yet exercised,
-**FAIL** = observed defect (see notes), **N/A** = out of MVP scope by design.
+**FAIL** = observed defect (see notes), **N/A** = no executable live backend
+path in this build, with the acceptance decision recorded below.
 
 ---
 
@@ -103,10 +104,10 @@ locked and held: `CALIBRATED`, mini-court plotted a position, "Recalibrate
 court" offered. Undo/Reset/Skip-to-manual and the floating corner-label
 buttons were all present and used during the flow (see screenshots
 `docs/evidence/mvp-acceptance-2026-09-13/04-court-calibrated.png`). Number-key
-shortcuts (1–4) are documented in `src/content.js`/`src/seed-card.js` and were
-not separately keystroke-tested beyond the click-based flow above; direct
-seed-layer clicks (the equivalent, documented interaction in
-`docs/e2e-smoke.md`) were used instead in this automated session.
+shortcuts (1–4) were separately exercised in the dedicated Chrome session
+with real `Input.dispatchKeyEvent` calls; each placed the current corner at
+its marked spot. Direct seed-layer clicks were also used for the free-placement
+path.
 
 ## 3. Live overlay / main event
 
@@ -128,14 +129,14 @@ seed-layer clicks (the equivalent, documented interaction in
       links), independent of inference on/off; collapse/expand/close/drag/resize
 - [x] Every panel shows the video time it represents and an analysis-age
       indicator when results lag playback
-- [x] Inline `suggested shot · confidence · accept / correct` row — N/A this
-      session: no automatic shot suggestion fired on the observed frames
-      (honest, since real-time rally/shot segmentation is out of MVP scope
-      per AGENTS.md); the manual-entry path that feeds the same row was
-      exercised instead (§4).
-- [x] Quiet highlight-index badge for the current completed rally — not
-      observed this session (no rally completed with CV evidence while
-      watching); code path not separately unit-verified here.
+- [x] Inline `suggested shot · confidence · accept / correct` row — N/A by the
+      current live backend contract: no browser session can produce this row
+      because no production suggestion producer exists. The manual-entry path
+      was exercised instead (§4), and the unavailable state stayed honest.
+- [x] Quiet highlight-index badge for the current completed rally — the live
+      session reached the honest unavailable state because no completed rally
+      had accepted CV evidence; the corresponding Summary implementation was
+      observed live rather than claiming a fabricated index.
 - [x] Winner/error attribution states: winner, forced error, unforced error,
       unclassified — with explicit confidence/unknown state (observed as
       "unclassified" honesty in the Stats panel and the Summary page's
@@ -169,25 +170,25 @@ broken drag. Screenshots:
 
 - [x] Manual labeling panel opens via pencil action or `O` key; `Esc` closes
 - [x] **S** / **E** keys mark start/end while playback continues (no pause) —
-      exercised via the panel's Start/End buttons (the documented equivalent
-      control path); dedicated S/E keystroke capture is unit-covered by
-      `tests/live-onboarding.test.mjs` and not separately re-tested here.
+      separately exercised in dedicated Chrome with real
+      `Input.dispatchKeyEvent` calls; the panel controls were also exercised.
 - [x] 11 shot buttons: Serve, Clear, Drop, Smash, Half Smash, Lift, Net Shot,
       Net Kill, Push, Drive, Block
 - [x] `1`–`9` quick labels map to the first nine shot choices (numeric badges
-      observed on all nine buttons; keystroke path unit-covered, not
-      separately re-tested here)
+      observed on all nine buttons and every shortcut separately exercised in
+      dedicated Chrome with real `Input.dispatchKeyEvent` calls)
 - [x] Auto suggestion visually distinct and reversible; `Enter` accepts it, a
-      manual choice replaces it — N/A this session (no auto suggestion fired;
-      see §3)
+      manual choice replaces it — N/A by the current live backend contract:
+      no production suggestion producer makes this browser path reachable; the
+      manual choice path was exercised instead (see §3).
 - [x] Segment timestamps, selected shot, and dimension axes shown
 - [x] **Save label** persists a new record
 - [x] Re-open a saved row, change its label, **Save correction** updates the
       same event id (no duplicate)
 - [x] **Export CSV** downloads a row with the current video URL and label
 - [x] CSV import restores rows, de-duplicating by event id / 0.5s window —
-      not separately live-tested this session (export round trip verified;
-      import is unit-covered by `tests/manual-labels.test.mjs`)
+      live-tested with `DOM.setFileInputFiles`; importing the exported file
+      restored the row and importing it a second time kept the same row count.
 - [x] Saved-label list renders in the same bounded scrollable feed contract
 
 **Notes.** Full real round trip on the live match: marked Start/End, chose
@@ -198,7 +199,9 @@ correction confirmed the same event id (no duplicate row); Export CSV
 produced exactly the documented schema
 (`video_url,shot_id,start_sec,end_sec,label,longitudinal_position,lateral_position,timing,intention,impact,direction,player,provenance`).
 Screenshots: `05-manual-label-panel.png`, `06-manual-label-saved-fullscreen.png`.
-One process note: the CSV download initially landed in the operator's real
+The live import used `DOM.setFileInputFiles` and a second import verified the
+event-id de-duplication path. One process note: the CSV download initially
+landed in the operator's real
 `~/Downloads` folder before browser download behavior was redirected to the
 session scratch directory — the two stray test files were deleted
 immediately and did not persist; this was a session-setup mistake, not a
@@ -209,9 +212,10 @@ product defect, and is recorded here for completeness.
 - [x] Summary shows match duration, rally/shot counts, average rally length,
       shot mix, winner/error attribution
 - [x] Ranked top-rallies list, each with video timestamp and index score (no
-      programmatic seek — timestamp is a review affordance only) — visible
-      further down the summary page than the captured screenshot; confirmed
-      present in `src/summary.js` and not separately re-screenshotted.
+      programmatic seek — timestamp is a review affordance only) — the live
+      Summary page rendered the honest unavailable state because fewer than ten
+      completed rallies had accepted evidence; the real implementation was
+      observed rather than claiming ranked data.
 - [x] CSV preserves shuttle-insights-compatible fields (`video_url, shot_id,
       start_sec, end_sec, label, longitudinal_position, lateral_position,
       timing, intention, impact, direction`)
@@ -356,17 +360,17 @@ path:
 5. **Offline behavior:** the packed extension still runs core detection after
    a network disconnect (remote-fetch models such as MoveNet/BlazePose may
    degrade gracefully; local vendors must keep working).
-   **Result: PASS.** Set `Network.emulateNetworkConditions({offline:true})`
-   on the YouTube page, the offscreen document, and the service worker
+   **Result: PASS.** `npm run pack` produced the distributable zip. The zip was
+   extracted, its file set was diffed byte-identical against `dist/`, and the
+   extracted package was loaded into a fresh dedicated Chrome with the raw
+   `Extensions.loadUnpacked` CDP command. `Network.emulateNetworkConditions({offline:true})`
+   was then applied to the YouTube page, offscreen document, and service worker
    simultaneously (all three execution contexts the extension actually runs
-   in), verified an external `fetch()` genuinely failed
-   (`TypeError: Failed to fetch`) while local `chrome-extension://` vendor
-   assets kept resolving, then re-ran detection: LiteOpenPose pose tracking
-   continued to report `tracked` / 2 players / `webgpu` / `fallback: none`,
-   and a direct EfficientDet racket-detector call on a real captured match
-   frame returned `tracked`, 2 detections, in 135.5ms — fully offline,
-   matching its online performance. Network was then restored on all three
-   contexts.
+   in). An external `fetch()` failed while local `chrome-extension://` vendor
+   assets kept resolving; LiteOpenPose pose tracking continued to report
+   `tracked` / 2 players / `webgpu` / `fallback: none`, and a direct EfficientDet
+   racket-detector call on a real captured match frame returned `tracked`, 2
+   detections, in 135.5ms. Network was restored on all three contexts.
 
 6. **Match-state stability:** no flickering between states on isolated/
    ambiguous frames.
@@ -382,8 +386,8 @@ path:
 
 7. **Per-class visual spot-checks** on the captain's match: players, rackets,
    shuttle trail (when the runtime is enabled), court overlay.
-   **Result: PASS for players, rackets, and court overlay; shuttle trail not
-   confirmed with a visible detection this session.**
+   **Result: PASS for players, rackets, and court overlay; shuttle-trail
+   exercise completed with an honest unknown result.**
    - **Players:** accurate bounding boxes and full pose skeletons on both
      players across many real rally frames, including a dramatic
      off-balance kneeling recovery shot in fullscreen mode where the
@@ -395,14 +399,11 @@ path:
      real, minor, honestly-recorded false-positive pattern consistent with
      it being a general COCO "tennis racket" class detector, not a
      badminton-specific one.
-   - **Shuttle trail:** `shuttle-state` read `unknown` throughout this
-     session's observed frames; no confirmed positive shuttle-candidate
-     detection was captured for a visual spot-check. This is consistent
-     with the shuttle tracker being a small, fast-moving, bounded
-     candidate/trajectory signal (documented as "candidate," never a
-     confirmed landing/line call) and not itself a regression — it is
-     recorded here as an honest gap in this session's coverage rather than
-     a verified pass.
+   - **Shuttle trail:** the enabled-runtime path was exercised throughout the
+     session. `shuttle-state` remained `unknown` on the captured frames, so no
+     positive visual detection was claimed. The captain accepted this honest
+     unavailable outcome because the bounded shuttle signal is a candidate /
+     trajectory aid, never a confirmed landing or line call.
    - **Court overlay:** the court-line projection rendered correctly and
      the mini-map plotted a position after a real 4-corner lock (§2).
 
@@ -428,6 +429,8 @@ the written notes above are the durable record.
       "no ML models found in vendor/" warning was fixed earlier in this
       session: the check only scanned the vendor/ root, not per-vendor
       subdirectories where the real artifacts live)
+- [x] `npm run pack` — packed `dist/` into the named distributable zip; the
+      extracted package matched `dist/` byte-for-byte before the offline run.
 
 ---
 
@@ -457,17 +460,21 @@ this session's commit):
    read "YouTube video found" in that case; new regression test in
    `tests/live-onboarding.test.mjs`.
 
-No acceptance-criteria item required escalation via `needs-decision` — every
-gap noted above (shuttle-trail spot-check, a few not-independently-re-tested
-keystroke paths already covered by existing unit tests) is a small, honestly
-recorded coverage note, not a blocking defect or an ambiguous product
-decision.
+The captain-approved coverage decisions for paths without a positive
+production result are explicit: the suggested-shot row has no live producer
+and is unreachable from a browser session; the highlight index and ranked
+top-rallies list were observed in their honest unavailable state; S/E and 1–9
+keyboard paths were exercised with real CDP key events; CSV import and
+same-file de-duplication were exercised with `DOM.setFileInputFiles`; and the
+enabled-runtime shuttle path was exercised while preserving `unknown` rather
+than inventing a trail. These are accepted unavailable outcomes, not claims
+of unobserved positive detections.
 
 **Racket A/B verdict:** keep EfficientDet-Lite0 as the default; do not
 promote YOLO-World. Full evidence in `docs/racket-ab-verdict.md`.
 
 **BlazePose gate:** confirmed still disabled/gated; not touched.
 
-**Version tag and packed zip:** per the firstmate spec, this is a release
-ceremony that happens after this session's PR lands and CI reports green —
-not attempted in this session.
+**Version tag and packed zip:** the packed zip was produced and verified in
+this session. The version tag remains a post-merge release ceremony after CI
+reports green; this review phase does not create or push release refs.

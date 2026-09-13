@@ -2098,6 +2098,23 @@ test("the negative case never claims a badminton match for a confirmed non-badmi
   assert.ok(textOf(popup.app).includes("YouTube video found"), "the status line stays honest: a real watch page, unconfirmed as badminton");
 });
 
+test("popup ignores badminton metadata left over from a previous video navigation", async () => {
+  const basketballUrl = "https://www.youtube.com/watch?v=basketball-match";
+  const popup = await createPopupSession({
+    tabUrl: basketballUrl,
+    tabTitle: "Basketball highlights - YouTube",
+    videoInfo: {
+      url: "https://www.youtube.com/watch?v=badminton-match",
+      title: "Badminton final",
+      badmintonDetected: true
+    }
+  });
+  assert.equal(popup.app.getAttribute("data-bso-badminton-detected"), "unknown");
+  assert.equal(textOf(popup.app).includes("badminton detected"), false);
+  assert.equal(textOf(popup.app).includes("Badminton match found"), false);
+  assert.ok(textOf(popup.app).includes("YouTube video found"));
+});
+
 test("S and E keyboard shortcuts and the Start/End controls both capture the live video clock", async () => {
   const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
   live.flushStorage();

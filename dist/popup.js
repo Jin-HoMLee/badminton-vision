@@ -707,8 +707,8 @@
         }
         if (result && result.bvRuntimeStatus) runtimeStatus = result.bvRuntimeStatus;
         if (result && result.bvVideoInfo) {
-          videoInfo = result.bvVideoInfo;
-          badmintonDetection = typeof videoInfo.badmintonDetected === "boolean" ? videoInfo.badmintonDetected : null;
+          videoInfo = result.bvVideoInfo.url === activeTabUrl ? result.bvVideoInfo : null;
+          badmintonDetection = videoInfo && typeof videoInfo.badmintonDetected === "boolean" ? videoInfo.badmintonDetected : null;
         }
         if (result && result.bvSelectedPoseModel) state.selectedPoseModel = selectablePoseModel(result.bvSelectedPoseModel);
         // A work-in-progress selection persisted inside bvState (older builds

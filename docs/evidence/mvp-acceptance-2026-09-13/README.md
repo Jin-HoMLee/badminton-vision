@@ -13,6 +13,16 @@ addition #2 (see `docs/mvp-acceptance-criteria.md` §9.2): one JSON line per
 sample/action over the full 1800-second run, recording `usedJSHeapSize`,
 `overlayHosts`, `canvasCount`, and runtime state at each step.
 
+The same dedicated Chrome session separately exercised S/E and 1–9 keyboard
+shortcuts through real `Input.dispatchKeyEvent` calls, imported the exported
+CSV with `DOM.setFileInputFiles`, and re-imported it to verify event-id
+de-duplication. The Summary page showed the honest unavailable state for the
+highlight index and ranked top-rallies output. The enabled-runtime shuttle
+path remained honest `unknown` on the captured frames rather than claiming a
+positive trail. The packed offline run used the zip produced by `npm run pack`,
+loaded its extracted byte-identical contents, and kept LiteOpenPose and
+EfficientDet detection working with network emulation enabled.
+
 | File | What it shows |
 | --- | --- |
 | `01-popup-initial.png` | Popup on first load: real video title/channel/duration, badminton-detected badge, Panel Controls / Evidence visibility disclosures, density selector. |
