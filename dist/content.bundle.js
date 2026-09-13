@@ -2,7 +2,7 @@
 (function (root) {
   if (root.__BV_CONTENT_BUNDLE_LOADED__) return;
   root.__BV_CONTENT_BUNDLE_LOADED__ = true;
-  /* src/extension/common/protocol.js */
+/* src/extension/common/protocol.js */
   /* global globalThis */
   (function installProtocol(root, factory) {
     const api = factory();
@@ -10,7 +10,7 @@
     root.BSOProtocol = api;
   }(typeof globalThis === 'object' ? globalThis : self, function protocolFactory() {
     'use strict';
-  
+
     const PROTOCOL = 'bso.runtime.v1';
     const VERSION = 1;
     const TYPES = Object.freeze({
@@ -29,19 +29,19 @@
       olderThanDisplayed: 'discard',
       missingInference: 'show-fallback-status-and-unknown-analysis'
     });
-  
+
     function isObject(value) {
       return value !== null && typeof value === 'object';
     }
-  
+
     function finite(value) {
       return typeof value === 'number' && Number.isFinite(value);
     }
-  
+
     function nonEmptyString(value) {
       return typeof value === 'string' && value.length > 0;
     }
-  
+
     // Model-neutral result envelope. A production adapter may populate the
     // players array with zero or more session-local tracks; the fixture probe
     // deliberately leaves it empty and marks tracking unknown/partial.
@@ -78,13 +78,13 @@
         geometryConfidence: 0
       };
     }
-  
+
     function base(type, sessionId) {
       if (!Object.values(TYPES).includes(type)) throw new TypeError(`Unknown BSO message type: ${type}`);
       if (!nonEmptyString(sessionId)) throw new TypeError('sessionId must be a non-empty string');
       return { protocol: PROTOCOL, version: VERSION, type, sessionId };
     }
-  
+
     function createSessionStart({ sessionId, pageUrl, capabilities = {} }) {
       return {
         ...base(TYPES.SESSION_START, sessionId),
@@ -93,11 +93,11 @@
         stalePolicy: STALE_RESULT_POLICY
       };
     }
-  
+
     function createSessionEnd({ sessionId, reason = 'detached' }) {
       return { ...base(TYPES.SESSION_END, sessionId), reason };
     }
-  
+
     /**
      * Return a wire message and the object(s) that must be transferred with it.
      * ImageBitmap and VideoFrame are intentionally kept out of JSON/base64. A
@@ -133,7 +133,7 @@
       };
       return { message, transferables: frameFormat === 'image-bitmap' ? [frame] : [] };
     }
-  
+
     function createAnalyzerResult({
       sessionId,
       requestId,
@@ -170,7 +170,7 @@
         stalePolicy: STALE_RESULT_POLICY
       };
     }
-  
+
     function createCapabilityReport({
       sessionId,
       capture = 'unavailable',
@@ -203,7 +203,7 @@
         stalePolicy: STALE_RESULT_POLICY
       };
     }
-  
+
     function createRuntimeStatus({ sessionId, phase, message = '', capabilities = {}, reason = '' }) {
       if (!nonEmptyString(phase)) throw new TypeError('phase must be a non-empty string');
       return {
@@ -215,12 +215,12 @@
         stalePolicy: STALE_RESULT_POLICY
       };
     }
-  
+
     function hasBase(message, type) {
       return isObject(message) && message.protocol === PROTOCOL && message.version === VERSION &&
         message.type === type && nonEmptyString(message.sessionId);
     }
-  
+
     function isFrameSample(message) {
       return hasBase(message, TYPES.FRAME_SAMPLE) && nonEmptyString(message.requestId) &&
         finite(message.mediaTime) && message.mediaTime >= 0 && finite(message.capturedAt) &&
@@ -228,7 +228,7 @@
         Number.isInteger(message.dimensions.height) && message.dimensions.height > 0 && isObject(message.frame) &&
         (!message.frameFormat || typeof message.frameFormat === 'string');
     }
-  
+
     function isTrackingEnvelope(value) {
       const trackingApi = typeof globalThis === 'object' ? globalThis.BSOPlayerTracking : null;
       if (trackingApi && typeof trackingApi.isTrackingResult === 'function') return trackingApi.isTrackingResult(value);
@@ -239,23 +239,23 @@
       return value.players.every((player) => isObject(player) && nonEmptyString(player.trackId) &&
         ['tracked', 'partial', 'unknown'].includes(player.state));
     }
-  
+
     function isAnalyzerResult(message) {
       return hasBase(message, TYPES.ANALYZER_RESULT) && nonEmptyString(message.requestId) &&
         finite(message.mediaTime) && message.mediaTime >= 0 && nonEmptyString(message.analyzer) &&
         isObject(message.result) && (message.result.tracking == null || isTrackingEnvelope(message.result.tracking)) &&
         isObject(message.capabilities || message.capabilityState);
     }
-  
+
     function isCapabilityReport(message) {
       return hasBase(message, TYPES.CAPABILITY_REPORT) && isObject(message.capabilities);
     }
-  
+
     function isRuntimeMessage(message) {
       return isObject(message) && message.protocol === PROTOCOL && message.version === VERSION &&
         Object.values(TYPES).includes(message.type) && nonEmptyString(message.sessionId);
     }
-  
+
     return Object.freeze({
       PROTOCOL,
       VERSION,
@@ -275,8 +275,8 @@
       isRuntimeMessage
     });
   }));
-  
-  /* src/extension/common/player-tracking.js */
+
+/* src/extension/common/player-tracking.js */
   /* global globalThis */
   (function installPlayerTracking(root, factory) {
     const api = factory();
@@ -284,7 +284,7 @@
     root.BSOPlayerTracking = api;
   }(typeof globalThis === 'object' ? globalThis : self, function playerTrackingFactory() {
     'use strict';
-  
+
     // This file is deliberately model-neutral. It consumes detector output and
     // never loads a model, chooses a detector, or uses court half as identity.
     const OBSERVATION_SCHEMA = 'bso.pose.observation.v1';
@@ -306,23 +306,23 @@
       crossoverIoU: 0.2,
       keypointGate: 0.45
     });
-  
+
     function isObject(value) {
       return value !== null && typeof value === 'object';
     }
-  
+
     function finite(value) {
       return typeof value === 'number' && Number.isFinite(value);
     }
-  
+
     function nonEmptyString(value) {
       return typeof value === 'string' && value.length > 0;
     }
-  
+
     function clamp(value, minimum = 0, maximum = 1) {
       return Math.max(minimum, Math.min(maximum, value));
     }
-  
+
     function copy(value) {
       if (value == null || typeof value !== 'object') return value;
       if (Array.isArray(value)) return value.map(copy);
@@ -330,7 +330,7 @@
       Object.keys(value).forEach((key) => { result[key] = copy(value[key]); });
       return result;
     }
-  
+
     function identity(value, fallbackId, fallbackKind) {
       if (typeof value === 'string' && value.length) return { id: value, version: 1, kind: fallbackKind };
       if (!isObject(value)) return { id: fallbackId, version: 0, kind: fallbackKind };
@@ -340,7 +340,7 @@
       if (value.label) result.label = String(value.label);
       return result;
     }
-  
+
     function dimensionsFrom(raw, options) {
       const frame = (raw && (raw.frame || raw.dimensions)) || {};
       const opts = options || {};
@@ -349,7 +349,7 @@
         height: frame.height || raw?.frameHeight || opts.height || opts.frameHeight
       };
     }
-  
+
     function coordinateSpace(raw, options) {
       const explicit = raw?.coordinateSpace || raw?.bboxSpace || options?.coordinateSpace || options?.bboxSpace;
       if (explicit) return explicit;
@@ -362,7 +362,7 @@
         .some((value) => finite(value) && value > 1)) return 'pixel';
       return 'normalized';
     }
-  
+
     function coordinate(value, dimension, space) {
       if (!finite(value)) return null;
       if (space === 'pixel' || space === 'pixels') {
@@ -371,11 +371,11 @@
       }
       return value;
     }
-  
+
     function normalizedNumber(value) {
       return Number(value.toFixed(6));
     }
-  
+
     function normalizeBox(rawBox, dimensions, space) {
       if (!isObject(rawBox)) return null;
       let x;
@@ -407,7 +407,7 @@
       if (right <= left || bottom <= top) return null;
       return { x: normalizedNumber(left), y: normalizedNumber(top), width: normalizedNumber(right - left), height: normalizedNumber(bottom - top) };
     }
-  
+
     function normalizeKeypoints(rawKeypoints, dimensions, space, issues) {
       if (!Array.isArray(rawKeypoints)) return [];
       const names = new Set();
@@ -438,12 +438,12 @@
       });
       return result;
     }
-  
+
     function normalizedConfidence(raw) {
       const value = raw?.confidence == null ? raw?.score : raw.confidence;
       return value == null ? null : (finite(value) && value >= 0 && value <= 1 ? value : null);
     }
-  
+
     function stateFor(raw, bbox, keypoints, confidence, issues) {
       if (raw?.state === STATES.UNKNOWN) return STATES.UNKNOWN;
       if (raw?.state === STATES.PARTIAL) return STATES.PARTIAL;
@@ -451,7 +451,7 @@
       if (bbox || keypoints.length) return STATES.PARTIAL;
       return STATES.UNKNOWN;
     }
-  
+
     /**
      * Normalize one detector pose into the wire contract. Pixel coordinates are
      * accepted with frame dimensions and are inferred when a coordinate exceeds
@@ -492,16 +492,16 @@
       if (issues.length) result.issues = issues;
       return result;
     }
-  
+
     function validateBox(box) {
       return box === null || (isObject(box) && finite(box.x) && finite(box.y) && finite(box.width) && finite(box.height) &&
         box.width > 0 && box.height > 0 && box.x >= 0 && box.y >= 0 && box.x + box.width <= 1 && box.y + box.height <= 1);
     }
-  
+
     function validateIdentity(value) {
       return isObject(value) && nonEmptyString(value.id) && Number.isInteger(value.version) && value.version >= 0;
     }
-  
+
     /** Validate the normalized, versioned pose shape at an adapter boundary. */
     function isPoseObservation(value) {
       if (!isObject(value) || value.schema !== OBSERVATION_SCHEMA || value.version !== VERSION ||
@@ -518,15 +518,15 @@
         return true;
       }) && (value.state !== STATES.TRACKED || (value.bbox !== null && value.confidence !== null));
     }
-  
+
     function boxArea(box) {
       return box ? box.width * box.height : 0;
     }
-  
+
     function boxCenter(box) {
       return box ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : null;
     }
-  
+
     function boxIoU(a, b) {
       if (!a || !b) return 0;
       const left = Math.max(a.x, b.x);
@@ -536,11 +536,11 @@
       const intersection = Math.max(0, right - left) * Math.max(0, bottom - top);
       return intersection / Math.max(1e-9, boxArea(a) + boxArea(b) - intersection);
     }
-  
+
     function distance(a, b) {
       return Math.hypot(a.x - b.x, a.y - b.y);
     }
-  
+
     function keypointEvidence(trackKeypoints, observationKeypoints) {
       if (!Array.isArray(trackKeypoints) || !Array.isArray(observationKeypoints)) return null;
       const observed = new Map(observationKeypoints.map((point) => [point.name, point]));
@@ -549,7 +549,7 @@
       const mean = common.reduce((sum, point) => sum + distance(point, observed.get(point.name)), 0) / common.length;
       return { distance: mean, count: common.length };
     }
-  
+
     function predictedBox(track, mediaTime) {
       const dt = Math.max(0, Math.min(1.5, mediaTime - track.lastMediaTime));
       const box = track.bbox;
@@ -568,13 +568,13 @@
         height
       };
     }
-  
+
     function sameObservationGeometry(a, b, threshold) {
       if (!a.bbox || !b.bbox) return !a.bbox && !b.bbox;
       return boxIoU(a.bbox, b.bbox) >= threshold &&
         (keypointEvidence(a.keypoints, b.keypoints)?.distance || 0) <= 0.025;
     }
-  
+
     function deduplicateObservations(observations, threshold) {
       const unique = [];
       const duplicates = [];
@@ -604,12 +604,12 @@
         duplicates: duplicates.sort((a, b) => a.duplicateObservationId.localeCompare(b.duplicateObservationId) || a.keptObservationId.localeCompare(b.keptObservationId))
       };
     }
-  
+
     function orientation(a, b, c) {
       const value = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
       return Math.abs(value) < 1e-9 ? 0 : value > 0 ? 1 : -1;
     }
-  
+
     function segmentsIntersect(a, b, c, d) {
       const ab1 = orientation(a, b, c);
       const ab2 = orientation(a, b, d);
@@ -617,7 +617,7 @@
       const cd2 = orientation(c, d, b);
       return ab1 !== ab2 && cd1 !== cd2;
     }
-  
+
     function pathCrosses(first, second, firstObservation, secondObservation) {
       const a = boxCenter(first.predicted);
       const b = boxCenter(firstObservation.bbox);
@@ -625,18 +625,18 @@
       const d = boxCenter(secondObservation.bbox);
       return Boolean(a && b && c && d && segmentsIntersect(a, b, c, d));
     }
-  
+
     function validTrackState(state) {
       return state === STATES.TRACKED || state === STATES.PARTIAL || state === STATES.UNKNOWN;
     }
-  
+
     function trackingState(players, observationCount) {
       if (!players.length && !observationCount) return STATES.UNKNOWN;
       if (players.length && players.every((player) => player.state === STATES.UNKNOWN) && !observationCount) return STATES.UNKNOWN;
       if (players.length && players.every((player) => player.state === STATES.TRACKED)) return STATES.TRACKED;
       return STATES.PARTIAL;
     }
-  
+
     function resultShape({ sessionId, requestId, mediaTime, state, players, observations, duplicates, invalidObservations = [], association, accepted = true, reason = '' }) {
       return {
         schema: TRACKING_SCHEMA,
@@ -659,7 +659,7 @@
         reason
       };
     }
-  
+
     class SessionPlayerTracker {
       constructor({ sessionId, maxTracks = DEFAULT_GATES.maxTracks, gates = {} } = {}) {
         if (!nonEmptyString(sessionId)) throw new TypeError('sessionId must be a non-empty string');
@@ -672,7 +672,7 @@
         this.lastMediaTime = -Infinity;
         this.seenRequests = new Set();
       }
-  
+
       reset(reason = 'session-reset') {
         if (isObject(reason)) reason = reason.reason || 'session-reset';
         this.tracks.clear();
@@ -682,13 +682,13 @@
         this.seenRequests.clear();
         return { reason, generation: this.generation };
       }
-  
+
       newTrackId() {
         const id = `${this.sessionId}:s${this.generation}:player-${this.nextTrackNumber}`;
         this.nextTrackNumber += 1;
         return id;
       }
-  
+
       normalize(input) {
         const values = Array.isArray(input) ? input : (Array.isArray(input?.observations) ? input.observations : []);
         const context = Array.isArray(input) ? {} : input || {};
@@ -705,7 +705,7 @@
           invalid: normalized.filter((observation) => !isPoseObservation(observation))
         });
       }
-  
+
       candidate(track, observation, mediaTime) {
         if (!observation.bbox || observation.state === STATES.UNKNOWN) return null;
         const predicted = predictedBox(track, mediaTime);
@@ -728,7 +728,7 @@
         if (cost > this.gates.maxCost) return null;
         return { trackId: track.trackId, observationId: observation.observationId, cost, predicted, iou, motionDistance, keypoints };
       }
-  
+
       assignments(tracks, observations, mediaTime) {
         const candidates = tracks.map((track) => observations.map((observation) => this.candidate(track, observation, mediaTime)));
         const all = [];
@@ -793,7 +793,7 @@
         }
         return { best, second, candidates, ambiguousTrackIds, ambiguousObservationIds };
       }
-  
+
       createTrack(observation, mediaTime) {
         const track = {
           trackId: this.newTrackId(),
@@ -812,7 +812,7 @@
         this.tracks.set(track.trackId, track);
         return track;
       }
-  
+
       updateMotionHint(track, observation, mediaTime) {
         // During a crossover the candidate is useful as a velocity hint, but its
         // identity is not committed. Keeping the old last-observed box plus this
@@ -825,7 +825,7 @@
           height: (observation.bbox.height - track.bbox.height) / dt
         };
       }
-  
+
       updateTrack(track, observation, mediaTime) {
         const dt = Math.max(1e-6, mediaTime - track.lastMediaTime);
         const old = track.bbox;
@@ -846,7 +846,7 @@
         track.source = copy(observation.source);
         track.uncertaintyFrames = 0;
       }
-  
+
       playerView(track, mediaTime, forceUnknown = false) {
         const bbox = predictedBox(track, mediaTime);
         const state = forceUnknown ? STATES.UNKNOWN : track.missedFrames > 0 ? (track.missedFrames <= this.gates.maxMissedFrames ? STATES.PARTIAL : STATES.UNKNOWN) : track.state;
@@ -863,7 +863,7 @@
           source: copy(track.source)
         };
       }
-  
+
       processFrame(input = {}) {
         const requestId = String(input.requestId || 'unknown-request');
         const mediaTime = input.mediaTime;
@@ -945,16 +945,16 @@
         });
         return { accepted: true, reason: 'processed', result };
       }
-  
+
       snapshot(requestId, mediaTime, observations = [], duplicates = [], association = {}, accepted = false, invalidObservations = []) {
         const players = Array.from(this.tracks.values()).sort((a, b) => a.trackId.localeCompare(b.trackId)).map((track) => this.playerView(track, this.lastMediaTime === -Infinity ? mediaTime : this.lastMediaTime, true));
         return resultShape({ sessionId: this.sessionId, requestId, mediaTime, state: trackingState(players, observations.length), players, observations, duplicates, invalidObservations, association, accepted, reason: association.reason || 'not-processed' });
       }
-  
+
       update(input) { return this.processFrame(input); }
       associate(input) { return this.processFrame(input); }
     }
-  
+
     function unknownTrackingResult({ sessionId = 'unknown-session', requestId = 'unknown-request', mediaTime = 0, detector, source, reason = 'no-detections' } = {}) {
       return {
         schema: TRACKING_SCHEMA,
@@ -974,7 +974,7 @@
         reason
       };
     }
-  
+
     function validKeypointArray(keypoints) {
       if (!Array.isArray(keypoints)) return false;
       const names = new Set();
@@ -985,7 +985,7 @@
         return point.confidence === null || (finite(point.confidence) && point.confidence >= 0 && point.confidence <= 1);
       });
     }
-  
+
     function isTrackingResult(value) {
       return isObject(value) && value.schema === TRACKING_SCHEMA && value.version === VERSION &&
         nonEmptyString(value.sessionId) && nonEmptyString(value.requestId) && finite(value.mediaTime) && value.mediaTime >= 0 &&
@@ -995,7 +995,7 @@
           validateBox(player.bbox) && validKeypointArray(player.keypoints) && validateIdentity(player.detector) && validateIdentity(player.source) &&
           (player.state !== STATES.TRACKED || (player.bbox !== null && player.confidence !== null)));
     }
-  
+
     return Object.freeze({
       OBSERVATION_SCHEMA,
       TRACKING_SCHEMA,
@@ -1022,8 +1022,8 @@
       keypointEvidence
     });
   }));
-  
-  /* src/extension/common/frame-transport.js */
+
+/* src/extension/common/frame-transport.js */
   /* global globalThis */
   (function installFrameTransport(root, factory) {
     const api = factory();
@@ -1031,7 +1031,7 @@
     root.BSOFrameTransport = api;
   }(typeof globalThis === 'object' ? globalThis : self, function frameTransportFactory() {
     'use strict';
-  
+
     const SERIALIZABLE_FORMAT = 'rgba-array-v1';
     const BITMAP_FORMAT = 'image-bitmap';
     // The production pose model reads a 256x256 input. Capping the serialized
@@ -1040,16 +1040,16 @@
     // safety net for extreme aspect ratios.
     const DEFAULT_MAX_LONG_EDGE = 256;
     const DEFAULT_MAX_PIXELS = 65536;
-  
+
     function positiveInteger(value) {
       return Number.isInteger(value) && value > 0;
     }
-  
+
     function manifestFor(chromeApi) {
       if (!chromeApi?.runtime || typeof chromeApi.runtime.getManifest !== 'function') return null;
       try { return chromeApi.runtime.getManifest(); } catch (_) { return null; }
     }
-  
+
     /**
      * Structured-clone messaging is an optional channel capability, not a
      * stable-channel manifest assumption. The public manifest deliberately
@@ -1060,11 +1060,11 @@
     function supportsStructuredClone(chromeApi) {
       return manifestFor(chromeApi)?.message_serialization === 'structured_clone';
     }
-  
+
     function selectTransport(chromeApi) {
       return supportsStructuredClone(chromeApi) ? BITMAP_FORMAT : SERIALIZABLE_FORMAT;
     }
-  
+
     function targetDimensions(width, height, { maxPixels = DEFAULT_MAX_PIXELS, maxLongEdge = DEFAULT_MAX_LONG_EDGE } = {}) {
       if (!positiveInteger(width) || !positiveInteger(height)) throw new TypeError('frame dimensions must be positive integers');
       const limit = positiveInteger(maxPixels) ? maxPixels : DEFAULT_MAX_PIXELS;
@@ -1084,7 +1084,7 @@
       }
       return { width: targetWidth, height: targetHeight };
     }
-  
+
     function createCanvas(width, height, environment) {
       const source = environment || globalThis;
       const Canvas = source && source.OffscreenCanvas;
@@ -1097,7 +1097,7 @@
       }
       return null;
     }
-  
+
     /**
      * Convert the captured bitmap to a bounded plain object for Chrome stable's
      * default JSON extension messaging. This keeps ImageBitmap as the capture
@@ -1141,7 +1141,7 @@
         sourceDimensions: { width: frame.width, height: frame.height }
       };
     }
-  
+
     async function prepareFrame(frame, {
       mode = SERIALIZABLE_FORMAT,
       environment = globalThis,
@@ -1159,7 +1159,7 @@
       }
       return toSerializableFrame(frame, { environment, maxPixels, maxLongEdge });
     }
-  
+
     return Object.freeze({
       SERIALIZABLE_FORMAT,
       BITMAP_FORMAT,
@@ -1172,8 +1172,8 @@
       prepareFrame
     });
   }));
-  
-  /* src/extension/common/capabilities.js */
+
+/* src/extension/common/capabilities.js */
   /* global globalThis, BSOProtocol, BSOFrameTransport */
   (function installCapabilities(root, factory) {
     const api = factory(root.BSOProtocol, root.BSOFrameTransport);
@@ -1181,7 +1181,7 @@
     root.BSOCapabilities = api;
   }(typeof globalThis === 'object' ? globalThis : self, function capabilitiesFactory(protocol, frameTransportApi) {
     'use strict';
-  
+
     function detectCapture(video, environment = globalThis) {
       const hasFrameCallback = Boolean(video && typeof video.requestVideoFrameCallback === 'function');
       const hasBitmap = typeof environment.createImageBitmap === 'function';
@@ -1189,7 +1189,7 @@
       if (hasBitmap) return { mode: 'timer-fallback', available: true, fallback: 'requestVideoFrameCallback-unavailable' };
       return { mode: 'unavailable', available: false, fallback: 'createImageBitmap-unavailable' };
     }
-  
+
     function detectRuntime(chromeApi = globalThis.chrome, video, environment = globalThis) {
       const capture = detectCapture(video, environment);
       const offscreen = Boolean(chromeApi && chromeApi.offscreen && typeof chromeApi.offscreen.createDocument === 'function');
@@ -1211,11 +1211,11 @@
         reason: capture.available ? '' : 'Capture cannot produce frame samples in this browser'
       });
     }
-  
+
     return Object.freeze({ detectCapture, detectRuntime });
   }));
-  
-  /* src/extension/common/synchronization.js */
+
+/* src/extension/common/synchronization.js */
   /* global globalThis */
   (function installSynchronization(root, factory) {
     const api = factory();
@@ -1223,14 +1223,14 @@
     root.BSOSynchronization = api;
   }(typeof globalThis === 'object' ? globalThis : self, function synchronizationFactory() {
     'use strict';
-  
+
     const EPSILON = 1e-4;
-  
+
     function validResult(result) {
       return result && typeof result.sessionId === 'string' && result.sessionId.length > 0 &&
         typeof result.mediaTime === 'number' && Number.isFinite(result.mediaTime) && result.mediaTime >= 0;
     }
-  
+
     /**
      * Pure public selector used by the renderer and tests. Results newer than the
      * current media timestamp are held, not displayed. A displayed result is
@@ -1253,7 +1253,7 @@
         reason: result ? 'eligible' : 'no-result-at-or-before-media-time'
       };
     }
-  
+
     class MediaTimestampSynchronizer {
       constructor({ sessionId, staleAfterSeconds = 1.5, onDisplay = () => {}, onStatus = () => {} } = {}) {
         if (!sessionId) throw new TypeError('sessionId is required');
@@ -1266,7 +1266,7 @@
         this.currentMediaTime = null;
         this.lastDisplayedMediaTime = -Infinity;
       }
-  
+
       reset(sessionId = this.sessionId, reason = 'reset') {
         this.sessionId = sessionId;
         this.pending = [];
@@ -1275,7 +1275,7 @@
         this.lastDisplayedMediaTime = -Infinity;
         this.onStatus({ type: 'synchronizer-reset', reason, sessionId });
       }
-  
+
       ingest(result) {
         if (!validResult(result) || result.sessionId !== this.sessionId) return false;
         if (this.displayed && result.mediaTime + EPSILON < this.lastDisplayedMediaTime) return false;
@@ -1283,7 +1283,7 @@
         this.pending.push(result);
         return true;
       }
-  
+
       update(currentMediaTime) {
         if (!Number.isFinite(currentMediaTime) || currentMediaTime < 0) {
           this.onStatus({ type: 'synchronizer-status', status: 'invalid-clock' });
@@ -1313,15 +1313,15 @@
         return view;
       }
     }
-  
+
     return Object.freeze({
       EPSILON,
       selectSynchronizedResult,
       MediaTimestampSynchronizer
     });
   }));
-  
-  /* src/extension/content/capture.js */
+
+/* src/extension/content/capture.js */
   /* global globalThis, BSOProtocol, BSOCapabilities, BSOFrameTransport */
   (function installCapture(root, factory) {
     const api = factory(root.BSOProtocol, root.BSOCapabilities, root.BSOFrameTransport);
@@ -1329,7 +1329,7 @@
     root.BSOCapture = api;
   }(typeof globalThis === 'object' ? globalThis : self, function captureFactory(protocol, capabilityApi, frameTransportApi) {
     'use strict';
-  
+
     class VideoCapture {
       constructor({
         video,
@@ -1371,7 +1371,7 @@
         this.captureGeneration = 0;
         this.backpressureNotified = false;
       }
-  
+
       start() {
         if (this.active) return;
         this.active = true;
@@ -1385,7 +1385,7 @@
           this.scheduleFallbackCapture();
         }
       }
-  
+
       stop() {
         this.active = false;
         this.captureGeneration += 1;
@@ -1399,13 +1399,13 @@
         this.callbackHandle = null;
         this.backpressureNotified = false;
       }
-  
+
       scheduleVideoFrameCallback() {
         if (!this.active || this.mode !== 'request-video-frame-callback') return;
         const callback = (now, metadata) => this.handleVideoFrame(now, metadata);
         this.callbackHandle = this.video.requestVideoFrameCallback(callback);
       }
-  
+
       handleVideoFrame(now, metadata = {}) {
         if (!this.active || this.mode !== 'request-video-frame-callback') return;
         const mediaTime = Number.isFinite(metadata.mediaTime)
@@ -1417,7 +1417,7 @@
         }
         this.scheduleVideoFrameCallback();
       }
-  
+
       scheduleFallbackCapture() {
         if (!this.active || this.mode !== 'timer-fallback') return;
         const schedule = this.environment.setTimeout || setTimeout;
@@ -1432,7 +1432,7 @@
           this.scheduleFallbackCapture();
         }, this.fallbackIntervalMs);
       }
-  
+
       maybeCapture(mediaTime, wallTime, metadata) {
         if (!this.active) return;
         if (this.inFlightCount >= this.maxInFlight) {
@@ -1530,11 +1530,11 @@
         });
       }
     }
-  
+
     return Object.freeze({ VideoCapture });
   }));
-  
-  /* src/extension/content/video-discovery.js */
+
+/* src/extension/content/video-discovery.js */
   /* global globalThis */
   (function installVideoDiscovery(root, factory) {
     const api = factory();
@@ -1542,7 +1542,7 @@
     root.BSOVideoDiscovery = api;
   }(typeof globalThis === 'object' ? globalThis : self, function videoDiscoveryFactory() {
     'use strict';
-  
+
     const BADMINTON_TERMS = Object.freeze([
       ['badminton', 1],
       ['shuttlecock', 1],
@@ -1554,17 +1554,17 @@
       ['all england badminton', 0.85],
       ['world badminton', 0.55]
     ]);
-  
+
     function visibleVideo(video) {
       if (!video || typeof video.getBoundingClientRect !== 'function') return false;
       const rect = video.getBoundingClientRect();
       return rect.width > 0 && rect.height > 0 && video.isConnected !== false;
     }
-  
+
     function cleanTitle(value) {
       return String(value || '').replace(/\s*[-|]\s*YouTube\s*$/i, '').trim();
     }
-  
+
     function metaContent(documentRef, selectors) {
       if (!documentRef || typeof documentRef.querySelector !== 'function') return '';
       for (const selector of selectors) {
@@ -1574,7 +1574,7 @@
       }
       return '';
     }
-  
+
     function extractVideoMetadata(documentRef = globalThis.document, video = null, windowRef = globalThis) {
       const location = windowRef && windowRef.location;
       const title = cleanTitle(documentRef && documentRef.title);
@@ -1601,7 +1601,7 @@
         badmintonSignals: detection.signals
       };
     }
-  
+
     function detectBadmintonVideo(metadata = {}) {
       const fields = ['title', 'channel', 'description', 'keywords', 'category'];
       const values = metadata.text
@@ -1618,15 +1618,15 @@
         signals
       };
     }
-  
+
     function isBadmintonVideo(metadata = {}) {
       return detectBadmintonVideo(metadata).detected;
     }
-  
+
     function isYouTubeWatchUrl(url) {
       return /^https?:\/\/(?:www\.|m\.)?youtube\.com\/watch(?:[?#]|$)/i.test(String(url || ''));
     }
-  
+
     function findVideo(documentRef = globalThis.document) {
       if (!documentRef || typeof documentRef.querySelectorAll !== 'function') return null;
       const videos = Array.from(documentRef.querySelectorAll('video'));
@@ -1634,7 +1634,7 @@
       const visible = connected.filter(visibleVideo);
       return (visible.length ? visible : connected)[0] || null;
     }
-  
+
     class VideoDiscovery {
       constructor({ documentRef = globalThis.document, windowRef = globalThis.window, onVideo = () => {}, onNavigation = () => {}, onMetadata = () => {} } = {}) {
         this.document = documentRef;
@@ -1650,7 +1650,7 @@
         this.listeners = [];
         this.navigationToken = 0;
       }
-  
+
       start() {
         if (this.started) return;
         this.started = true;
@@ -1670,7 +1670,7 @@
         this.addListener('hashchange', () => this.navigate('hash-navigation'));
         this.scheduleScan('initial');
       }
-  
+
       stop() {
         this.started = false;
         if (this.observer) this.observer.disconnect();
@@ -1686,14 +1686,14 @@
         this.video = null;
         this.metadata = null;
       }
-  
+
       addListener(name, listener) {
         if (this.window && this.window.addEventListener) {
           this.window.addEventListener(name, listener);
           this.listeners.push([name, listener]);
         }
       }
-  
+
       navigate(reason) {
         this.navigationToken += 1;
         this.onNavigation({ reason, token: this.navigationToken });
@@ -1706,7 +1706,7 @@
           this.metadata = null;
         }
       }
-  
+
       scheduleScan(reason) {
         if (!this.started || this.timer !== null) return;
         this.timer = setTimeout(() => {
@@ -1714,7 +1714,7 @@
           this.scan(reason);
         }, 0);
       }
-  
+
       scan(reason = 'scan') {
         if (!this.started) return;
         const candidate = findVideo(this.document);
@@ -1730,7 +1730,7 @@
         }
       }
     }
-  
+
     return Object.freeze({
       BADMINTON_TERMS,
       VideoDiscovery,
@@ -1742,8 +1742,8 @@
       visibleVideo
     });
   }));
-  
-  /* src/extension/content/runtime.js */
+
+/* src/extension/content/runtime.js */
   /* global globalThis, BSOProtocol, BSOSynchronization, BSOCapabilities, BSOFrameTransport, BSOCapture, BSOVideoDiscovery */
   (function installRuntime(root, factory) {
     const api = factory();
@@ -1751,7 +1751,7 @@
     root.BSORuntime = api;
   }(typeof globalThis === 'object' ? globalThis : self, function runtimeFactory() {
     'use strict';
-  
+
     class RuntimeBridge {
       constructor({
         chromeApi = globalThis.chrome,
@@ -1767,7 +1767,7 @@
         this.port = null;
         this.sessionId = null;
       }
-  
+
       start(sessionId, capabilities) {
         this.sessionId = sessionId;
         this.transferFallbackReported = false;
@@ -1795,7 +1795,7 @@
           return false;
         }
       }
-  
+
       post(message, transferables = []) {
         if (!this.port || typeof this.port.postMessage !== 'function') {
           this.onStatus({ type: 'bridge-unavailable', reason: 'runtime-port-not-connected' });
@@ -1830,7 +1830,7 @@
           return false;
         }
       }
-  
+
       sendFrameSample(message, transferables) {
         if (!BSOProtocol.isFrameSample(message) || message.sessionId !== this.sessionId) {
           this.onStatus({ type: 'frame-rejected', reason: 'invalid-frame-sample' });
@@ -1838,7 +1838,7 @@
         }
         return this.post(message, transferables);
       }
-  
+
       end(reason = 'detached') {
         if (this.port && this.sessionId) {
           this.post(BSOProtocol.createSessionEnd({ sessionId: this.sessionId, reason }));
@@ -1848,7 +1848,7 @@
         this.sessionId = null;
       }
     }
-  
+
     class RuntimeController {
       constructor({
         documentRef = globalThis.document,
@@ -1897,7 +1897,7 @@
         this.paused = false;
         this.pageHidden = false;
       }
-  
+
       start() {
         this.discovery = new BSOVideoDiscovery.VideoDiscovery({
           documentRef: this.document,
@@ -1907,20 +1907,20 @@
         });
         this.discovery.start();
       }
-  
+
       stop() {
         if (this.discovery) this.discovery.stop();
         this.discovery = null;
         this.setVideo(null, 'runtime-stopped');
       }
-  
+
       handleNavigation(reason) {
         if (this.synchronizer) this.synchronizer.reset(this.sessionId, reason);
         this.lastMediaTime = null;
         this.onSessionReset(reason || 'navigation');
         if (this.overlay) this.overlay.setStatus('Navigating', 'waiting for video');
       }
-  
+
       setVideo(video, reason = 'video-change') {
         if (video === this.video) return;
         this.detachVideo(reason);
@@ -2006,7 +2006,7 @@
         else this.capture.start();
         if (reason === 'video-replaced') this.handleNavigation('video-replaced');
       }
-  
+
       detachVideo(reason) {
         if (!this.video) return;
         if (this.capture) this.capture.stop();
@@ -2038,7 +2038,7 @@
         this.onSessionReset(reason || 'video-detached');
         if (this.overlay) this.overlay.detach();
       }
-  
+
       handlePause(video = this.video, reason = 'paused') {
         if (!video || video !== this.video) return;
         if (reason === 'pagehide') this.pageHidden = true;
@@ -2057,7 +2057,7 @@
         }
         this.onRuntimeView(view, null);
       }
-  
+
       handlePlay(video = this.video) {
         if (!video || video !== this.video || this.pageHidden) return;
         if (this.document && typeof this.document.visibilityState === 'string'
@@ -2070,7 +2070,7 @@
         if (this.capture) this.capture.start();
         if (this.overlay) this.overlay.setStatus('Watching', 'playback resumed');
       }
-  
+
       handleMediaTime(mediaTime, metadata = {}) {
         if (!this.synchronizer || !Number.isFinite(mediaTime) || mediaTime < 0) return;
         this.lastMediaTime = mediaTime;
@@ -2080,7 +2080,7 @@
         if (metadata.reason === 'ratechange' && this.overlay) this.overlay.setStatus('Watching', `rate ${metadata.playbackRate}x`);
         return view;
       }
-  
+
       handleMessage(message) {
         if (!message || message.sessionId !== this.sessionId) return;
         if (this.paused) return;
@@ -2109,7 +2109,7 @@
           this.onRuntimeMessage(message);
         }
       }
-  
+
       applyCapabilities(capabilities, fallbacks = [], reason = '') {
         const analyzer = capabilities.analyzer || 'none';
         const label = analyzer === 'fixture-probe-v1'
@@ -2118,7 +2118,7 @@
         const fallback = fallbacks.length ? ` · ${fallbacks.join(', ')}` : '';
         if (this.overlay) this.overlay.setStatus(capabilities.inference ? 'Ready' : 'Fallback', `${label}${fallback}${reason ? ` · ${reason}` : ''}`);
       }
-  
+
       handleBridgeStatus(status) {
         this.onRuntimeStatus(status);
         if (!this.overlay) return;
@@ -2131,7 +2131,7 @@
         };
         this.overlay.setStatus('Fallback', messages[status.type] || status.reason || 'runtime fallback');
       }
-  
+
       handleCaptureStatus(status) {
         this.onRuntimeStatus(status);
         if (!this.overlay) return;
@@ -2143,27 +2143,27 @@
           this.overlay.setStatus('Fallback', status.message);
         }
       }
-  
+
       handleSynchronizerStatus(status) {
         this.onRuntimeStatus(status);
         if (!this.overlay) return;
         if (status.status === 'timeline-reset') this.overlay.setStatus('Resyncing', 'media timeline changed');
       }
-  
+
       renderSynchronized(view) {
         if (this.overlay && this.lastMediaTime !== null) this.overlay.setSynchronizedView(view, this.lastMediaTime);
       }
-  
+
       newSessionId() {
         if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') return globalThis.crypto.randomUUID();
         return `video-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       }
     }
-  
+
     return Object.freeze({ RuntimeBridge, RuntimeController });
   }));
-  
-  /* src/runtime.js */
+
+/* src/runtime.js */
   /*
    * Read-only playback boundary.
    * This adapter intentionally has no methods that can pause, seek, mute, resize,
@@ -2182,7 +2182,7 @@
         playbackRate: Number.isFinite(video.playbackRate) ? video.playbackRate : 1
       };
     }
-  
+
     function clientRect(value) {
       value = value || {};
       return {
@@ -2192,13 +2192,13 @@
         height: Math.max(0, Number(value.height) || 0)
       };
     }
-  
+
     function geometryNumber(value) {
       if (!Number.isFinite(value)) return 0;
       var rounded = Math.round(value * 1e9) / 1e9;
       return Math.abs(rounded) < 1e-9 ? 0 : rounded;
     }
-  
+
     function objectPositionOffset(token, freeSpace, startKeyword, endKeyword) {
       token = String(token || "50%").toLowerCase();
       if (token === "center") return freeSpace / 2;
@@ -2208,7 +2208,7 @@
       if (/^-?\d+(?:\.\d+)?px$/.test(token)) return Number(token.slice(0, -2));
       return freeSpace / 2;
     }
-  
+
     /**
      * Return the rectangle occupied by captured video pixels, not merely the
      * HTMLVideoElement box. YouTube may letterbox that box with object-fit while
@@ -2264,13 +2264,13 @@
         clipInsets: clipInsets
       };
     }
-  
+
     function createPlaybackAdapter(video, onFrame) {
       var active = false;
       var callbackId = null;
       var timerId = null;
       var frameHandler = typeof onFrame === "function" ? onFrame : function () {};
-  
+
       function emit(mediaTime, metadata) {
         var current = snapshot(video);
         if (!current) return;
@@ -2279,7 +2279,7 @@
           presentedFrames: metadata && metadata.presentedFrames
         }));
       }
-  
+
       function requestNext() {
         if (!active) return;
         if (typeof video.requestVideoFrameCallback === "function") {
@@ -2294,7 +2294,7 @@
           requestNext();
         }, 250);
       }
-  
+
       return {
         start: function () {
           if (active) return;
@@ -2314,7 +2314,7 @@
         isRunning: function () { return active; }
       };
     }
-  
+
     function runtimeViewDefaults() {
       return {
         phase: "idle",
@@ -2330,7 +2330,7 @@
         stale: true
       };
     }
-  
+
     /**
      * Explicit UI seam for the runtime foundation. It accepts capability and
      * result envelopes without knowing an analyzer implementation. The result
@@ -2341,7 +2341,7 @@
       options = options || {};
       var onChange = typeof options.onChange === "function" ? options.onChange : function () {};
       var view = runtimeViewDefaults();
-  
+
       function publish() { onChange(Object.assign({}, view, { fallbacks: view.fallbacks.slice() })); }
       function update(patch) {
         view = Object.assign({}, view, patch);
@@ -2479,7 +2479,7 @@
         snapshot: function () { return Object.assign({}, view, { fallbacks: view.fallbacks.slice() }); }
       };
     }
-  
+
     function startIntegratedRuntime(options) {
       options = options || {};
       if (!root.BSORuntime || typeof root.BSORuntime.RuntimeController !== "function") return null;
@@ -2504,7 +2504,7 @@
       controller.start();
       return { controller: controller, seam: seam };
     }
-  
+
     root.BVRuntime = {
       createPlaybackAdapter: createPlaybackAdapter,
       createRuntimeUiSeam: createRuntimeUiSeam,
@@ -2513,8 +2513,8 @@
       videoContentRect: videoContentRect
     };
   })(typeof globalThis !== "undefined" ? globalThis : window);
-  
-  /* src/analysis.js */
+
+/* src/analysis.js */
   /* Pure, deterministic adapters for fixture data and future inference results. */
   (function (root) {
     var SHOT_FIELDS = [
@@ -2528,16 +2528,16 @@
       outcomePressure: 0.20,
       meanTrackingConfidence: 0.15
     };
-  
+
     function numberOrNull(value) {
       return typeof value === "number" && isFinite(value) ? value : null;
     }
-  
+
     function shotCount(rally) {
       var value = rally && rally.shot_count != null ? rally.shot_count : rally && rally.shots;
       return numberOrNull(value) == null ? 0 : Math.max(0, value);
     }
-  
+
     function coarseFamily(value) {
       if (typeof value !== "string") return null;
       var normalized = value.toLowerCase().replace(/[ _-]+/g, "");
@@ -2547,20 +2547,20 @@
       if (normalized === "net" || normalized === "netshot" || normalized === "netkill") return "net";
       return null;
     }
-  
+
     function families(rally) {
       var values = rally && (rally.coarse_shot_families || rally.shotFamilies);
       if (!Array.isArray(values)) return [];
       return Array.from(new Set(values.map(coarseFamily).filter(Boolean)));
     }
-  
+
     function outcome(rally) {
       var value = rally && (rally.winner_state && rally.winner_state.label || rally.outcome || rally.lose_reason);
       if (typeof value !== "string") return "unclassified";
       var normalized = value.toLowerCase().replace(/[ -]+/g, "_");
       return normalized === "forcederror" ? "forced_error" : normalized === "unforcederror" ? "unforced_error" : normalized;
     }
-  
+
     function scoreContext(rally) {
       var context = rally && rally.score_context;
       if (context && typeof context === "object") {
@@ -2582,25 +2582,25 @@
       if (rally && typeof rally.tightScore === "boolean") return { known: true, tight: rally.tightScore, gamePoint: null, reason: rally.tightScore ? "tight-or-game-point" : "ordinary-score-state" };
       return { known: false, tight: false, gamePoint: null, reason: "score-unavailable-ordinary-fallback" };
     }
-  
+
     function percentile(value, values) {
       if (!values.length) return 0;
       return values.filter(function (entry) { return entry <= value; }).length / values.length;
     }
-  
+
     function confidence(rally) {
       var value = rally && rally.meanTrackingConfidence;
       if (value == null && rally && rally.aggregate_confidence && rally.aggregate_confidence.status === "known") value = rally.aggregate_confidence.value;
       value = numberOrNull(value);
       return value == null ? 0 : Math.max(0, Math.min(1, value));
     }
-  
+
     function isCompleted(rally) {
       if (!rally) return false;
       if (rally.status != null) return rally.status === "completed" && rally.end_media_time != null;
       return rally.completed !== false;
     }
-  
+
     function calculateHighlightsIndex(rally, completedRallies) {
       var history = (completedRallies || []).filter(isCompleted);
       var currentId = rally && (rally.rally_id != null ? rally.rally_id : rally.rallyId);
@@ -2659,7 +2659,7 @@
         }
       };
     }
-  
+
     function rankRallies(rallies) {
       var completed = (rallies || []).filter(isCompleted);
       if (completed.length < 10) return [];
@@ -2679,22 +2679,22 @@
         return bIndex - aIndex || (aEnd == null ? Infinity : aEnd) - (bEnd == null ? Infinity : bEnd) || String(a.rally_id != null ? a.rally_id : a.rallyId).localeCompare(String(b.rally_id != null ? b.rally_id : b.rallyId));
       });
     }
-  
+
     function escapeCsv(value) {
       var text = value == null ? "" : String(value);
       return /[",\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
     }
-  
+
     function toCsv(rows, fields) {
       return [fields.join(",")].concat((rows || []).map(function (row) {
         return fields.map(function (field) { return escapeCsv(row[field]); }).join(",");
       })).join("\n") + "\n";
     }
-  
+
     function toRalliesCsv(rows) {
       return toCsv(rows, ["rally_id", "start_sec", "end_sec", "shot_count", "winner", "lose_reason", "highlight_index", "aggregate_confidence"]);
     }
-  
+
     /*
      * Manual-label input contract
      * ----------------------------
@@ -2723,7 +2723,7 @@
     ];
     var UNKNOWN_LABELS = { "": true, unknown: true, unclassified: true, "not classified": true, "n/a": true, na: true, none: true, null: true };
     var NON_MANUAL_SOURCES = { auto: true, automatic: true, model: true, inference: true, predicted: true, suggestion: true, suggested: true, fixture: true, demo: true, "fixture-probe": true, "fixture-probe-v1": true };
-  
+
     function cloneAnalysisValue(value) {
       if (value == null || typeof value !== "object") return value;
       if (Array.isArray(value)) return value.map(cloneAnalysisValue);
@@ -2731,13 +2731,13 @@
       Object.keys(value).forEach(function (key) { copy[key] = cloneAnalysisValue(value[key]); });
       return copy;
     }
-  
+
     function textValue(value) {
       if (typeof value !== "string" && typeof value !== "number") return null;
       var text = String(value).trim();
       return text ? text : null;
     }
-  
+
     function manualMediaSeconds(value) {
       if (typeof value === "number") return isFinite(value) && value >= 0 ? value : null;
       if (typeof value !== "string") return null;
@@ -2753,14 +2753,14 @@
       }
       return null;
     }
-  
+
     function firstValue(record, keys) {
       for (var i = 0; i < keys.length; i += 1) {
         if (record && record[keys[i]] != null && record[keys[i]] !== "") return record[keys[i]];
       }
       return null;
     }
-  
+
     function identityFrom(value, inherited) {
       var identity = {
         videoKey: inherited && inherited.videoKey != null ? inherited.videoKey : null,
@@ -2780,11 +2780,11 @@
       if (url != null) identity.videoUrl = textValue(url);
       return identity;
     }
-  
+
     function hasAny(value, keys) {
       return keys.some(function (key) { return value && Object.prototype.hasOwnProperty.call(value, key); });
     }
-  
+
     function isLabelRecord(value) {
       if (!value || typeof value !== "object" || Array.isArray(value)) return false;
       // Containers are checked before this predicate so a per-video record with
@@ -2792,7 +2792,7 @@
       if (hasAny(value, ["labels", "manualLabels", "manual_labels", "records", "items", "annotations"])) return false;
       return hasAny(value, ["eventId", "event_id", "shotId", "shot_id", "id", "shot", "label", "shot_family", "shotFamily", "startSec", "start_sec", "startTime", "start_media_time", "hit_media_time", "media_time", "endSec", "end_sec", "endTime", "end_media_time", "time", "timestamp", "player", "playerId", "player_id", "source", "provenance", "status"]);
     }
-  
+
     function collectManualCandidates(value, inheritedIdentity, inheritedManual, output, seen) {
       if (value == null) return;
       if (Array.isArray(value)) {
@@ -2845,7 +2845,7 @@
         }
       });
     }
-  
+
     function provenanceSource(record) {
       var candidates = [record && record.source, record && record.origin, record && record.labelSource, record && record.provenance];
       function find(value) {
@@ -2862,7 +2862,7 @@
       }
       return null;
     }
-  
+
     function hasManualProvenance(record) {
       var source = provenanceSource(record);
       if (source === "manual" || source === "corrected" || source === "human" || source === "user") return true;
@@ -2871,7 +2871,7 @@
       if (status && ["suggested", "predicted", "model"].indexOf(status.toLowerCase()) >= 0) return false;
       return null;
     }
-  
+
     function fixtureEventIds(rows) {
       var ids = Object.create(null);
       (Array.isArray(rows) ? rows : []).forEach(function (row) {
@@ -2885,7 +2885,7 @@
       });
       return ids;
     }
-  
+
     function explicitlyFixture(record, options, ids) {
       if (!record || typeof record !== "object") return false;
       if (record.fixture === true || record.isFixture === true || record.demo === true || record.isDemo === true) return true;
@@ -2897,7 +2897,7 @@
       if (id != null && ids[String(id)] && ids[String(id)].indexOf(JSON.stringify(record)) >= 0) return true;
       return Boolean(options && options.fixtureEventIds && options.fixtureEventIds[String(id)]);
     }
-  
+
     function valueFromDimension(record, dimension) {
       var axes = record && (record.axes || record.dimensions);
       for (var i = 0; i < dimension.aliases.length; i += 1) {
@@ -2907,7 +2907,7 @@
       }
       return null;
     }
-  
+
     function normalizeManualRecord(candidate, index) {
       var record = candidate.record || {};
       var identity = candidate.identity || {};
@@ -2964,7 +2964,7 @@
         original: cloneAnalysisValue(record)
       };
     }
-  
+
     function videoMatches(record, options) {
       if (!options) return true;
       var targetKey = textValue(options.videoKey || options.video_id || options.videoId);
@@ -2977,7 +2977,7 @@
       if (targetUrl && record.videoUrl && String(record.videoUrl) === String(targetUrl)) return true;
       return false;
     }
-  
+
     function normalizeManualLabels(input, options) {
       options = options || {};
       // Selection options are filters, not identities to stamp onto every
@@ -3009,16 +3009,16 @@
       });
       return result;
     }
-  
+
     function metric(value, reason) {
       if (value == null || !isFinite(value)) return { known: false, status: "insufficient-data", value: null, reason: reason || "insufficient data" };
       return { known: true, status: "known", value: value, reason: null };
     }
-  
+
     function percent(count, total) {
       return total > 0 ? Math.round(count / total * 1000) / 10 : null;
     }
-  
+
     function coverageMetric(count, total, reason) {
       var result = metric(total > 0 ? percent(count, total) : null, reason || (total ? null : "no manual labels"));
       result.count = count;
@@ -3027,7 +3027,7 @@
       result.ratio = result.value == null ? null : result.value / 100;
       return result;
     }
-  
+
     function countsFor(records, getter) {
       var counts = Object.create(null);
       var known = 0;
@@ -3039,7 +3039,7 @@
       });
       return { counts: counts, known: known };
     }
-  
+
     function publicCounts(counts, known) {
       var result = {};
       Object.keys(counts).sort().forEach(function (key) { result[key] = counts[key]; });
@@ -3047,7 +3047,7 @@
       Object.keys(result).forEach(function (key) { percentages[key] = percent(result[key], known); });
       return { counts: result, percentages: percentages };
     }
-  
+
     function calculateManualDatasetSummary(input, options) {
       options = options || {};
       var records = normalizeManualLabels(input, options);
@@ -3162,7 +3162,7 @@
         status: total === 0 ? "empty" : "known"
       };
     }
-  
+
     function manualRecordToShotRow(record, videoUrl, index) {
       var normalized = record && Object.prototype.hasOwnProperty.call(record, "shotId") && Object.prototype.hasOwnProperty.call(record, "dimensions") ? record : normalizeManualLabels([record])[0];
       normalized = normalized || {};
@@ -3184,13 +3184,13 @@
         provenance: normalized.provenance == null ? "" : typeof normalized.provenance === "string" ? normalized.provenance : JSON.stringify(normalized.provenance)
       };
     }
-  
+
     function toShotsCsv(rows, options) {
       options = options || {};
       var fields = options.includeManualMetadata ? SHOT_FIELDS.concat(["player", "provenance"]) : SHOT_FIELDS;
       return toCsv(rows, fields);
     }
-  
+
     /*
      * CSV import contract
      * -------------------
@@ -3211,7 +3211,7 @@
       timing: "Timing", intention: "Intention", impact: "Impact", direction: "Direction"
     };
     var IMPORT_AXIS_KEYS = ["Longitudinal", "Lateral", "Timing", "Intention", "Impact", "Direction"];
-  
+
     function parseCsvRows(text) {
       if (typeof text !== "string") return { error: "CSV is empty" };
       text = text.replace(/^\uFEFF/, "");
@@ -3241,7 +3241,7 @@
       if (!rows.length) return { error: "CSV has no data rows" };
       return { fields: rows[0], rows: rows.slice(1) };
     }
-  
+
     function parseShotsCsv(text) {
       var parsed = parseCsvRows(text);
       if (parsed.error) return { ok: false, error: parsed.error };
@@ -3261,14 +3261,14 @@
       });
       return { ok: true, fields: parsed.fields, rows: rows };
     }
-  
+
     function formatImportTime(seconds) {
       if (!Number.isFinite(seconds)) return null;
       var minutes = Math.floor(seconds / 60);
       var remaining = seconds - minutes * 60;
       return String(minutes).padStart(2, "0") + ":" + remaining.toFixed(3).padStart(6, "0");
     }
-  
+
     function importedRowDuplicate(record, existing, seenIds, seenWindows, windowSeconds) {
       var id = record && record.eventId;
       if (id != null) {
@@ -3286,7 +3286,7 @@
       }
       return false;
     }
-  
+
     function normalizeImportedShots(rows, options) {
       options = options || {};
       var now = options.now || new Date().toISOString();
@@ -3339,7 +3339,7 @@
       });
       return { records: records, imported: records.length, skipped: skipped, invalid: invalid };
     }
-  
+
     root.BVAnalysis = {
       shotFields: SHOT_FIELDS,
       manualShotFields: SHOT_FIELDS.concat(["player", "provenance"]),
@@ -3364,10 +3364,10 @@
       escapeCsv: escapeCsv
     };
   })(typeof globalThis !== "undefined" ? globalThis : window);
-  
-  /* analysis/index.js */
+
+/* analysis/index.js */
   'use strict';
-  
+
   /**
    * UI-independent badminton analysis primitives.
    *
@@ -3375,7 +3375,7 @@
    * rendering code. It accepts observations from an upstream analyzer and
    * returns deterministic court, record, feature, and highlight values.
    */
-  
+
   const COURT_LENGTH_M = 13.4;
   const COURT_WIDTH_M = 6.1;
   const LINE_WIDTH_M = 0.04;
@@ -3389,7 +3389,7 @@
   const SHORT_SERVICE_FAR_Y_M = Number((NET_Y_M + SHORT_SERVICE_OFFSET_M).toFixed(2));
   const DOUBLES_LONG_SERVICE_NEAR_Y_M = DOUBLES_LONG_SERVICE_OFFSET_M;
   const DOUBLES_LONG_SERVICE_FAR_Y_M = COURT_LENGTH_M - DOUBLES_LONG_SERVICE_OFFSET_M;
-  
+
   const COARSE_SHOT_FAMILIES = Object.freeze(['clear', 'drop', 'smash', 'net']);
   const SHOT_FAMILY_UNKNOWN = 'unknown';
   const MANUAL_SHOT_LABELS = Object.freeze([
@@ -3421,7 +3421,7 @@
     'evidence_state', 'partial_reasons', 'termination', 'boundary_media_time', 'camera_cut_id',
     'line_calls', 'evidence',
   ]);
-  
+
   class AnalysisError extends Error {
     constructor(message, code = 'analysis-error', details = undefined) {
       super(message);
@@ -3430,7 +3430,7 @@
       if (details !== undefined) this.details = details;
     }
   }
-  
+
   class SchemaValidationError extends AnalysisError {
     constructor(recordName, errors) {
       super(`${recordName} failed schema validation: ${errors.join('; ')}`, 'schema-validation', {
@@ -3441,11 +3441,11 @@
       this.errors = errors;
     }
   }
-  
+
   function isRecord(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
   }
-  
+
   function deepClone(value) {
     if (Array.isArray(value)) return value.map(deepClone);
     if (isRecord(value)) {
@@ -3455,7 +3455,7 @@
     }
     return value;
   }
-  
+
   function deepFreeze(value) {
     if (value && typeof value === 'object' && !Object.isFrozen(value)) {
       Object.freeze(value);
@@ -3463,15 +3463,15 @@
     }
     return value;
   }
-  
+
   function finishRecord(value) {
     return deepFreeze(value);
   }
-  
+
   function assertObject(value, name) {
     if (!isRecord(value)) throw new SchemaValidationError(name, ['value must be an object']);
   }
-  
+
   function assertFiniteNumber(value, name, { min = -Infinity, max = Infinity } = {}) {
     if (typeof value !== 'number' || !Number.isFinite(value)) {
       throw new SchemaValidationError('value', [`${name} must be a finite number`]);
@@ -3480,22 +3480,22 @@
       throw new SchemaValidationError('value', [`${name} must be between ${min} and ${max}`]);
     }
   }
-  
+
   function assertTimestamp(value, name, { nullable = false } = {}) {
     if (nullable && value === null) return;
     assertFiniteNumber(value, name, { min: 0 });
   }
-  
+
   function assertNonEmptyString(value, name) {
     if (typeof value !== 'string' || value.trim() === '') {
       throw new SchemaValidationError('value', [`${name} must be a non-empty string`]);
     }
   }
-  
+
   function validateEnum(value, name, choices, errors) {
     if (!choices.includes(value)) errors.push(`${name} must be one of: ${choices.join(', ')}`);
   }
-  
+
   function pointXY(point, name = 'point') {
     let x;
     let y;
@@ -3511,7 +3511,7 @@
     }
     return { x, y };
   }
-  
+
   /** Create a normalized point. By default coordinates are constrained to [0, 1]. */
   function createNormalizedPoint(x, y, { allowOutside = false } = {}) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
@@ -3522,31 +3522,31 @@
     }
     return finishRecord({ x, y });
   }
-  
+
   function createCourtPoint(x, y) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       throw new AnalysisError('court point coordinates must be finite', 'non-finite-point');
     }
     return finishRecord({ x, y });
   }
-  
+
   function normalizeCourtPoint(point, { allowOutside = false } = {}) {
     const { x, y } = pointXY(point, 'court point');
     return createNormalizedPoint(x / COURT_WIDTH_M, y / COURT_LENGTH_M, { allowOutside });
   }
-  
+
   function denormalizeCourtPoint(point) {
     const { x, y } = pointXY(point, 'normalized court point');
     return createCourtPoint(x * COURT_WIDTH_M, y * COURT_LENGTH_M);
   }
-  
+
   function normalizeCourtLine(start, end) {
     return {
       start: normalizeCourtPoint(start, { allowOutside: true }),
       end: normalizeCourtPoint(end, { allowOutside: true }),
     };
   }
-  
+
   function makeCourtLine(id, role, start, end, formats, includedIn, extra = {}) {
     const normalized = normalizeCourtLine(start, end);
     return {
@@ -3564,7 +3564,7 @@
       ...extra,
     };
   }
-  
+
   /**
    * Generate the fixed BWF court lines from the physical dimensions in the
    * README. Coordinates are line center coordinates in metres; line ownership
@@ -3698,7 +3698,7 @@
     ];
     return lines.map((line) => finishRecord(line));
   }
-  
+
   const COURT_LINES = finishRecord(generateCourtLines());
   const COURT_GEOMETRY = finishRecord({
     coordinate_system: 'court-meters',
@@ -3722,15 +3722,15 @@
     ],
     lines: COURT_LINES,
   });
-  
+
   function getCourtGeometry() {
     return COURT_GEOMETRY;
   }
-  
+
   function getCourtLine(id) {
     return COURT_LINES.find((line) => line.id === id) || null;
   }
-  
+
   function projectCourtLines(homography) {
     if (!homography || typeof homography.courtToImage !== 'function') {
       throw new AnalysisError('a fitted homography is required', 'invalid-homography');
@@ -3745,7 +3745,7 @@
       ),
     );
   }
-  
+
   function matrixMultiply(a, b) {
     const result = Array.from({ length: 3 }, () => [0, 0, 0]);
     for (let row = 0; row < 3; row += 1) {
@@ -3755,7 +3755,7 @@
     }
     return result;
   }
-  
+
   function matrixDeterminant(m) {
     return (
       m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
@@ -3763,7 +3763,7 @@
       + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
     );
   }
-  
+
   function matrixInverse(m, code = 'near-singular') {
     const determinant = matrixDeterminant(m);
     const scale = Math.max(1, ...m.flat().map((value) => Math.abs(value)));
@@ -3789,13 +3789,13 @@
     ];
     return inverse;
   }
-  
+
   function solveLinearSystem(matrix, vector, pivotTolerance = 1e-12) {
     const n = vector.length;
     const augmented = matrix.map((row, rowIndex) => [...row, vector[rowIndex]]);
     let largestPivot = 0;
     let smallestPivot = Infinity;
-  
+
     for (let column = 0; column < n; column += 1) {
       let pivotRow = column;
       for (let row = column + 1; row < n; row += 1) {
@@ -3817,13 +3817,13 @@
         for (let item = column; item <= n; item += 1) augmented[row][item] -= factor * augmented[column][item];
       }
     }
-  
+
     if (smallestPivot / largestPivot <= pivotTolerance ** 2) {
       throw new AnalysisError('homography seed is numerically ill-conditioned', 'near-singular');
     }
     return augmented.map((row) => row[n]);
   }
-  
+
   function normalizePointSet(points) {
     const centroid = points.reduce(
       (sum, point) => ({ x: sum.x + point.x / points.length, y: sum.y + point.y / points.length }),
@@ -3849,7 +3849,7 @@
       })),
     };
   }
-  
+
   function validateQuadrilateral(points, name, { minimumAreaRatio = 1e-8, duplicateRatio = 1e-9 } = {}) {
     if (!Array.isArray(points) || points.length !== 4) {
       throw new AnalysisError(`${name} must contain exactly four points`, 'invalid-seed');
@@ -3858,7 +3858,7 @@
     const xExtent = Math.max(...parsed.map((point) => point.x)) - Math.min(...parsed.map((point) => point.x));
     const yExtent = Math.max(...parsed.map((point) => point.y)) - Math.min(...parsed.map((point) => point.y));
     const scale = Math.max(xExtent, yExtent, ...parsed.flatMap((point) => parsed.map((other) => Math.hypot(point.x - other.x, point.y - other.y))), 1e-15);
-  
+
     for (let first = 0; first < parsed.length; first += 1) {
       for (let second = first + 1; second < parsed.length; second += 1) {
         if (Math.hypot(parsed[first].x - parsed[second].x, parsed[first].y - parsed[second].y) <= duplicateRatio * scale) {
@@ -3866,7 +3866,7 @@
         }
       }
     }
-  
+
     const signedCrosses = [];
     for (let index = 0; index < 4; index += 1) {
       const a = parsed[index];
@@ -3881,7 +3881,7 @@
     if (new Set(signedCrosses).size !== 1) {
       throw new AnalysisError(`${name} must be a convex, consistently ordered quadrilateral`, 'invalid-order');
     }
-  
+
     const area = Math.abs(parsed.reduce((sum, point, index) => {
       const next = parsed[(index + 1) % parsed.length];
       return sum + point.x * next.y - next.x * point.y;
@@ -3891,7 +3891,7 @@
     }
     return parsed;
   }
-  
+
   function fitHomography(sourcePoints, targetPoints, options = {}) {
     const source = validateQuadrilateral(sourcePoints, 'source points', options);
     const target = validateQuadrilateral(targetPoints, 'target points', options);
@@ -3899,7 +3899,7 @@
     const targetNormalized = normalizePointSet(target);
     const matrix = [];
     const vector = [];
-  
+
     for (let index = 0; index < 4; index += 1) {
       const { x, y } = sourceNormalized.points[index];
       const { x: u, y: v } = targetNormalized.points[index];
@@ -3908,7 +3908,7 @@
       matrix.push([0, 0, 0, x, y, 1, -v * x, -v * y]);
       vector.push(v);
     }
-  
+
     const solved = solveLinearSystem(matrix, vector, options.pivotTolerance || 1e-12);
     const normalizedHomography = [
       [solved[0], solved[1], solved[2]],
@@ -3921,7 +3921,7 @@
     const normalization = Math.abs(homography[2][2]) > 1e-14 ? homography[2][2] : Math.max(...homography.flat().map((value) => Math.abs(value)));
     homography = homography.map((row) => row.map((value) => value / normalization));
     const inverse = matrixInverse(homography);
-  
+
     const targetExtent = Math.max(
       Math.max(...target.map((point) => point.x)) - Math.min(...target.map((point) => point.x)),
       Math.max(...target.map((point) => point.y)) - Math.min(...target.map((point) => point.y)),
@@ -3933,10 +3933,10 @@
         throw new AnalysisError('homography fit residual is too large', 'near-singular');
       }
     }
-  
+
     return new Homography(source, target, homography, inverse);
   }
-  
+
   function applyMatrix(matrix, point, operation = 'projection') {
     const { x, y } = pointXY(point, operation);
     const denominator = matrix[2][0] * x + matrix[2][1] * y + matrix[2][2];
@@ -3953,7 +3953,7 @@
     }
     return finishRecord(projected);
   }
-  
+
   class Homography {
     constructor(sourcePoints, targetPoints, matrix, inverse) {
       this.source_points = finishRecord(sourcePoints.map((point) => ({ ...point })));
@@ -3962,36 +3962,36 @@
       this.inverse_matrix = finishRecord(inverse.map((row) => [...row]));
       deepFreeze(this);
     }
-  
+
     mapSourceToTarget(point) {
       return applyMatrix(this.matrix, point, 'source-to-target projection');
     }
-  
+
     mapTargetToSource(point) {
       return applyMatrix(this.inverse_matrix, point, 'target-to-source projection');
     }
-  
+
     imageToCourt(point) {
       return this.mapSourceToTarget(point);
     }
-  
+
     courtToImage(point) {
       return this.mapTargetToSource(point);
     }
-  
+
     imageToNormalizedCourt(point, options = {}) {
       return normalizeCourtPoint(this.imageToCourt(point), options);
     }
-  
+
     normalizedCourtToImage(point) {
       return this.courtToImage(denormalizeCourtPoint(point));
     }
   }
-  
+
   function fitOuterCourtHomography(imageCorners, options = {}) {
     return fitHomography(imageCorners, COURT_GEOMETRY.outer_corner_order, options);
   }
-  
+
   function confidenceErrors(value, name = 'confidence') {
     const errors = [];
     if (!isRecord(value)) {
@@ -4008,7 +4008,7 @@
     }
     return errors;
   }
-  
+
   function createConfidence(value = null, { reason = 'not-provided' } = {}) {
     if (isRecord(value)) {
       const candidate = {
@@ -4024,16 +4024,16 @@
     assertFiniteNumber(value, 'confidence', { min: 0, max: 1 });
     return finishRecord({ value, status: 'known', reason: null });
   }
-  
+
   function validateConfidence(value) {
     const errors = confidenceErrors(value);
     return { valid: errors.length === 0, errors };
   }
-  
+
   function stableNumber(value, digits = 12) {
     return Number(value.toFixed(digits));
   }
-  
+
   function provenanceErrors(value, name = 'provenance') {
     const errors = [];
     if (!isRecord(value)) return [`${name} must be an object`];
@@ -4048,7 +4048,7 @@
     }
     return errors;
   }
-  
+
   function createCorrectionProvenance({ source = 'manual', reason, corrected_at_media_time = null, changed_fields = [] } = {}) {
     const value = {
       source,
@@ -4060,12 +4060,12 @@
     if (errors.length) throw new SchemaValidationError('CorrectionProvenance', errors);
     return finishRecord(value);
   }
-  
+
   function validateCorrectionProvenance(value) {
     const errors = provenanceErrors(value);
     return { valid: errors.length === 0, errors };
   }
-  
+
   function normalizeProvenanceList(value) {
     if (value === undefined || value === null) return [];
     if (!Array.isArray(value)) throw new SchemaValidationError('CorrectionProvenance', ['must be an array']);
@@ -4074,7 +4074,7 @@
       return candidate;
     });
   }
-  
+
   function eventErrors(value) {
     const errors = [];
     if (!isRecord(value)) return ['value must be an object'];
@@ -4108,12 +4108,12 @@
     }
     return errors;
   }
-  
+
   function validateStrokeEvent(value) {
     const errors = eventErrors(value);
     return { valid: errors.length === 0, errors };
   }
-  
+
   function createStrokeEvent(input) {
     assertObject(input, 'StrokeEvent');
     const value = {
@@ -4139,7 +4139,7 @@
     if (errors.length) throw new SchemaValidationError('StrokeEvent', errors);
     return finishRecord(value);
   }
-  
+
   function correctStrokeEvent(event, patch, provenance = {}) {
     const original = createStrokeEvent(event);
     assertObject(patch, 'StrokeEvent correction');
@@ -4167,7 +4167,7 @@
       correction_provenance: [...original.correction_provenance, entry],
     });
   }
-  
+
   function replaceCorrectedStrokeEvent(events, eventId, patch, provenance = {}) {
     if (!Array.isArray(events)) throw new SchemaValidationError('StrokeEventCollection', ['events must be an array']);
     const normalized = events.map((event) => createStrokeEvent(event));
@@ -4176,7 +4176,7 @@
     if (matching.length > 1) throw new AnalysisError(`event ${eventId} occurs more than once`, 'duplicate-event-id');
     return finishRecord(normalized.map((event) => event.event_id === eventId ? correctStrokeEvent(event, patch, provenance) : event));
   }
-  
+
   function inferScoreState(score) {
     if (!isRecord(score)) return 'unknown';
     const left = score.player_a ?? score.a ?? score.home;
@@ -4184,7 +4184,7 @@
     if (!Number.isFinite(left) || !Number.isFinite(right) || left < 0 || right < 0) return 'unknown';
     return Math.abs(left - right) <= 2 && Math.max(left, right) >= 18 ? 'tight' : 'ordinary';
   }
-  
+
   function inferGamePoint(score) {
     if (!isRecord(score)) return null;
     if (typeof score.game_point === 'boolean') return score.game_point;
@@ -4193,7 +4193,7 @@
     if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
     return Math.max(left, right) >= 20 && Math.abs(left - right) <= 1;
   }
-  
+
   function normalizeScoreContext(value) {
     if (value === undefined || value === null) {
       return finishRecord({ state: 'unknown', game_point: null, source: 'unknown', score: null });
@@ -4213,7 +4213,7 @@
     if (errors.length) throw new SchemaValidationError('ScoreContext', errors);
     return finishRecord(candidate);
   }
-  
+
   function outcomeErrors(value, name = 'winner_state') {
     const errors = [];
     if (!isRecord(value)) return [`${name} must be an object`];
@@ -4230,12 +4230,12 @@
     else value.correction_provenance.forEach((item, index) => errors.push(...provenanceErrors(item, `${name}.correction_provenance[${index}]`)));
     return errors;
   }
-  
+
   function validateWinnerState(value) {
     const errors = outcomeErrors(value);
     return { valid: errors.length === 0, errors };
   }
-  
+
   function createWinnerState(input = {}) {
     assertObject(input, 'WinnerState');
     const value = {
@@ -4251,7 +4251,7 @@
     if (errors.length) throw new SchemaValidationError('WinnerState', errors);
     return finishRecord(value);
   }
-  
+
   function rallyErrors(value) {
     const errors = [];
     if (!isRecord(value)) return ['value must be an object'];
@@ -4300,12 +4300,12 @@
     }
     return errors;
   }
-  
+
   function validateRallyRecord(value) {
     const errors = rallyErrors(value);
     return { valid: errors.length === 0, errors };
   }
-  
+
   function createRallyRecord(input) {
     assertObject(input, 'RallyRecord');
     const value = {
@@ -4335,7 +4335,7 @@
     if (errors.length) throw new SchemaValidationError('RallyRecord', errors);
     return finishRecord(value);
   }
-  
+
   function lineCallErrors(value) {
     const errors = [];
     if (!isRecord(value)) return ['value must be an object'];
@@ -4364,12 +4364,12 @@
     else value.correction_provenance.forEach((item, index) => errors.push(...provenanceErrors(item, `correction_provenance[${index}]`)));
     return errors;
   }
-  
+
   function validateLineCallState(value) {
     const errors = lineCallErrors(value);
     return { valid: errors.length === 0, errors };
   }
-  
+
   function createLineCallState(input = {}) {
     assertObject(input, 'LineCallState');
     const value = {
@@ -4393,17 +4393,17 @@
     if (errors.length) throw new SchemaValidationError('LineCallState', errors);
     return finishRecord(value);
   }
-  
+
   function classifyOutcomeFromWinnerState(winnerState) {
     return winnerState && OUTCOME_LABELS.includes(winnerState.label) ? winnerState.label : 'unclassified';
   }
-  
+
   function normalizeFeatureNumber(value, name, { min = 0, max = Infinity } = {}) {
     if (value === undefined || value === null) return null;
     assertFiniteNumber(value, name, { min, max });
     return value;
   }
-  
+
   function createCoarseShotFeatures(input = {}) {
     assertObject(input, 'CoarseShotFeatures');
     let flightDistance = input.flight_distance_m;
@@ -4430,14 +4430,14 @@
     value.missing = Object.keys(value).filter((key) => key !== 'missing' && value[key] === null);
     return finishRecord(value);
   }
-  
+
   const COARSE_RULE_THRESHOLDS = finishRecord({
     net: { max_landing_depth_m: 1.5, max_flight_distance_m: 3.5 },
     smash: { min_impact_height_m: 1.5, min_downward_speed_mps: 5, min_flight_distance_m: 2 },
     clear: { min_landing_depth_m: 4.8, min_apex_height_m: 2 },
     drop: { min_landing_depth_m: 1.5, max_landing_depth_m: 4.8, max_apex_height_m: 2.5 },
   });
-  
+
   /**
    * Classify only from supplied coarse features. This is a rule seam, not a
    * detector or model: insufficient features intentionally produce unknown.
@@ -4514,7 +4514,7 @@
       explanation: missing.length ? `Unclassified because required features are missing: ${missing.join(', ')}.` : 'No coarse rule matched.',
     });
   }
-  
+
   function canonicalOutcomeLabel(value) {
     if (typeof value !== 'string') return null;
     const normalized = value.trim().toLowerCase().replace(/[ -]+/g, '_');
@@ -4522,7 +4522,7 @@
     if (normalized === 'unforcederror') return 'unforced_error';
     return OUTCOME_LABELS.includes(normalized) ? normalized : null;
   }
-  
+
   function canonicalEvidenceStatus(value, fallback = 'unknown') {
     if (typeof value !== 'string') return fallback;
     const normalized = value.trim().toLowerCase().replace(/[ -]+/g, '_');
@@ -4530,31 +4530,31 @@
     if (['accepted', 'suggested', 'corrected', 'partial'].includes(normalized)) return normalized;
     return fallback;
   }
-  
+
   function canonicalEventStatus(value, fallback = 'unknown') {
     const status = canonicalEvidenceStatus(value, fallback);
     return status === 'unknown' ? (value === 'unclassified' ? 'unclassified' : 'unknown') : status;
   }
-  
+
   function mediaTimeOf(value) {
     if (!isRecord(value)) return null;
     const candidate = value.hit_media_time ?? value.media_time ?? value.timestamp_media_time ?? value.start_media_time ?? value.end_media_time ?? value.timestamp ?? value.time;
     return typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0 ? candidate : null;
   }
-  
+
   function stableIdentifier(value) {
     if (typeof value === 'string' && value.trim() !== '') return value;
     if (typeof value === 'number' && Number.isFinite(value)) return String(value);
     return null;
   }
-  
+
   function explicitPlayerId(value) {
     if (typeof value === 'string' && value.trim() !== '') return value;
     if (!isRecord(value)) return null;
     const candidate = value.player_id ?? value.id;
     return stableIdentifier(candidate);
   }
-  
+
   function coarseFamilyFromValue(value) {
     if (typeof value !== 'string') return SHOT_FAMILY_UNKNOWN;
     const normalized = value.trim().toLowerCase().replace(/[ _-]+/g, '');
@@ -4564,17 +4564,17 @@
     if (normalized === 'net' || normalized === 'netshot' || normalized === 'netkill') return 'net';
     return SHOT_FAMILY_UNKNOWN;
   }
-  
+
   function evidenceStatusForChannel(channel) {
     if (!isRecord(channel)) return 'unknown';
     return canonicalEvidenceStatus(channel.status ?? channel.state, 'unknown');
   }
-  
+
   function knownPlayerId(value) {
     const playerId = explicitPlayerId(value);
     return playerId && playerId.toLowerCase() !== 'unknown' ? playerId : null;
   }
-  
+
   function normalizeOutcomeEvidence(input = {}) {
     if (!isRecord(input)) return null;
     const candidate = input.winner_state ?? input.outcome_state ?? input.outcome_evidence;
@@ -4583,7 +4583,7 @@
     if (!label) return null;
     return candidate;
   }
-  
+
   function normalizeLineCallEvidence(input, fallbackTime = null, fallbackStatus = 'unknown') {
     if (input === undefined || input === null) return createLineCallState({ timestamp_media_time: fallbackTime });
     const raw = typeof input === 'string' ? { state: input } : (isRecord(input) ? input : {});
@@ -4605,22 +4605,22 @@
       correction_provenance: raw.correction_provenance,
     });
   }
-  
+
   function eventConfidence(event) {
     if (!event) return null;
     return event.tracking_confidence || event.geometry_confidence || event.classification_confidence || null;
   }
-  
+
   function attributionInputEvents(input) {
     const values = input?.events ?? input?.stroke_events ?? input?.strokeEvents ?? [];
     if (!Array.isArray(values)) return [];
     return values.map((event) => createStrokeEvent(event));
   }
-  
+
   function acceptedEvidenceStatus(status) {
     return status === 'accepted' || status === 'corrected';
   }
-  
+
   /**
    * Attribute only what the supplied terminal evidence can establish. In
    * particular, an OUT call identifies a losing hitter, but does not by itself
@@ -4687,14 +4687,14 @@
     if (isRecord(input.termination) || input.termination !== undefined) evidence.push({ kind: 'termination', value: deepClone(input.termination) });
     if (Array.isArray(explicit?.evidence)) evidence.push(...deepClone(explicit.evidence));
     if (Array.isArray(input.evidence)) evidence.push(...deepClone(input.evidence));
-  
+
     let label = 'unclassified';
     let winnerPlayer = null;
     let reason = 'outcome-uncertain';
     let confidence = input.confidence;
     let source = explicitSource;
     let status = explicitStatus;
-  
+
     // An explicitly accepted/manual outcome is evidence in its own right. It is
     // still required to identify the winning player; null is never a placeholder.
     const explicitCanClassify = explicitLabel && explicitWinner && explicitIsTrusted &&
@@ -4727,7 +4727,7 @@
     } else if (!finalPlayer) {
       reason = 'final-player-unknown';
     }
-  
+
     // WinnerState intentionally cannot carry a player for an unclassified label;
     // retain the losing/final evidence above instead of making a partial winner.
     if (label === 'unclassified') winnerPlayer = null;
@@ -4756,7 +4756,7 @@
       evidence: winnerState.evidence,
     });
   }
-  
+
   function normalizeStateMachineEvent(input, rallyId, sequence) {
     assertObject(input, 'Rally event');
     const playerEvidence = input.player_evidence ?? input.player ?? null;
@@ -4800,14 +4800,14 @@
     };
     return createStrokeEvent(eventInput);
   }
-  
+
   function orderEvents(events) {
     return [...events].sort((left, right) => (left.hit_media_time === null ? Infinity : left.hit_media_time) -
       (right.hit_media_time === null ? Infinity : right.hit_media_time) ||
       (left.sequence === null ? Infinity : left.sequence) - (right.sequence === null ? Infinity : right.sequence) ||
       left.event_id.localeCompare(right.event_id));
   }
-  
+
   function aggregateRallyConfidence(events) {
     const considered = events.filter((event) => acceptedEvidenceStatus(event.status));
     if (!considered.length) return createConfidence(null, { reason: 'no-accepted-stroke-evidence' });
@@ -4815,7 +4815,7 @@
     if (values.some((value) => !value || value.status !== 'known')) return createConfidence(null, { reason: 'partial-stroke-confidence' });
     return createConfidence(stableNumber(values.reduce((sum, value) => sum + value.value, 0) / values.length));
   }
-  
+
   function stateMachinePartialReasons(context, events, outcome, status) {
     const reasons = [];
     if (context.start_media_time === null) reasons.push('rally-start-time-unknown');
@@ -4832,7 +4832,7 @@
     if (outcome.winner_state.label === 'unclassified') reasons.push(outcome.reason);
     return [...new Set(reasons)];
   }
-  
+
   function createRallyStateMachine(options = {}) {
     assertObject(options, 'RallyStateMachineOptions');
     let rallyCounter = 0;
@@ -4845,19 +4845,19 @@
     const duplicates = [];
     const cameraCuts = [];
     const unassignedEvidence = [];
-  
+
     function nextRallyId(prefix = options.rally_id_prefix ?? 'rally') {
       rallyCounter += 1;
       return `${prefix}-${rallyCounter}`;
     }
-  
+
     function uniqueRallyId(candidate) {
       const normalized = stableIdentifier(candidate);
       if (!normalized || !contexts.some((context) => context.rally_id === normalized)) return normalized || nextRallyId();
       segmentCounter += 1;
       return `${normalized}-segment-${segmentCounter}`;
     }
-  
+
     function newContext(input = {}, forcedId = null) {
       const requestedId = stableIdentifier(forcedId || input.rally_id || input.id);
       const id = uniqueRallyId(requestedId);
@@ -4880,15 +4880,15 @@
       contexts.push(context);
       return context;
     }
-  
+
     function eventForId(eventId) {
       return eventRecords.get(eventId) || null;
     }
-  
+
     function currentEvents(context) {
       return orderEvents(context.event_ids.map(eventForId).filter(Boolean));
     }
-  
+
     function ensureActive(input = {}, rallyId = null) {
       if (!active) active = newContext(input, rallyId);
       if (rallyId && active.rally_id !== rallyId && active.source_rally_id !== rallyId) {
@@ -4898,7 +4898,7 @@
       if (active.start_media_time === null && mediaTimeOf(input) !== null) active.start_media_time = mediaTimeOf(input);
       return active;
     }
-  
+
     function addEvent(input) {
       const requestedRallyId = stableIdentifier(input.rally_id ?? input.rallyId);
       const playerEvidence = input.player_evidence ?? input.player ?? null;
@@ -4958,7 +4958,7 @@
       if (event.landing_evidence) addLanding(event.landing_evidence, event.hit_media_time, context, event.status);
       return event;
     }
-  
+
     function addLanding(input, fallbackTime = null, context = active, fallbackStatus = 'unknown') {
       if (!context) {
         unassignedEvidence.push(deepClone(input));
@@ -4974,7 +4974,7 @@
       context.evidence.push(...(Array.isArray(call.evidence) ? deepClone(call.evidence) : [deepClone(call.evidence)]));
       return call;
     }
-  
+
     function startRally(input = {}) {
       if (active) {
         const requestedId = stableIdentifier(input.rally_id ?? input.id);
@@ -4987,7 +4987,7 @@
       active.evidence.push(...(Array.isArray(input.evidence) ? deepClone(input.evidence) : []));
       return active;
     }
-  
+
     function endRally(input = {}) {
       const context = ensureActive(input, stableIdentifier(input.rally_id ?? input.rallyId));
       context.end_media_time = mediaTimeOf(input);
@@ -4999,7 +4999,7 @@
       active = null;
       return context;
     }
-  
+
     function cameraCut(input = {}) {
       const time = mediaTimeOf(input);
       cameraCuts.push(finishRecord({
@@ -5017,7 +5017,7 @@
       }
       return cameraCuts[cameraCuts.length - 1];
     }
-  
+
     function closeContext(context, patch = {}) {
       if (!context) return;
       context.status = patch.status ?? context.status;
@@ -5027,7 +5027,7 @@
       if (context.status === 'completed' && context.end_media_time === null) context.status = 'incomplete';
       if (active === context) active = null;
     }
-  
+
     function recordForContext(context) {
       const events = currentEvents(context);
       const calls = [...context.line_calls].sort((left, right) => (left.timestamp_media_time ?? Infinity) - (right.timestamp_media_time ?? Infinity));
@@ -5063,7 +5063,7 @@
         evidence: context.evidence,
       });
     }
-  
+
     function snapshot() {
       const allContexts = contexts.map(recordForContext);
       return finishRecord({
@@ -5077,7 +5077,7 @@
         unassigned_evidence: deepClone(unassignedEvidence),
       });
     }
-  
+
     function ingest(input) {
       if (finalized) throw new AnalysisError('rally state machine is finalized', 'state-machine-finalized');
       if (Array.isArray(input)) {
@@ -5093,7 +5093,7 @@
       else addEvent(input);
       return snapshot();
     }
-  
+
     function finalize() {
       if (!finalized) {
         if (active) {
@@ -5105,7 +5105,7 @@
       }
       return snapshot();
     }
-  
+
     return Object.freeze({
       ingest,
       consume: ingest,
@@ -5124,7 +5124,7 @@
       getState: snapshot,
     });
   }
-  
+
   function analyzeRallyEvents(observations, options = {}) {
     const machine = createRallyStateMachine(options);
     const batch = Array.isArray(observations)
@@ -5133,18 +5133,18 @@
     machine.ingest(batch || []);
     return machine.finalize();
   }
-  
+
   const analyzeRally = analyzeRallyEvents;
   const analyzeRallies = analyzeRallyEvents;
   const processRallyEvents = analyzeRallyEvents;
   const buildRallyAnalysis = analyzeRallyEvents;
   const buildRallyTimeline = analyzeRallyEvents;
   const createRallyAnalyzer = createRallyStateMachine;
-  
+
   function normalizeRallyForHighlight(rally) {
     return rally && rally.rally_id ? createRallyRecord(rally) : rally;
   }
-  
+
   function groupEvents(strokeEvents) {
     const grouped = new Map();
     const seen = new Set();
@@ -5176,7 +5176,7 @@
     }
     return grouped;
   }
-  
+
   function highlightEventFeatures(rally, eventIndex) {
     const events = eventIndex.get(rally.rally_id) || [];
     const eventById = new Map(events.map((event) => [event.event_id, event]));
@@ -5188,7 +5188,7 @@
     const familiesFromRally = rally.coarse_shot_families.filter((family) => COARSE_SHOT_FAMILIES.includes(family));
     const families = new Set(familiesFromRally);
     for (const event of acceptedEvents) if (COARSE_SHOT_FAMILIES.includes(event.shot_family)) families.add(event.shot_family);
-  
+
     const expectedConfidenceCount = Math.max(acceptedEvents.length, rally.stroke_event_ids.length, rally.shot_count);
     let confidenceSum = 0;
     let missingConfidenceCount = 0;
@@ -5211,7 +5211,7 @@
       accepted_event_count: acceptedEvents.length,
     };
   }
-  
+
   function outcomePressure(rally) {
     const label = classifyOutcomeFromWinnerState(rally.winner_state);
     const classifiedPressure = label === 'unclassified' ? 0 : 0.4;
@@ -5227,16 +5227,16 @@
       reason: tight ? 'tight-or-game-point' : (scoreKnown ? 'ordinary-score-state' : 'score-unavailable-ordinary-fallback'),
     };
   }
-  
+
   function completedRalliesOnly(rallies) {
     return rallies.filter((rally) => rally && rally.status === 'completed' && rally.end_media_time !== null);
   }
-  
+
   function percentileRank(value, values) {
     if (!values.length) return 0;
     return values.filter((candidate) => candidate <= value).length / values.length;
   }
-  
+
   function calculateHighlightIndex(rallyInput, completedHistoryInput, strokeEvents = []) {
     const rally = normalizeRallyForHighlight(rallyInput);
     const history = completedRalliesOnly((completedHistoryInput || []).map(normalizeRallyForHighlight));
@@ -5256,7 +5256,7 @@
       source_timestamp: { start_media_time: rally.start_media_time, end_media_time: rally.end_media_time },
     };
     if (sampleSize < 10) return { ...base, reason: 'insufficient-history' };
-  
+
     const eventIndex = groupEvents(strokeEvents);
     const currentFeatures = highlightEventFeatures(rally, eventIndex);
     const shotCounts = completed.map((candidate) => highlightEventFeatures(candidate, eventIndex).shot_count);
@@ -5296,7 +5296,7 @@
       source_timestamp: { start_media_time: rally.start_media_time, end_media_time: rally.end_media_time },
     });
   }
-  
+
   function rankRallyHighlights(ralliesInput, strokeEvents = [], { limit = Infinity } = {}) {
     if (!Array.isArray(ralliesInput)) throw new SchemaValidationError('RallyCollection', ['rallies must be an array']);
     const rallies = ralliesInput.map((rally) => createRallyRecord(rally));
@@ -5319,10 +5319,10 @@
       .slice(0, limit);
     return finishRecord({ eligible: true, sample_size: completed.length, minimum_sample_size: 10, results });
   }
-  
+
   const rankHighlights = rankRallyHighlights;
   const scoreRallyHighlights = rankRallyHighlights;
-  
+
   function isPointInsideCourt(point, format = 'doubles') {
     const { x, y } = pointXY(point);
     if (format !== 'doubles' && format !== 'singles') throw new AnalysisError('format must be doubles or singles', 'invalid-format');
@@ -5330,7 +5330,7 @@
     const maxX = format === 'singles' ? COURT_WIDTH_M - SINGLES_SIDE_MARGIN_M : COURT_WIDTH_M;
     return x >= minX && x <= maxX && y >= 0 && y <= COURT_LENGTH_M;
   }
-  
+
   const ANALYSIS_PRIMITIVES = {
     AnalysisError,
     SchemaValidationError,
@@ -5404,24 +5404,24 @@
     scoreRallyHighlights,
     isPointInsideCourt,
   };
-  
+
   // The analysis package remains CommonJS for Node consumers. The same
   // dependency-free primitives are also exposed as a browser global for the MV3
   // calibration adapter; there is no second geometry implementation to drift.
   if (typeof module === 'object' && module.exports) module.exports = ANALYSIS_PRIMITIVES;
   if (typeof globalThis === 'object') globalThis.BVAnalysisPrimitives = ANALYSIS_PRIMITIVES;
-  
-  /* src/calibration.js */
+
+/* src/calibration.js */
   /* Dependency-free browser adapter for the shared BWF geometry/homography primitives. */
   (function (root) {
     "use strict";
-  
+
     var primitives = root.BVAnalysisPrimitives;
     var CALIBRATION_VERSION = 1;
     var COORDINATE_SYSTEM = "normalized-video-image";
     var COURT_COORDINATE_SYSTEM = "normalized-court";
     var FIT_OPTIONS = { minimumAreaRatio: 1e-7, duplicateRatio: 1e-7, pivotTolerance: 1e-12 };
-  
+
     function CalibrationError(message, code, cause) {
       this.name = "CalibrationError";
       this.message = message;
@@ -5432,9 +5432,9 @@
     }
     CalibrationError.prototype = Object.create(Error.prototype);
     CalibrationError.prototype.constructor = CalibrationError;
-  
+
     function fail(message, code, cause) { throw new CalibrationError(message, code, cause); }
-  
+
     function point(value, name, allowOutside) {
       var x;
       var y;
@@ -5451,19 +5451,19 @@
       }
       return { x: x, y: y };
     }
-  
+
     function points(value) {
       if (!Array.isArray(value) || value.length !== 4) fail("Four outer-court corners are required", "invalid-seed");
       return value.map(function (entry, index) { return point(entry, "corner " + (index + 1), false); });
     }
-  
+
     function canonicalCorners() {
       if (!primitives || !primitives.COURT_GEOMETRY) fail("shared BWF court geometry is unavailable", "geometry-unavailable");
       return primitives.COURT_GEOMETRY.outer_corner_order.map(function (corner) {
         return { x: corner.x / primitives.COURT_GEOMETRY.width_m, y: corner.y / primitives.COURT_GEOMETRY.length_m };
       });
     }
-  
+
     function copyMatrix(matrix, name) {
       if (!Array.isArray(matrix) || matrix.length !== 3 || matrix.some(function (row) { return !Array.isArray(row) || row.length !== 3; })) {
         fail(name + " must be a 3 × 3 matrix", "invalid-homography");
@@ -5476,7 +5476,7 @@
       });
       return copied;
     }
-  
+
     function applyMatrix(matrix, value, operation) {
       var input = point(value, operation || "projection", true);
       var denominator = matrix[2][0] * input.x + matrix[2][1] * input.y + matrix[2][2];
@@ -5491,7 +5491,7 @@
       if (!Number.isFinite(result.x) || !Number.isFinite(result.y)) fail((operation || "projection") + " produced a non-finite point", "projection-singular");
       return result;
     }
-  
+
     function errorMessage(error) {
       var messages = {
         "duplicate-corner": "Two clicks overlap. Undo and click four distinct outer corners.",
@@ -5504,7 +5504,7 @@
       };
       return messages[error && error.code] || "Calibration failed. Undo or reset, then click the four outer corners again.";
     }
-  
+
     function projectLines(inverseMatrix) {
       if (!primitives || !Array.isArray(primitives.COURT_LINES)) fail("shared BWF court lines are unavailable", "geometry-unavailable");
       return primitives.COURT_LINES.map(function (line) {
@@ -5521,7 +5521,7 @@
         });
       });
     }
-  
+
     function fitCourtCalibration(seedPoints) {
       if (!primitives || typeof primitives.fitHomography !== "function") fail("shared homography primitive is unavailable", "homography-unavailable");
       var source;
@@ -5540,7 +5540,7 @@
         }
         throw new CalibrationError(errorMessage(error), error && error.code || "invalid-calibration", error);
       }
-  
+
       var imageToCourt = copyMatrix(homography.matrix, "image-to-court matrix");
       var courtToImage = copyMatrix(homography.inverse_matrix, "court-to-image matrix");
       var result = {
@@ -5561,7 +5561,7 @@
       };
       return result;
     }
-  
+
     function matrixFor(calibration, direction) {
       if (!calibration || typeof calibration !== "object") fail("a court calibration is required", "invalid-calibration");
       if (calibration.coordinateSystem !== COORDINATE_SYSTEM || calibration.courtCoordinateSystem !== COURT_COORDINATE_SYSTEM) {
@@ -5570,20 +5570,20 @@
       var matrices = calibration.homography || {};
       return copyMatrix(matrices[direction], direction + " matrix");
     }
-  
+
     function projectCourtPoint(calibration, normalizedCourtPoint) {
       return applyMatrix(matrixFor(calibration, "courtToImage"), normalizedCourtPoint, "court-to-image projection");
     }
-  
+
     function projectImagePoint(calibration, normalizedImagePoint) {
       return applyMatrix(matrixFor(calibration, "imageToCourt"), normalizedImagePoint, "image-to-court projection");
     }
-  
+
     function projectCourtLines(calibration) {
       var inverse = matrixFor(calibration, "courtToImage");
       return projectLines(inverse);
     }
-  
+
     function restoreCalibration(value) {
       if (value === null || value === undefined) return null;
       try {
@@ -5595,7 +5595,7 @@
         throw new CalibrationError(errorMessage(error), error && error.code || "invalid-calibration", error);
       }
     }
-  
+
     function tryFitCourtCalibration(seedPoints) {
       try {
         return { ok: true, calibration: fitCourtCalibration(seedPoints), error: null };
@@ -5603,11 +5603,11 @@
         return { ok: false, calibration: null, error: error instanceof CalibrationError ? error : new CalibrationError(errorMessage(error), error && error.code || "invalid-calibration", error) };
       }
     }
-  
+
     function canonicalCourt() {
       return primitives && primitives.COURT_GEOMETRY ? primitives.COURT_GEOMETRY : null;
     }
-  
+
     root.BVCalibration = Object.freeze({
       CalibrationError: CalibrationError,
       CALIBRATION_VERSION: CALIBRATION_VERSION,
@@ -5628,8 +5628,8 @@
       errorMessage: errorMessage
     });
   })(typeof globalThis !== "undefined" ? globalThis : window);
-  
-  /* src/panel-layout.js */
+
+/* src/panel-layout.js */
   /* Pure geometry helpers for movable, resizable video-overlay panels. */
   (function (root, factory) {
     var api = factory();
@@ -5637,7 +5637,7 @@
     root.BVPanelLayout = api;
   })(typeof globalThis !== "undefined" ? globalThis : self, function () {
     "use strict";
-  
+
     var PANEL_MARGIN = 12;
     var PANEL_NUDGE = 16;
     var PANEL_RESIZE_NUDGE = 16;
@@ -5647,19 +5647,19 @@
     // per-panel constraints (0 keeps the classic full-area behavior).
     var DEFAULT_CONTROLS_RESERVE = 0;
     var OVERLAP_EPSILON = 1e-6;
-  
+
     function finite(value, fallback) {
       return Number.isFinite(Number(value)) ? Number(value) : fallback;
     }
-  
+
     function dimension(value) { return Math.max(0, finite(value, 0)); }
-  
+
     function optionalRatio(value) {
       if (value == null || value === "") return null;
       var number = Number(value);
       return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : null;
     }
-  
+
     function normalizeLayout(layout) {
       if (!layout || typeof layout !== "object") return null;
       var result = {};
@@ -5672,7 +5672,7 @@
       if (result.height === 0) delete result.height;
       return Object.keys(result).length ? result : null;
     }
-  
+
     function bounds(viewport, constraints) {
       var width = dimension(viewport && viewport.width);
       var height = dimension(viewport && viewport.height);
@@ -5696,12 +5696,12 @@
         maxHeight: Math.max(0, Math.min(configuredMaxHeight, availableHeight))
       };
     }
-  
+
     function clamp(value, minimum, maximum) {
       if (maximum < minimum) return maximum;
       return Math.max(minimum, Math.min(maximum, value));
     }
-  
+
     function pixelPanelLayout(layout, viewport, rendered, constraints) {
       var area = bounds(viewport, constraints);
       var normalized = normalizeLayout(layout) || {};
@@ -5729,7 +5729,7 @@
         }
       };
     }
-  
+
     function movePanelLayout(layout, delta, viewport, rendered, constraints) {
       var pixels = pixelPanelLayout(layout, viewport, rendered, constraints);
       var area = bounds(viewport, constraints);
@@ -5740,7 +5740,7 @@
         height: pixels.layout.height
       }, viewport, pixels, constraints).layout;
     }
-  
+
     function resizePanelLayout(layout, delta, viewport, rendered, constraints) {
       var pixels = pixelPanelLayout(layout, viewport, rendered, constraints);
       var area = bounds(viewport, constraints);
@@ -5751,7 +5751,7 @@
         height: area.height ? (pixels.height + finite(delta && delta.y, 0)) / area.height : 0
       }, viewport, pixels, constraints).layout;
     }
-  
+
     function nudgePanelLayout(layout, direction, viewport, rendered, constraints, amount) {
       var step = Math.max(1, finite(amount, PANEL_NUDGE));
       var delta = { x: 0, y: 0 };
@@ -5761,7 +5761,7 @@
       if (direction === "ArrowDown") delta.y = step;
       return movePanelLayout(layout, delta, viewport, rendered, constraints);
     }
-  
+
     function nudgePanelSize(layout, direction, viewport, rendered, constraints, amount) {
       var step = Math.max(1, finite(amount, PANEL_RESIZE_NUDGE));
       var delta = { x: 0, y: 0 };
@@ -5771,7 +5771,7 @@
       if (direction === "ArrowDown") delta.y = step;
       return resizePanelLayout(layout, delta, viewport, rendered, constraints);
     }
-  
+
     function isWithinBounds(layout, viewport, rendered, constraints) {
       var area = bounds(viewport, constraints);
       var pixels = pixelPanelLayout(layout, viewport, rendered, constraints);
@@ -5781,7 +5781,7 @@
         pixels.width >= Math.min(area.minWidth, area.maxWidth) - 1e-9 &&
         pixels.height >= Math.min(area.minHeight, area.maxHeight) - 1e-9;
     }
-  
+
     function firstOpenPanelPlacement(viewport, constraints, slot, occupants, gap) {
       var areaWidth = dimension(viewport && viewport.width);
       var areaHeight = dimension(viewport && viewport.height);
@@ -5859,8 +5859,8 @@
       isWithinBounds: isWithinBounds
     });
   });
-  
-  /* src/seed-card.js */
+
+/* src/seed-card.js */
   /* Geometry helpers for the movable court-seeding instruction card. */
   (function (root, factory) {
     var api = factory();
@@ -5868,19 +5868,19 @@
     root.BVSeedCard = api;
   })(typeof globalThis !== "undefined" ? globalThis : self, function () {
     "use strict";
-  
+
     var SEED_CARD_MARGIN = 12;
     var SEED_CARD_NUDGE = 16;
     // The card sits in the quiet middle band, between the likely far and near
     // corner clicks, rather than over the bottom video controls/corners.
     var DEFAULT_SEED_CARD_TOP_RATIO = 0.35;
-  
+
     function finite(value, fallback) {
       return Number.isFinite(Number(value)) ? Number(value) : fallback;
     }
-  
+
     function dimension(value) { return Math.max(0, finite(value, 0)); }
-  
+
     function normalizePosition(position) {
       if (!position || typeof position !== "object") return null;
       var x = finite(position.x, NaN);
@@ -5888,7 +5888,7 @@
       if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
       return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
     }
-  
+
     function available(viewport, card, margin) {
       var width = dimension(viewport && viewport.width);
       var height = dimension(viewport && viewport.height);
@@ -5905,7 +5905,7 @@
         maxTop: Math.max(inset, height - cardHeight - inset)
       };
     }
-  
+
     function defaultSeedCardPosition(viewport, card, margin) {
       var bounds = available(viewport, card, margin);
       return {
@@ -5913,7 +5913,7 @@
         y: bounds.height ? Math.max(bounds.margin, Math.min(bounds.maxTop, bounds.height * DEFAULT_SEED_CARD_TOP_RATIO)) / bounds.height : 0
       };
     }
-  
+
     function clampSeedCardPosition(position, viewport, card, margin) {
       var bounds = available(viewport, card, margin);
       var fallback = defaultSeedCardPosition(viewport, card, margin);
@@ -5927,7 +5927,7 @@
         y: bounds.height ? top / bounds.height : 0
       };
     }
-  
+
     function pixelSeedCardPosition(position, viewport, card, margin) {
       var bounds = available(viewport, card, margin);
       var clamped = clampSeedCardPosition(position, viewport, card, margin);
@@ -5937,7 +5937,7 @@
         position: clamped
       };
     }
-  
+
     function moveSeedCardPosition(position, delta, viewport, card, margin) {
       var bounds = available(viewport, card, margin);
       var current = pixelSeedCardPosition(position, viewport, card, margin);
@@ -5947,7 +5947,7 @@
       };
       return clampSeedCardPosition(next, viewport, card, margin);
     }
-  
+
     function nudgeSeedCardPosition(position, direction, viewport, card, margin, amount) {
       var delta = { x: 0, y: 0 };
       var step = Math.max(1, finite(amount, SEED_CARD_NUDGE));
@@ -5957,11 +5957,11 @@
       if (direction === "ArrowDown") delta.y = step;
       return moveSeedCardPosition(position, delta, viewport, card, margin);
     }
-  
+
     function canSeedFromClick(target, layer, seedCount, defaultPrevented) {
       return !defaultPrevented && target === layer && Number(seedCount) < 4;
     }
-  
+
     function isWithinSeedCardBounds(position, viewport, card, margin) {
       var bounds = available(viewport, card, margin);
       var pixels = pixelSeedCardPosition(position, viewport, card, margin);
@@ -5970,12 +5970,12 @@
         pixels.left + bounds.cardWidth <= bounds.width - bounds.margin + 1e-9 &&
         pixels.top + bounds.cardHeight <= bounds.height - bounds.margin + 1e-9;
     }
-  
+
     // Floating corner-seed button geometry (small-screen court calibration).
     var SEED_BUTTON_GAP = 12; // space between the corner ring edge and the button
     var SEED_BUTTON_MARGIN = 12; // minimum distance from the video edges
     var SEED_RING_RADIUS = 13; // half of the 26px .bv-seed-target guide ring
-  
+
     // The seed layer's click capture (and guide ring) ends above the native
     // player control strip, so on small players a near corner would have no
     // reachable click target. The floating corner button is the tappable
@@ -6013,7 +6013,7 @@
       }
       return layout;
     }
-  
+
     return Object.freeze({
       SEED_CARD_MARGIN: SEED_CARD_MARGIN,
       SEED_CARD_NUDGE: SEED_CARD_NUDGE,
@@ -6032,8 +6032,8 @@
       placeSeedCornerButton: placeSeedCornerButton
     });
   });
-  
-  /* src/fixtures.js */
+
+/* src/fixtures.js */
   /* Deterministic fixtures stand in for runtime inference until the private adapter exists. */
   (function (root) {
     root.BVFixtures = {
@@ -6107,12 +6107,12 @@
       ]
     };
   })(typeof globalThis !== "undefined" ? globalThis : window);
-  
-  /* src/review.js */
+
+/* src/review.js */
   /* Shared local review records used by the fixture and manual-only frontend. */
   (function (root) {
     "use strict";
-  
+
     function clone(value) {
       if (value == null || typeof value !== "object") return value;
       if (Array.isArray(value)) return value.map(clone);
@@ -6120,7 +6120,7 @@
       Object.keys(value).forEach(function (key) { result[key] = clone(value[key]); });
       return result;
     }
-  
+
     function mediaSeconds(value) {
       if (typeof value === "number" && isFinite(value)) return value;
       if (typeof value !== "string") return null;
@@ -6133,14 +6133,14 @@
       var seconds = Number(parts[1]);
       return isFinite(minutes) && isFinite(seconds) ? minutes * 60 + seconds : null;
     }
-  
+
     function formatMediaTime(seconds) {
       if (!isFinite(seconds)) return "";
       var minutes = Math.floor(seconds / 60);
       var remaining = seconds - minutes * 60;
       return String(minutes).padStart(2, "0") + ":" + remaining.toFixed(3).padStart(6, "0");
     }
-  
+
     function nowIso(options) {
       var value = options && options.now;
       if (typeof value === "function") value = value();
@@ -6148,7 +6148,7 @@
       if (typeof value === "string" && value) return value;
       return new Date().toISOString();
     }
-  
+
     // This is deliberately a record normalizer, not an inference adapter. It
     // only copies supplied evidence and media timestamps; it never adds a
     // confidence, player, geometry, or inferred end time.
@@ -6173,13 +6173,13 @@
       value.updatedAt = value.updatedAt || created;
       return value;
     }
-  
+
     function undoLabelMutation(records, edit) {
       var result = without(records, edit && edit.eventId);
       if (edit && edit.previousLabel) result = upsert(result, edit.previousLabel);
       return result;
     }
-  
+
     function mutateLabels(records, record, operation, options) {
       var previous = record && record.eventId != null
         ? (Array.isArray(records) ? records.find(function (item) { return item && String(item.eventId) === String(record.eventId); }) : null)
@@ -6201,11 +6201,11 @@
         }
       };
     }
-  
+
     function strokeId(stroke, index) {
       return stroke && stroke.eventId != null ? String(stroke.eventId) : "local-s" + String(index + 1).padStart(2, "0");
     }
-  
+
     function sortStrokes(strokes) {
       return strokes.map(function (stroke, index) {
         var value = clone(stroke || {});
@@ -6223,7 +6223,7 @@
         return stroke;
       });
     }
-  
+
     function mergeStrokes(base, overrides) {
       var merged = [];
       var positions = Object.create(null);
@@ -6256,7 +6256,7 @@
       });
       return sortStrokes(merged);
     }
-  
+
     function upsert(records, record) {
       var next = (Array.isArray(records) ? records : []).map(clone);
       var id = record && record.eventId != null ? String(record.eventId) : null;
@@ -6273,13 +6273,13 @@
       }
       return next;
     }
-  
+
     function without(records, eventId) {
       return (Array.isArray(records) ? records : []).filter(function (record) {
         return !record || String(record.eventId) !== String(eventId);
       }).map(clone);
     }
-  
+
     function toShotRow(stroke, videoUrl, index) {
       stroke = stroke || {};
       var start = stroke.startSec != null ? stroke.startSec : mediaSeconds(stroke.startTime != null ? stroke.startTime : stroke.time);
@@ -6305,7 +6305,7 @@
         provenance: stroke.provenance != null ? (typeof stroke.provenance === "string" ? stroke.provenance : JSON.stringify(stroke.provenance)) : stroke.source || "manual"
       };
     }
-  
+
     root.BVReview = Object.freeze({
       clone: clone,
       mediaSeconds: mediaSeconds,
@@ -6319,12 +6319,12 @@
       toShotRow: toShotRow
     });
   })(typeof globalThis !== "undefined" ? globalThis : window);
-  
-  /* src/state.js */
+
+/* src/state.js */
   /* UI state is serialisable so storage and runtime messages share one contract. */
   (function (root) {
     "use strict";
-  
+
     var LABEL_STORE_VERSION = 1;
     var UNSCOPED_LABEL_KEY = "legacy:unscoped";
     var defaults = {
@@ -6405,7 +6405,7 @@
       // experimental YOLO-World entry is never the default.
       selectedRacketModel: 'efficientdet-lite0-racket-v1',
     };
-  
+
     function clone(value) {
       if (value == null || typeof value !== "object") return value;
       if (Array.isArray(value)) return value.map(clone);
@@ -6413,25 +6413,25 @@
       Object.keys(value).forEach(function (key) { result[key] = clone(value[key]); });
       return result;
     }
-  
+
     function copyPoints(points) {
       return Array.isArray(points) ? points.map(function (point) {
         return point && typeof point === "object" ? { x: point.x, y: point.y } : point;
       }) : [];
     }
-  
+
     function isNormalizedPoint(value) {
       return value && typeof value === "object" && !Array.isArray(value)
         && typeof value.x === "number" && Number.isFinite(value.x)
         && typeof value.y === "number" && Number.isFinite(value.y)
         && value.x >= 0 && value.x <= 1 && value.y >= 0 && value.y <= 1;
     }
-  
+
     var CANONICAL_COURT_CORNERS = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }];
     var CALIBRATION_DUPLICATE_RATIO = 1e-7;
     var CALIBRATION_AREA_RATIO = 1e-7;
     var CALIBRATION_CORNER_TOLERANCE = 1e-4;
-  
+
     function calibrationScale(matrix) {
       var scale = 1;
       for (var row = 0; row < 3; row += 1) {
@@ -6439,7 +6439,7 @@
       }
       return scale;
     }
-  
+
     function isCalibrationMatrix(value) {
       if (!Array.isArray(value) || value.length !== 3 || value.some(function (row) {
         return !Array.isArray(row) || row.length !== 3 || row.some(function (entry) { return typeof entry !== "number" || !Number.isFinite(entry); });
@@ -6450,7 +6450,7 @@
       var scale = calibrationScale(value);
       return Number.isFinite(determinant) && Math.abs(determinant) > 1e-14 * scale * scale * scale;
     }
-  
+
     function applyCalibrationMatrix(matrix, point) {
       var scale = Math.max(calibrationScale(matrix), Math.abs(point.x), Math.abs(point.y));
       var denominator = matrix[2][0] * point.x + matrix[2][1] * point.y + matrix[2][2];
@@ -6461,7 +6461,7 @@
       };
       return Number.isFinite(result.x) && Number.isFinite(result.y) ? result : null;
     }
-  
+
     function seedQuadScale(seedPoints) {
       var minX = Infinity;
       var maxX = -Infinity;
@@ -6483,7 +6483,7 @@
       }
       return scale;
     }
-  
+
     function isValidSeedQuad(seedPoints) {
       var scale = seedQuadScale(seedPoints);
       var duplicateFloor = CALIBRATION_DUPLICATE_RATIO * scale;
@@ -6514,7 +6514,7 @@
       }
       return Math.abs(doubledArea) / 2 > collinearFloor;
     }
-  
+
     function mapsSeedsToCanonicalCourt(seedPoints, homography) {
       for (var index = 0; index < 4; index += 1) {
         var seed = seedPoints[index];
@@ -6528,7 +6528,7 @@
       }
       return true;
     }
-  
+
     function isCourtCalibration(value) {
       if (!value || typeof value !== "object" || Array.isArray(value)
         || value.version !== 1
@@ -6543,7 +6543,7 @@
         && isValidSeedQuad(seedPoints)
         && mapsSeedsToCanonicalCourt(seedPoints, homography);
     }
-  
+
     function copyCardPosition(position) {
       if (!position || typeof position !== "object") return null;
       var x = Number(position.x);
@@ -6551,9 +6551,9 @@
       if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
       return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
     }
-  
+
     var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls", "settings"];
-  
+
     function copyPanelLayout(layout) {
       if (!layout || typeof layout !== "object") return null;
       var result = {};
@@ -6567,7 +6567,7 @@
       });
       return Object.keys(result).length ? result : null;
     }
-  
+
     function copyPanelLayouts(layouts) {
       var result = {};
       if (!layouts || typeof layouts !== "object") return result;
@@ -6577,7 +6577,7 @@
       });
       return result;
     }
-  
+
     function copyPanelLayoutMap(raw) {
       var result = {};
       if (!raw || typeof raw !== "object") return result;
@@ -6587,17 +6587,17 @@
       });
       return result;
     }
-  
+
     function panelLayoutsForVideo(stateOrMap, videoKey) {
       var map = stateOrMap && stateOrMap.panelLayoutsByVideo ? stateOrMap.panelLayoutsByVideo : stateOrMap;
       if (!map || videoKey == null || !map[String(videoKey)]) return {};
       return copyPanelLayouts(map[String(videoKey)]);
     }
-  
+
     // Panels that are overlay furniture (not the transient court-setup card)
     // get a header collapse/expand affordance; state mirrors layout persistence.
     var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls", "settings"];
-  
+
     function copyPanelCollapseState(collapsed) {
       var result = {};
       if (!collapsed || typeof collapsed !== "object") return result;
@@ -6606,7 +6606,7 @@
       });
       return result;
     }
-  
+
     function copyPanelCollapseMap(raw) {
       var result = {};
       if (!raw || typeof raw !== "object") return result;
@@ -6616,13 +6616,13 @@
       });
       return result;
     }
-  
+
     function collapsedPanelsForVideo(stateOrMap, videoKey) {
       var map = stateOrMap && stateOrMap.collapsedPanelsByVideo ? stateOrMap.collapsedPanelsByVideo : stateOrMap;
       if (!map || videoKey == null || !map[String(videoKey)]) return {};
       return copyPanelCollapseState(map[String(videoKey)]);
     }
-  
+
     function copyCourtLinesMap(raw) {
       var result = {};
       if (!raw || typeof raw !== "object") return result;
@@ -6631,13 +6631,13 @@
       });
       return result;
     }
-  
+
     function copyRecords(records) {
       return Array.isArray(records) ? records.map(clone) : [];
     }
-  
+
     function copyEdit(edit) { return edit && typeof edit === "object" ? clone(edit) : null; }
-  
+
     var PANEL_VISIBILITY_KEYS = ["feed", "stats", "map", "controls", "settings"];
     function copyPanelVisibility(panels) {
       var result = {};
@@ -6728,14 +6728,14 @@
       var seconds = Number(parts[1]);
       return Number.isFinite(minutes) && Number.isFinite(seconds) ? minutes * 60 + seconds : null;
     }
-  
+
     function formatMediaTime(seconds) {
       if (!Number.isFinite(seconds)) return "";
       var minutes = Math.floor(seconds / 60);
       var remaining = seconds - minutes * 60;
       return String(minutes).padStart(2, "0") + ":" + remaining.toFixed(3).padStart(6, "0");
     }
-  
+
     function nowIso(options) {
       var value = options && options.now;
       if (typeof value === "function") value = value();
@@ -6743,7 +6743,7 @@
       if (typeof value === "string" && value) return value;
       return new Date().toISOString();
     }
-  
+
     function hash(text) {
       var result = 2166136261;
       String(text || "").split("").forEach(function (character) {
@@ -6752,7 +6752,7 @@
       });
       return (result >>> 0).toString(36);
     }
-  
+
     function createManualEventId(videoKey, startSec, records) {
       var base = "manual-" + hash(videoKey || UNSCOPED_LABEL_KEY) + "-" + (Number.isFinite(Number(startSec)) ? Math.round(Number(startSec) * 1000) : "point");
       var used = Object.create(null);
@@ -6764,7 +6764,7 @@
       while (used[base + "-" + suffix]) suffix += 1;
       return base + "-" + suffix;
     }
-  
+
     function normalizeLabel(record, index, videoKey, options) {
       var value = clone(record || {});
       var key = videoKey || UNSCOPED_LABEL_KEY;
@@ -6788,7 +6788,7 @@
       if (value.updatedAt == null) value.updatedAt = value.createdAt;
       return value;
     }
-  
+
     function mergeLabelValues(previous, value) {
       var merged = Object.assign({}, previous || {}, value || {});
       if (value && value.source === "manual") {
@@ -6798,7 +6798,7 @@
       }
       return merged;
     }
-  
+
     function mergeRecords(base, additions, videoKey, options) {
       var result = [];
       var positions = Object.create(null);
@@ -6820,7 +6820,7 @@
       });
       return result;
     }
-  
+
     function copyLabelMap(raw, options) {
       var result = {};
       if (!raw || typeof raw !== "object") return result;
@@ -6832,7 +6832,7 @@
       });
       return result;
     }
-  
+
     function copyUndoMap(raw) {
       var result = {};
       if (!raw || typeof raw !== "object") return result;
@@ -6841,9 +6841,9 @@
       });
       return result;
     }
-  
+
     function mapKeys(map) { return Object.keys(map || {}).filter(function (key) { return Array.isArray(map[key]); }); }
-  
+
     // YouTube's video id is stable across theater/fullscreen and query ordering.
     // A canonical, fragment-free URL is the safe fallback for other media pages.
     function videoKeyForUrl(url) {
@@ -6892,13 +6892,13 @@
       }
       return "url:" + text.replace(/#.*$/, "");
     }
-  
+
     function labelsForVideo(stateOrMap, videoKey) {
       var map = stateOrMap && stateOrMap.manualLabelsByVideo ? stateOrMap.manualLabelsByVideo : stateOrMap;
       if (!map || videoKey == null || !Array.isArray(map[String(videoKey)])) return [];
       return copyRecords(map[String(videoKey)]);
     }
-  
+
     function stateForVideo(input, videoKey, options) {
       var current = initialExtensionState(input, options);
       var key = videoKey == null ? current.videoKey : String(videoKey);
@@ -6927,7 +6927,7 @@
       }
       return resetVideoLocalState(current, key, options);
     }
-  
+
     function initialExtensionState(overrides, options) {
       var raw = overrides || {};
       var value = Object.assign({}, defaults, raw);
@@ -6998,7 +6998,7 @@
       if (raw.videoKey != null && value.labelUndoByVideo[String(raw.videoKey)]) value.lastEdit = copyEdit(value.labelUndoByVideo[String(raw.videoKey)]);
       return value;
     }
-  
+
     function resetVideoLocalState(state, videoKey, options) {
       var current = initialExtensionState(state, options);
       var key = videoKey == null ? current.videoKey : String(videoKey);
@@ -7030,13 +7030,13 @@
         lastEdit: undo
       }), options);
     }
-  
+
     function without(records, eventId) {
       return (Array.isArray(records) ? records : []).filter(function (record) {
         return record && String(record.eventId) !== String(eventId);
       }).map(clone);
     }
-  
+
     function upsert(records, record) {
       var next = copyRecords(records);
       var id = record && record.eventId != null ? String(record.eventId) : null;
@@ -7045,14 +7045,14 @@
       else next[index] = mergeLabelValues(next[index], clone(record));
       return next;
     }
-  
+
     function undoLabels(records, edit) {
       if (!edit || edit.eventId == null) return copyRecords(records);
       var result = without(records, edit.eventId);
       if (edit.previousLabel) result = upsert(result, edit.previousLabel);
       return result;
     }
-  
+
     function courtConfigurationState(input) {
       var current = initialExtensionState(input);
       var calibrated = current.seeded && isCourtCalibration(current.calibration);
@@ -7218,7 +7218,7 @@
         default: return current;
       }
     }
-  
+
     root.BVState = {
       defaults: defaults,
       LABEL_STORE_VERSION: LABEL_STORE_VERSION,
@@ -7247,8 +7247,8 @@
       reduceExtensionState: reduceExtensionState
     };
   })(typeof globalThis !== "undefined" ? globalThis : window);
-  
-  /* src/ui.js */
+
+/* src/ui.js */
   /*
    * Small DOM implementations of the supplied design-system primitives.
    * The source components remain in design-system/components; these counterparts
@@ -7284,7 +7284,7 @@
       x: [["line", { x1: "18", y1: "6", x2: "6", y2: "18" }], ["line", { x1: "6", y1: "6", x2: "18", y2: "18" }]],
       "triangle-alert": [["path", { d: "m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" }], ["line", { x1: "12", y1: "9", x2: "12", y2: "13" }], ["line", { x1: "12", y1: "17", x2: "12.01", y2: "17" }]]
     };
-  
+
     function el(tag, attrs, children) {
       var node = document.createElement(tag);
       attrs = attrs || {};
@@ -7315,19 +7315,19 @@
       });
       return node;
     }
-  
+
     function svgEl(tag, attrs) {
       var node = document.createElementNS("http://www.w3.org/2000/svg", tag);
       Object.keys(attrs || {}).forEach(function (key) { node.setAttribute(key, attrs[key]); });
       return node;
     }
-  
+
     function icon(name, size) {
       var svg = svgEl("svg", { xmlns: "http://www.w3.org/2000/svg", width: size || 16, height: size || 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.75", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" });
       (iconPaths[name] || iconPaths.info).forEach(function (item) { var child = svgEl(item[0], item[1]); svg.appendChild(child); });
       return svg;
     }
-  
+
     function button(label, opts) {
       opts = opts || {};
       var children = [];
@@ -7337,16 +7337,16 @@
       var attrs = { className: "bv-button " + (opts.variant || "secondary") + (opts.size ? " " + opts.size : "") + (opts.full ? " full" : ""), type: "button", disabled: opts.disabled, title: opts.title, "aria-pressed": opts.pressed, onClick: opts.onClick, style: opts.style };
       return el("button", attrs, children);
     }
-  
+
     function iconButton(name, label, opts) {
       opts = opts || {};
       return el("button", { className: "bv-icon-button " + (opts.size || "") + (opts.variant || "") + (opts.active ? " active" : ""), type: "button", "aria-label": label, title: label, disabled: opts.disabled, onClick: opts.onClick }, [icon(name, opts.iconSize || 14)]);
     }
-  
+
     var badgeTone = { neutral: "neutral", accent: "accent", in: "in", out: "out", warn: "warn", info: "info", unknown: "unknown" };
     function badge(text, tone, uppercase) { return el("span", { className: "bv-badge " + (badgeTone[tone] || "neutral"), style: uppercase === false ? { textTransform: "none", letterSpacing: "0" } : null }, [text]); }
     function kbd(text, accent) { return el("kbd", { className: "bv-kbd" + (accent ? " accent" : "") }, [text]); }
-  
+
     function confidence(value, opts) {
       opts = opts || {};
       var band = value == null ? "unknown" : value >= .75 ? "high" : value >= .45 ? "medium" : "low";
@@ -7358,14 +7358,14 @@
       var valueText = value == null ? "unknown" : (opts.showWord ? word + " " : "") + Math.round(value * 100) + "%";
       return el("span", { className: "bv-confidence " + band, title: value == null ? "confidence unknown" : "confidence " + Math.round(value * 100) + "%" }, [label, segments, (opts.showValue !== false || opts.showWord) ? el("span", { className: "bv-confidence-value" }, [valueText]) : null]);
     }
-  
+
     function statusChip(state, label, detail, onClick) {
       var className = "bv-status-chip " + (state || "off");
       var node = el("div", { className: className, role: onClick ? "button" : null, tabindex: onClick ? "0" : null, onClick: onClick }, [el("span", { className: "bv-status-dot" }), el("span", { className: "bv-status-label" }, [label || (state === "live" ? "Live" : state === "ready" ? "Ready" : "Off")]), detail ? el("span", { className: "bv-status-detail" }, [detail]) : null]);
       if (onClick) node.addEventListener("keydown", function (event) { if (event.key === "Enter" || event.key === " ") onClick(event); });
       return node;
     }
-  
+
     function panel(title, opts, children) {
       opts = opts || {};
       var movable = Boolean(opts.layoutId);
@@ -7421,7 +7421,7 @@
       }, [icon("grip", 12)]));
       return section;
     }
-  
+
     // Compact callouts (opts.tooltip) keep the standing copy to the body's first
     // sentence and open the full body in a tooltip on hover or keyboard focus,
     // so info boxes stop carrying long persistent text. Nothing is lost: the
@@ -7453,13 +7453,13 @@
       if (compact) attrs["data-bso-callout-compact"] = "true";
       return el("div", attrs, content);
     }
-  
+
     function stepDots(current, labels) {
       var node = el("div", { className: "bv-step-dots", "aria-label": "Court seed step " + Math.min(current + 1, 4) + " of 4" });
       for (var i = 0; i < 4; i += 1) node.appendChild(el("span", { className: "bv-step-dot " + (i < current ? "done" : i === current ? "active" : ""), title: labels && labels[i] }, [i + 1]));
       return node;
     }
-  
+
     function segmented(options, value, onChange, full, valueAttribute) {
       var node = el("div", { className: "bv-segmented" + (full ? " full" : ""), role: "radiogroup" });
       options.forEach(function (option) {
@@ -7470,7 +7470,7 @@
       });
       return node;
     }
-  
+
     function toggle(label, description, checked, onChange, opts) {
       opts = opts || {};
       var sw = el("button", { className: "bv-toggle-switch", id: opts.id, type: "button", role: "switch", "aria-checked": Boolean(checked), disabled: opts.disabled, "aria-label": "Toggle " + label, onClick: function () { if (onChange && !opts.disabled) onChange(!checked); } }, [el("i")]);
@@ -7480,11 +7480,11 @@
       // neutral container rather than using label activation semantics.
       return el("div", { className: "bv-toggle" + (opts.disabled ? " disabled" : "") }, [el("span", { className: "bv-toggle-copy" }, [el("strong", {}, [label]), description ? el("span", {}, [description]) : null]), sw]);
     }
-  
+
     function chip(text, selected, onClick, count) { return el("button", { className: "bv-chip", type: "button", "aria-pressed": Boolean(selected), onClick: onClick }, [text, count == null ? null : el("span", { className: "bv-mono", style: { fontSize: "var(--fs-11)" } }, [count])]); }
-  
+
     function stat(label, value, unit, note, accent) { return el("div", { className: "bv-stat" }, [el("span", { className: "bv-stat-label" }, [label]), el("span", { className: "bv-stat-value" + (accent ? " accent" : "") }, [value, unit ? el("small", { className: "bv-stat-unit" }, [unit]) : null]), note ? el("span", { className: "bv-stat-note" }, [note]) : null]); }
-  
+
     function mixBar(segments) {
       var total = segments.reduce(function (sum, item) { return sum + item.value; }, 0) || 1;
       var bar = el("div", { className: "bv-mix-bar", role: "img", "aria-label": segments.map(function (item) { return item.label + " " + item.value; }).join(", ") });
@@ -7493,7 +7493,7 @@
       segments.forEach(function (item) { legend.appendChild(el("span", { className: "bv-mix-item" }, [el("i", { className: "bv-mix-dot", style: { background: item.color || "var(--signal-unknown)" } }), item.label, el("b", {}, [Math.round(item.value / total * 100) + "%"])])); });
       return el("div", { className: "bv-mix" }, [bar, legend]);
     }
-  
+
     function strokeFeedItem(stroke, onClick) {
       var unknown = stroke.status === "unclassified";
       var sourceTone = stroke.status === "corrected" ? "info" : stroke.status === "unclassified" ? "unknown" : "in";
@@ -7503,20 +7503,20 @@
       if (onClick) row.addEventListener("keydown", function (event) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(event); } });
       return row;
     }
-  
+
     function suggestionRow(suggestion, onAccept, onCorrect) {
       return el("div", { className: "bv-suggestion" }, [el("span", { className: "bv-suggestion-copy" }, [el("span", { className: "bv-suggestion-line" }, [el("span", { className: "bv-suggestion-label" }, ["looks like"]), el("span", { className: "bv-suggestion-shot" }, [suggestion.shot]), el("span", { className: "bv-suggestion-time" }, [suggestion.time])]), confidence(suggestion.confidence, { showWord: true })]), button("Looks right", { variant: "primary", size: "sm", iconRight: null, onClick: onAccept }), button("Change it", { variant: "ghost", size: "sm", onClick: onCorrect })]);
     }
-  
+
     function dimensionAxis(label, options, value, onChange) {
       return el("div", { className: "bv-axis", "data-bso-axis": label }, [el("span", { className: "bv-axis-label" }, [label]), el("span", { className: "bv-axis-options" }, options.map(function (option) { return el("button", { className: "bv-axis-option" + (option === value ? " selected" : ""), type: "button", "aria-pressed": option === value, "data-bso-axis-option": option, onClick: function () { onChange(option); } }, [option]); }))]);
     }
-  
+
     function shotPicker(value, suggested, onChange) {
       var shots = ["Serve", "Clear", "Drop", "Smash", "Half Smash", "Lift", "Net Shot", "Net Kill", "Push", "Drive", "Block"];
       return el("div", { className: "bv-shot-picker" }, shots.map(function (shot, i) { var selected = value === shot; return el("button", { className: "bv-shot" + (selected ? " selected" : suggested === shot ? " suggested" : ""), type: "button", "aria-pressed": selected, "data-bso-shot": shot, onClick: function () { onChange(shot); } }, [shot, i < 9 ? kbd(i + 1, selected) : null]); }));
     }
-  
+
     function courtDiagram(opts) {
       opts = opts || {};
       var margin = .55, width = 6.1 + margin * 2, height = 13.4 + margin * 2, svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height, width: opts.renderWidth || 200, height: (opts.renderWidth || 200) * height / width, class: "bv-court", role: "img", "aria-label": opts.ariaLabel || "Canonical badminton court" });
@@ -7533,15 +7533,15 @@
       if (opts.labels) { var text = svgEl("text", { x: X(3.05), y: Y(-.16), "text-anchor": "middle", fill: "var(--text-faint)", "font-size": ".34", "font-family": "var(--font-mono)" }); text.textContent = "6.10 m"; svg.appendChild(text); }
       return svg;
     }
-  
+
     function legend(items) { return el("div", { className: "bv-legend" }, items.map(function (item) { return el("span", { className: "bv-legend-item" }, [el("i", { className: "bv-legend-dot" + (item.dashed ? " dashed" : ""), style: item.dashed ? null : { background: item.color } }), item.label, item.value == null ? null : el("b", {}, [item.value])]); })); }
-  
+
     function rallyRow(rally, rank, onReview) {
       return el("div", { className: "bv-rally-row" }, [el("span", { className: "bv-rally-rank" }, [rank]), el("span", { className: "bv-rally-index-wrap" }, [el("span", { className: "bv-rally-index" }, [rally.index == null ? "—" : rally.index]), rally.partial ? el("span", { className: "bv-mono", style: { color: "var(--signal-warn)", fontSize: "var(--fs-10)" } }, ["*"]) : null]), el("span", { className: "bv-rally-copy" }, [el("strong", {}, ["Rally " + rally.rallyId]), el("span", { className: "bv-rally-meta" }, [rally.shots + " shots · " + rally.duration])]), badge(rally.outcome, rally.outcome === "winner" ? "in" : rally.outcome === "forced error" ? "warn" : rally.outcome === "unforced error" ? "out" : "unknown"), el("button", { className: "bv-review", type: "button", onClick: function () { onReview(rally); } }, [rally.timestamp])]);
     }
-  
+
     function emptyState(title, body, action, iconName) { return el("div", { className: "bv-empty" }, [el("span", { className: "bv-empty-icon" }, [icon(iconName || "info", 20)]), el("strong", {}, [title]), el("p", {}, [body]), action]); }
-  
+
     function infoTip(term, body) {
       var wrapper = el("span", { style: { position: "relative", display: "inline-flex" } });
       var trigger = iconButton("help", term ? "What is " + term + "?" : "More information", { size: "sm" });
@@ -7549,11 +7549,11 @@
       function setOpen(open) { tooltip.style.display = open ? "block" : "none"; }
       trigger.addEventListener("mouseenter", function () { setOpen(true); }); trigger.addEventListener("mouseleave", function () { setOpen(false); }); trigger.addEventListener("focus", function () { setOpen(true); }); trigger.addEventListener("blur", function () { setOpen(false); }); trigger.addEventListener("click", function () { setOpen(tooltip.style.display === "none"); }); wrapper.appendChild(trigger); wrapper.appendChild(tooltip); return wrapper;
     }
-  
+
     root.BVUI = { el: el, icon: icon, button: button, iconButton: iconButton, badge: badge, kbd: kbd, confidence: confidence, statusChip: statusChip, panel: panel, callout: callout, stepDots: stepDots, segmented: segmented, toggle: toggle, chip: chip, stat: stat, mixBar: mixBar, strokeFeedItem: strokeFeedItem, suggestionRow: suggestionRow, dimensionAxis: dimensionAxis, shotPicker: shotPicker, courtDiagram: courtDiagram, legend: legend, rallyRow: rallyRow, emptyState: emptyState, infoTip: infoTip };
   })(typeof globalThis !== "undefined" ? globalThis : window);
-  
-  /* src/hough-guidance.js */
+
+/* src/hough-guidance.js */
   /* One-shot Hough guidance burst policy + line consensus.
    *
    * Court calibration is a burst-then-stop flow: seeding start (or a
@@ -7575,7 +7575,7 @@
     root.BVHoughGuidance = api;
   })(typeof globalThis !== "undefined" ? globalThis : self, function () {
     "use strict";
-  
+
     var CONFIG = {
       // Detection passes per one-shot burst (research recommendation: 3-5).
       passes: 4,
@@ -7604,11 +7604,11 @@
       minPasses: 2,
       maxLines: 12
     };
-  
+
     function finite(value, fallback) {
       return Number.isFinite(Number(value)) ? Number(value) : fallback;
     }
-  
+
     /** Undirected line direction in degrees over [0, 180). */
     function geometryOf(line) {
       var x1 = finite(line && line.x1, NaN), y1 = finite(line && line.y1, NaN);
@@ -7632,12 +7632,12 @@
         votes: Math.max(0, finite(line.votes, 0))
       };
     }
-  
+
     function angleDelta(a, b) {
       var delta = Math.abs(a - b);
       return Math.min(delta, 180 - delta);
     }
-  
+
     /**
      * Merge one burst's per-pass line sets into a consensus guidance set.
      *
@@ -7702,7 +7702,7 @@
       out.sort(function (a, b) { return b.votes - a.votes; });
       return out.slice(0, Math.max(1, Number(opts.maxLines) || 1));
     }
-  
+
     return {
       CONFIG: CONFIG,
       mergeBurstLines: mergeBurstLines,
@@ -7710,8 +7710,8 @@
       angleDelta: angleDelta
     };
   });
-  
-  /* src/content.js */
+
+/* src/content.js */
   /*
    * YouTube sibling overlay. It reads the active video and anchors to its client
    * rectangle; it never calls a playback mutator or writes to the video element.
@@ -7723,7 +7723,7 @@
     var singletonKey = "__BV_CONTENT_SINGLETON_V1__";
     if (window[singletonKey]) return;
     var singleton = window[singletonKey] = { version: 1, active: true };
-  
+
     var ui = window.BVUI;
     var data = window.BVFixtures;
     var calibrationApi = window.BVCalibration;
@@ -7752,7 +7752,7 @@
     var draft = newDraft();
     var importResult = null;
     var csvInput = null;
-  
+
     function currentMediaTimestamp() {
       // Prefer live video.currentTime to avoid stale cached mediaTime from prior playback events
       if (video && Number.isFinite(video.currentTime) && video.currentTime >= 0) {
@@ -7830,7 +7830,7 @@
     // is intentionally transient; durable panel/evidence choices live in the
     // popup-backed, video-local state.
     var overlayMenuOpen = false;
-  
+
     function hasSeenMessage(message) {
       var requestId = message && message.requestId;
       if (!requestId) return false;
@@ -8476,7 +8476,7 @@
         console.log("[Hough] Cannot request detection: video/chrome/runtime unavailable");
         return false;
       }
-  
+
       try {
         // Capture the current frame at a bounded resolution. Court-line guidance
         // is drawn in normalized coordinates, so a 640px long edge keeps the
@@ -8487,12 +8487,12 @@
         var canvas = document.createElement("canvas");
         var videoWidth = video.videoWidth || video.width || 1;
         var videoHeight = video.videoHeight || video.height || 1;
-  
+
         if (videoWidth <= 0 || videoHeight <= 0) {
           console.log("[Hough] Cannot request detection: invalid video dimensions", videoWidth, "x", videoHeight);
           return false;
         }
-  
+
         var captureScale = Math.min(1, MAX_CAPTURE_EDGE / Math.max(videoWidth, videoHeight));
         var captureWidth = Math.max(2, Math.round(videoWidth * captureScale));
         var captureHeight = Math.max(2, Math.round(videoHeight * captureScale));
@@ -8503,10 +8503,10 @@
           console.log("[Hough] Cannot get canvas context");
           return false;
         }
-  
+
         ctx.drawImage(video, 0, 0, captureWidth, captureHeight);
         var imageData = ctx.getImageData(0, 0, captureWidth, captureHeight);
-  
+
         // ImageData might not serialize properly through MV3 messaging, so send
         // a plain serializable frame object.
         var frameObject = {
@@ -8514,7 +8514,7 @@
           width: imageData.width,
           height: imageData.height
         };
-  
+
         // Send the frame to the offscreen script for Hough detection. The
         // service worker relays it to the offscreen document, which answers
         // with the detected (normalized) court lines.
@@ -8565,7 +8565,7 @@
         return false;
       }
     }
-  
+
     // Render-time safety net only. Bursts are started by the recalibration
     // event handlers (seeding start, corner mutation, camera cut, explicit
     // re-setup, or a restored in-progress session). This hook only guarantees
@@ -8574,7 +8574,7 @@
     function syncHoughDetectionLoop() {
       if (!state || !state.seeding) stopHoughDetectionLoop();
     }
-  
+
     function resetVideoLocalState(reason) {
       persist();
       activeVideoKey = currentVideoKey();
@@ -8630,7 +8630,7 @@
         restoreCalibrationState();
       }
     }
-  
+
     function resizeHoughCanvas(width, height) {
       // Draw Hough lines on a separate canvas for proper z-index layering
       if (!houghCanvas) return;
@@ -8648,7 +8648,7 @@
       if (typeof context.setTransform === "function") context.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (typeof context.clearRect !== "function") return;
       context.clearRect(0, 0, cssWidth, cssHeight);
-  
+
       // Draw Hough detected court lines during calibration
       if (state.seeding && houghLines && houghLines.length > 0) {
         if (typeof context.beginPath === "function" && typeof context.moveTo === "function" && typeof context.lineTo === "function" && typeof context.stroke === "function") {
@@ -8665,7 +8665,7 @@
         }
       }
     }
-  
+
     function resizeOverlayCanvas(width, height) {
       if (!overlayCanvas) return;
       var cssWidth = Math.max(0, Number(width) || 0);
@@ -8685,7 +8685,7 @@
       // Keep a real canvas rendering surface in the sibling layer. The SVG
       // evidence remains the accessible/vector surface; this canvas is reserved
       // for bounded frame-local marks and is deliberately never interactive.
-  
+
       var shuttle = runtimeShuttle();
       if (shuttle && shuttle.state === "tracked" && shuttle.candidate && shuttle.candidate.accepted === true && normalizedPoint(shuttle.candidate) && typeof context.beginPath === "function" && typeof context.arc === "function" && typeof context.stroke === "function") {
         context.beginPath();
@@ -8695,7 +8695,7 @@
         context.stroke();
       }
     }
-  
+
     function positionToVideo() {
       positionFrameHandle = null;
       if (!host || !video || typeof video.getBoundingClientRect !== "function") return;
@@ -8783,7 +8783,7 @@
       positionToVideo();
       publishVideoInfo();
     }
-  
+
     function stopRuntime(reason) {
       var controller = runtimeController;
       runtimeController = null;
@@ -8840,7 +8840,7 @@
         updateDiagnosticsMarkers();
       }
     }
-  
+
     function fitSeedPoints() {
       if (seedPoints.length !== 4 || !calibrationApi) return false;
       var result = calibrationApi.tryFitCourtCalibration(seedPoints);
@@ -9206,7 +9206,7 @@
     // Mirrors the .bv-seed-corner-button height (var(--sp-10) = 40px) used by
     // seed-card.js placeSeedCornerButton so the button clears the strip reserve.
     var SEED_CORNER_BUTTON_HEIGHT = 40;
-  
+
     function seedLayerMetrics() {
       var rect = host && typeof host.getBoundingClientRect === "function" ? host.getBoundingClientRect() : null;
       return {
@@ -9435,7 +9435,7 @@
       children.push(ui.el("span", {}, [" to place it at the marked spot, or tap the floating corner button."]));
       return ui.el("p", { className: "bv-seed-shortcuts", "data-bso-seed-shortcuts": "true" }, children);
     }
-  
+
     // The saved manual label dataset is the honest source for rally-level
     // statistics until a CV backend supplies real evidence. It reuses the same
     // analysis core as the summary/CSV path, so the panels and the export never
@@ -9689,7 +9689,7 @@
       if (state.panels.controls) overlay.appendChild(controlsPanel());
       return overlay;
     }
-  
+
     function openLabeling(record) {
       var wasSeeding = state.seeding;
       state = window.BVState.reduceExtensionState(state, { type: "OPEN_LABELING" });
@@ -10045,7 +10045,7 @@
       persist();
       render();
     }
-  
+
     function isInteractiveTarget(target) {
       var tag = target && target.tagName ? target.tagName.toLowerCase() : "";
       return tag === "input" || tag === "textarea" || tag === "select" || tag === "button" || tag === "a" || target && target.isContentEditable || target && target.getAttribute && target.getAttribute("role") === "button";
@@ -10107,7 +10107,7 @@
         saveDraft();
       }
     }
-  
+
     function render() {
       if (!root) return;
       // Structural state updates replace the panel DOM. Never leave a pointer
@@ -10354,5 +10354,5 @@
     }
     init();
   })();
-  
+
 })(typeof globalThis === "object" ? globalThis : self);
