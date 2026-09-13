@@ -1,22 +1,15 @@
-import { access, mkdir, readFile, rm } from "node:fs/promises";
+import { access, readFile, rm } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
 const root = fileURLToPath(new URL("../", import.meta.url));
 const dist = join(root, "dist");
 const manifest = JSON.parse(await readFile(join(dist, "manifest.json"), "utf8"));
-const args = process.argv.slice(2);
-const outIndex = args.indexOf("--out");
-const outArgument = outIndex >= 0 ? args[outIndex + 1] : null;
-if (outIndex >= 0 && !outArgument) throw new Error("--out requires a path");
-const output = resolve(root, outArgument || `badminton-vision-extension-v${manifest.version}.zip`);
-const distPrefix = dist.endsWith("/") ? dist : dist + "/";
-if (output === dist || output.startsWith(distPrefix)) throw new Error("Pack output must be outside dist/");
+const output = join(root, `badminton-vision-extension-v${manifest.version}.zip`);
 await access(join(dist, "manifest.json"));
-await mkdir(dirname(output), { recursive: true });
 await rm(output, { force: true });
 await execFileAsync("zip", ["-qr", output, "."], { cwd: dist });
 console.log(`Packed ${dist} as ${output}`);

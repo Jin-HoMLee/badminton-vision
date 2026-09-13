@@ -685,6 +685,12 @@
       // video-local state rather than being overwritten by the read callback.
       render();
       if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvRuntimeStatus", "bvVideoInfo", "bvSelectedPoseModel", "bvSelectedRacketModel"], function (result) {
+        chrome.tabs.query({ active: true, currentWindow: true }, function (currentTabs) {
+        var currentTab = currentTabs && currentTabs[0];
+        activeTabUrl = currentTab && currentTab.url ? currentTab.url : null;
+        tabTitle = currentTab && currentTab.title ? currentTab.title : null;
+        detected = isWatchPage(activeTabUrl);
+        activeVideoKey = window.BVState.videoKeyForUrl(activeTabUrl);
         if (result && result.bvState) {
           state = detected
             ? window.BVState.stateForVideo(result.bvState, activeVideoKey)
@@ -726,6 +732,7 @@
         refreshPoseModelReport();
         refreshRacketModelReport();
         replayPendingDispatches();
+        });
       }); else {
         state.videoKey = activeVideoKey;
         stateHydrated = true;

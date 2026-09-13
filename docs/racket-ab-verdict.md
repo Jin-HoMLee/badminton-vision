@@ -60,15 +60,12 @@ slow, before these fixes:
    `adapterBinding()` returns, but that object nests the adapter-globals
    binding one level deeper (`binding.binding.globalKey`); the outer object
    has no `globalKey` property. `env[binding.globalKey]` was therefore always
-   `env[undefined]`, so the ONNX-runtime lazy-resolve branch could never
-   succeed and the picker permanently reported
+   `env[undefined]`, so the picker permanently reported
    `onnx-runtime-web-not-loaded`, even with a fully prepared local artifact.
-   Existing tests never exercised this branch: they set `env.ort` directly
-   (the fast path), never asserting the lazy `resolveOnnxRuntime()` path the
-   real runtime actually takes. Fixed to use the already-resolved
-   `binding.adapter` (consistent with how the rest of the file reads
-   `binding.adapter.MODEL...`), with a new regression test covering the lazy
-   path specifically.
+   The current probe checks the packaged ONNX runtime module and model asset
+   without executing the runtime during listing; activation alone resolves
+   `resolveOnnxRuntime()`. Regression coverage verifies that listing performs
+   no runtime resolution.
 2. **`scripts/prepare-yolo-world.mjs`** - `copyOrtAssets()`'s file allowlist
    predates a newer `onnxruntime-web` release that split its WASM backend
    entry point into a separate `ort-wasm-simd-threaded.jsep.mjs` companion

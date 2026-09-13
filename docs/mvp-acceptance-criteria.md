@@ -292,7 +292,7 @@ EfficientDet-Lite0 as the default; do not promote YOLO-World.**
 switching to BlazePose Heavy can freeze pose detection until the extension or
 the tab is reloaded. Disabled until it is fixed.">`. The stored-preference
 fallback is unit-covered by `test/pose-model-selector.test.js` /
-`test/pose-model-switch.test.js` (374/376 full-suite pass includes these) and
+`test/pose-model-switch.test.js` (378/378 full-suite pass includes these) and
 was not separately re-exercised live, per the captain's explicit instruction
 not to touch this gate.
 
@@ -421,9 +421,8 @@ the written notes above are the durable record.
 ## 10. Regression / test suite pass
 
 - [x] `npm run build`
-- [x] `npm test` — 376/376 passing (374 baseline + 2 new regression tests
-      added this session: the racket-model-selector lazy ONNX-runtime-resolve
-      path, and the negative-test status-label fix)
+- [x] `npm test` — 378/378 passing, including the hydration navigation race
+      and lazy ONNX-runtime asset probe regressions added this review
 - [x] `npm run runtime-smoke` — 20/20 passing
 - [x] `node scripts/validate-extension.js` — passing (a false-positive
       "no ML models found in vendor/" warning was fixed earlier in this
@@ -444,11 +443,10 @@ this session's commit):
    warning; the vendor-model scan only checked the `vendor/` root, not
    per-vendor subdirectories.
 2. **`src/extension/offscreen/racket-model-selector.js`** — the YOLO-World
-   availability probe read `binding.globalKey` on the wrong object (nested
-   one level too shallow), so the lazy ONNX-Runtime-resolve path was
-   unreachable and the experimental racket model could never become
-   selectable even with a fully prepared local artifact. Fixed; new
-   regression test in `test/racket-model-selector.test.js`.
+   availability probe now checks the packaged ONNX runtime module and model
+   asset without executing the runtime during model listing. The experimental
+   runtime remains activation-only; regression coverage is in
+   `test/racket-model-selector.test.js`.
 3. **`scripts/prepare-yolo-world.mjs`** — the ONNX Runtime Web asset copy
    list predates a newer `onnxruntime-web` release that split its WASM
    backend into a separate `.jsep.mjs`/`.jsep.wasm` companion module; without
@@ -458,6 +456,10 @@ this session's commit):
    found" for any detected YouTube watch page, even when the sport signal
    was confirmed non-badminton (`badmintonDetection === false`). Fixed to
    read "YouTube video found" in that case; new regression test in
+   `tests/live-onboarding.test.mjs`.
+5. **`src/popup.js`** — popup hydration now re-queries the active tab before
+   applying stored video metadata, so a navigation during the storage read
+   cannot reuse the prior video's badminton signal; regression coverage is in
    `tests/live-onboarding.test.mjs`.
 
 The captain-approved coverage decisions for paths without a positive

@@ -153,10 +153,8 @@
    * Probe whether a racket model can actually run in this document: its
    * analyzer namespace must be loaded, its runtime (LiteRT loader or ONNX
    * Runtime Web) must be present, and for locally-vendored artifacts the
-   * model file must be reachable. The YOLO-World runtime may arrive lazily
-   * from a prepared vendor module; the adapter exposes the same resolution
-   * used at activation so the probe cannot mark usable a model activation
-   * would refuse, and vice versa.
+   * model file must be reachable. The YOLO-World probe checks the packaged
+   * runtime module as an asset; it never executes that module during listing.
    */
   async function probeRacketModelAvailability(modelId, environment = defaultEnvironment) {
     const binding = adapterBinding(modelId, environment);
@@ -166,18 +164,12 @@
     const env = environmentFor(environment);
     const config = binding.config;
     if (config.runtimeKind === 'onnxruntimeweb') {
-      // ONNX Runtime Web may be present as a global, as a ready promise, or
-      // as a lazily importable vendored module; the adapter resolves all
-      // three the same way at activation.
-      let runtimeAvailable = false;
-      if (onnxRuntimeLoaded(env)) {
-        runtimeAvailable = true;
-      } else if (binding.adapter && typeof binding.adapter.resolveOnnxRuntime === 'function') {
-        const resolved = await binding.adapter.resolveOnnxRuntime(env);
-        runtimeAvailable = Boolean(resolved && resolved.ort);
-      }
-      if (!runtimeAvailable) {
-        return { modelId, available: false, reason: 'onnx-runtime-web-not-loaded' };
+      if (!onnxRuntimeLoaded(env)) {
+        const runtimeUrl = binding.adapter && binding.adapter.ORT_MODULE_URL;
+        const runtimeAsset = runtimeUrl ? await probeArtifact(runtimeUrl, env) : { ok: false };
+        if (runtimeAsset.ok !== true) {
+          return { modelId, available: false, reason: 'onnx-runtime-web-not-loaded' };
+        }
       }
       const artifactUrl = localArtifactUrl(modelId, env);
       if (!artifactUrl) return { modelId, available: false, reason: 'racket-model-artifact-url-unavailable' };

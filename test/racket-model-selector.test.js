@@ -40,7 +40,8 @@ function environment(overrides = {}) {
     },
     BSOYoloWorldRacketAdapter: {
       YoloWorldRacketAnalyzer: analyzerClass('yolo-world-racket-detector-v1', { constructed: 0 }),
-      MODEL: Object.freeze({ id: 'yolo-world-racket-detector-v1', modelUrl: './vendor/yolo-world/yolo_world_s_open_vocab.onnx' })
+      MODEL: Object.freeze({ id: 'yolo-world-racket-detector-v1', modelUrl: './vendor/yolo-world/yolo_world_s_open_vocab.onnx' }),
+      ORT_MODULE_URL: './vendor/onnx/ort.min.mjs'
     },
     location: { href: 'chrome-extension://test/offscreen/offscreen.html' },
     URL,
@@ -116,21 +117,23 @@ test('the availability probe reports the YOLO-World artifact only when bundled a
   assert.equal(runtimeMissing.reason, 'onnx-runtime-web-not-loaded');
 });
 
-test('the probe resolves the lazily-importable ONNX runtime through the adapter, not a raw global lookup', async () => {
-  // Real startup never has env.ort set ahead of time; the adapter exposes a
-  // resolveOnnxRuntime() the probe must call through the resolved adapter
-  // binding (not env[binding.globalKey], which is undefined on the object
-  // adapterBinding() returns - see the regression this covers).
+test('the availability probe checks local ONNX assets without resolving the runtime', async () => {
   let called = 0;
+  const fetched = [];
   const env = environment({
-    fetch: async (url) => ({ ok: String(url).includes('yolo_world_s_open_vocab.onnx'), status: 200 })
+    fetch: async (url) => {
+      fetched.push(String(url));
+      const value = String(url);
+      return { ok: value.includes('ort.min.mjs') || value.includes('yolo_world_s_open_vocab.onnx'), status: 200 };
+    }
   });
   env.BSOYoloWorldRacketAdapter.resolveOnnxRuntime = async () => {
     called += 1;
     return { ort: {} };
   };
   const probed = await selector.probeRacketModelAvailability('yolo-world-racket-detector-v1', env);
-  assert.equal(called, 1);
+  assert.equal(called, 0);
+  assert.ok(fetched.some((url) => url.includes('ort.min.mjs')));
   assert.equal(probed.available, true);
   assert.equal(probed.reason, '');
 });
