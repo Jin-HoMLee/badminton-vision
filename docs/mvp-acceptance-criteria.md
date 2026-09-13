@@ -292,7 +292,7 @@ EfficientDet-Lite0 as the default; do not promote YOLO-World.**
 switching to BlazePose Heavy can freeze pose detection until the extension or
 the tab is reloaded. Disabled until it is fixed.">`. The stored-preference
 fallback is unit-covered by `test/pose-model-selector.test.js` /
-`test/pose-model-switch.test.js` (378/378 full-suite pass includes these) and
+`test/pose-model-switch.test.js` (383/383 full-suite pass includes these) and
 was not separately re-exercised live, per the captain's explicit instruction
 not to touch this gate.
 
@@ -351,12 +351,19 @@ path:
 
 4. **The overlay disappears or pauses** when the video is paused, hidden, or
    navigated away from.
-   **Result: PASS.** Pausing the video (a native player click, not extension-
-   initiated) was observed to drop `analysis-state`/`player-state` to
-   `unknown` and `player-count` to `0` — analysis does not keep churning out
-   new detections on a frozen frame. The 30-minute soak's repeated tab-switch
-   cycles (video hidden behind a blank tab, then restored) never produced a
-   duplicate overlay host or a stuck/stale visible state on return.
+   **Result: PASS.** The runtime now listens for native pause/play events,
+   stops capture and resets the displayed result to `unknown` on pause, then
+   resumes accepting fresh frames on play. The behavior is covered by the
+   runtime regression test in `test/bridge.test.js`; the earlier 30-minute
+   soak log predates this reset and its paused samples are retained as
+   pre-fix evidence. The soak's repeated tab-switch cycles (video hidden
+   behind a blank tab, then restored) never produced a duplicate overlay host
+   or a stuck/stale visible state on return.
+
+   **Known deferred limitation.** `bvRuntimeStatus` is not scoped to the
+   active tab URL in the same way as `bvVideoInfo`, so a status persisted for
+   a prior video could theoretically be shown during the hydration race
+   window. This needs a separately authorized identity change.
 
 5. **Offline behavior:** the packed extension still runs core detection after
    a network disconnect (remote-fetch models such as MoveNet/BlazePose may
@@ -421,7 +428,7 @@ record.
 ## 10. Regression / test suite pass
 
 - [x] `npm run build`
-- [x] `npm test` — 378/378 passing, including the hydration navigation race
+- [x] `npm test` — 383/383 passing, including the hydration navigation race
       and lazy ONNX-runtime asset probe regressions added this review
 - [x] `npm run runtime-smoke` — 20/20 passing
 - [x] `node scripts/validate-extension.js` — passing (a false-positive

@@ -139,10 +139,13 @@
       this.video = null;
       this.capture = null;
       this.rateListener = null;
+      this.pauseListener = null;
+      this.playListener = null;
       this.metadataListener = null;
       this.sessionId = null;
       this.synchronizer = null;
       this.lastMediaTime = null;
+      this.paused = false;
     }
 
     start() {
@@ -176,6 +179,7 @@
         return;
       }
       this.video = video;
+      this.paused = Boolean(video.paused);
       this.sessionId = this.newSessionId();
       this.synchronizer = new BSOSynchronization.MediaTimestampSynchronizer({
         sessionId: this.sessionId,
@@ -193,8 +197,12 @@
         this.handleMediaTime(video.currentTime, { reason: 'ratechange', playbackRate: rate });
         if (this.overlay) this.overlay.setStatus('Watching', rate === null ? 'playback rate changed' : `rate ${rate}x`);
       };
+      this.pauseListener = () => this.handlePause(video);
+      this.playListener = () => this.handlePlay(video);
       this.metadataListener = () => this.overlay && this.overlay.refresh();
       video.addEventListener('ratechange', this.rateListener);
+      video.addEventListener('pause', this.pauseListener);
+      video.addEventListener('play', this.playListener);
       video.addEventListener('loadedmetadata', this.metadataListener);
       const captureCapability = BSOCapabilities.detectCapture(video, globalThis);
       const offscreenAvailable = Boolean(this.chrome && this.chrome.offscreen && typeof this.chrome.offscreen.createDocument === 'function');
@@ -228,6 +236,7 @@
           : null
       });
       this.capture.start();
+      if (this.paused) this.handlePause(video);
       if (reason === 'video-replaced') this.handleNavigation('video-replaced');
     }
 
@@ -236,16 +245,43 @@
       if (this.capture) this.capture.stop();
       this.capture = null;
       if (this.rateListener) this.video.removeEventListener('ratechange', this.rateListener);
+      if (this.pauseListener) this.video.removeEventListener('pause', this.pauseListener);
+      if (this.playListener) this.video.removeEventListener('play', this.playListener);
       if (this.metadataListener) this.video.removeEventListener('loadedmetadata', this.metadataListener);
       this.rateListener = null;
+      this.pauseListener = null;
+      this.playListener = null;
       this.metadataListener = null;
       this.bridge.end(reason);
       this.video = null;
       this.sessionId = null;
       this.synchronizer = null;
       this.lastMediaTime = null;
+      this.paused = false;
       this.onSessionReset(reason || 'video-detached');
       if (this.overlay) this.overlay.detach();
+    }
+
+    handlePause(video = this.video) {
+      if (!video || video !== this.video) return;
+      this.paused = true;
+      if (this.capture) this.capture.stop();
+      if (this.synchronizer) this.synchronizer.reset(this.sessionId, 'paused');
+      this.lastMediaTime = null;
+      this.onSessionReset('paused');
+      const view = { result: null, ageSeconds: null, stale: true, reason: 'paused' };
+      if (this.overlay) {
+        this.overlay.setSynchronizedView(view, null);
+        this.overlay.setStatus('Paused', 'waiting for playback');
+      }
+      this.onRuntimeView(view, null);
+    }
+
+    handlePlay(video = this.video) {
+      if (!video || video !== this.video) return;
+      this.paused = false;
+      if (this.capture) this.capture.start();
+      if (this.overlay) this.overlay.setStatus('Watching', 'playback resumed');
     }
 
     handleMediaTime(mediaTime, metadata = {}) {
@@ -260,6 +296,7 @@
 
     handleMessage(message) {
       if (!message || message.sessionId !== this.sessionId) return;
+      if (this.paused) return;
       if (BSOProtocol.isAnalyzerResult(message)) {
         let view = null;
         if (this.synchronizer) {

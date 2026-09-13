@@ -165,18 +165,27 @@
     const config = binding.config;
     if (config.runtimeKind === 'onnxruntimeweb') {
       if (!onnxRuntimeLoaded(env)) {
-        const runtimeAssets = Array.isArray(binding.adapter.ORT_REQUIRED_ASSETS)
-          ? binding.adapter.ORT_REQUIRED_ASSETS
+        const runtimeBundles = Array.isArray(binding.adapter.ORT_RUNTIME_ASSET_BUNDLES)
+          ? binding.adapter.ORT_RUNTIME_ASSET_BUNDLES
           : [];
-        if (runtimeAssets.length === 0) {
+        if (runtimeBundles.length === 0) {
           return { modelId, available: false, reason: 'onnx-runtime-web-not-loaded' };
         }
-        for (const runtimeAssetUrl of runtimeAssets) {
-          const runtimeAsset = await probeArtifact(runtimeAssetUrl, env);
-          if (runtimeAsset.ok !== true) {
-            return { modelId, available: false, reason: 'onnx-runtime-web-not-loaded' };
+        const probes = new Map();
+        const probeRuntimeAsset = (url) => {
+          if (!probes.has(url)) probes.set(url, probeArtifact(url, env));
+          return probes.get(url);
+        };
+        let runtimeReady = false;
+        for (const runtimeBundle of runtimeBundles) {
+          if (!Array.isArray(runtimeBundle) || runtimeBundle.length === 0) continue;
+          const results = await Promise.all(runtimeBundle.map((url) => probeRuntimeAsset(url)));
+          if (results.every((result) => result.ok === true)) {
+            runtimeReady = true;
+            break;
           }
         }
+        if (!runtimeReady) return { modelId, available: false, reason: 'onnx-runtime-web-not-loaded' };
       }
       const artifactUrl = localArtifactUrl(modelId, env);
       if (!artifactUrl) return { modelId, available: false, reason: 'racket-model-artifact-url-unavailable' };
