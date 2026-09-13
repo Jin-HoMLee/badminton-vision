@@ -122,6 +122,7 @@ test('pausing the runtime clears the displayed result and resuming accepts fresh
     controller.handleMessage(first);
     assert.equal(displayed.at(-1).view.result.requestId, 'frame-1');
 
+    const prePauseSessionId = controller.sessionId;
     video.paused = true;
     video.dispatch('pause');
     assert.equal(displayed.at(-1).view.result, null);
@@ -133,6 +134,16 @@ test('pausing the runtime clears the displayed result and resuming accepts fresh
     video.dispatch('play');
     assert.equal(captureCalls.start, 2);
     controller.handleMediaTime(2.1);
+    const late = protocol.createAnalyzerResult({
+      sessionId: prePauseSessionId,
+      requestId: 'frame-late',
+      mediaTime: 2,
+      analyzer: 'local-pose',
+      inferenceAvailable: true,
+      result: { state: 'tracked', players: [], tracking: null }
+    });
+    controller.handleMessage(late);
+    assert.equal(displayed.at(-1).view.result, null, 'a pre-pause result cannot enter the resumed session');
     const second = protocol.createAnalyzerResult({
       sessionId: controller.sessionId,
       requestId: 'frame-2',

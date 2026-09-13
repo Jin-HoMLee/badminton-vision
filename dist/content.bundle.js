@@ -1889,6 +1889,7 @@
         this.playListener = null;
         this.metadataListener = null;
         this.sessionId = null;
+        this.capabilities = null;
         this.synchronizer = null;
         this.lastMediaTime = null;
         this.paused = false;
@@ -1968,6 +1969,7 @@
           analyzer: 'pending',
           transport: 'mv3-runtime-messaging'
         };
+        this.capabilities = capabilities;
         this.bridge.start(this.sessionId, capabilities);
         this.capture = new BSOCapture.VideoCapture({
           video,
@@ -2001,6 +2003,7 @@
         this.bridge.end(reason);
         this.video = null;
         this.sessionId = null;
+        this.capabilities = null;
         this.synchronizer = null;
         this.lastMediaTime = null;
         this.paused = false;
@@ -2009,9 +2012,11 @@
       }
   
       handlePause(video = this.video) {
-        if (!video || video !== this.video) return;
+        if (!video || video !== this.video || this.paused) return;
         this.paused = true;
         if (this.capture) this.capture.stop();
+        this.bridge.end('paused');
+        this.sessionId = this.newSessionId();
         if (this.synchronizer) this.synchronizer.reset(this.sessionId, 'paused');
         this.lastMediaTime = null;
         this.onSessionReset('paused');
@@ -2026,6 +2031,8 @@
       handlePlay(video = this.video) {
         if (!video || video !== this.video) return;
         this.paused = false;
+        this.bridge.start(this.sessionId, this.capabilities || {});
+        if (this.capture) this.capture.sessionId = this.sessionId;
         if (this.capture) this.capture.start();
         if (this.overlay) this.overlay.setStatus('Watching', 'playback resumed');
       }
