@@ -76,6 +76,16 @@
   // production EfficientDet path never parses or starts them.
   const ORT_MODULE_URL = './vendor/onnx/ort.min.mjs';
   const ORT_WASM_PATH = './vendor/onnx/';
+  const ORT_RUNTIME_ASSET_BUNDLES = Object.freeze([
+    Object.freeze([
+      ORT_MODULE_URL,
+      './vendor/onnx/ort-wasm-simd-threaded.jsep.mjs',
+      './vendor/onnx/ort-wasm-simd-threaded.jsep.wasm'
+    ]),
+    Object.freeze([ORT_MODULE_URL, './vendor/onnx/ort-wasm-simd-threaded.wasm']),
+    Object.freeze([ORT_MODULE_URL, './vendor/onnx/ort-wasm-simd.wasm']),
+    Object.freeze([ORT_MODULE_URL, './vendor/onnx/ort-wasm.wasm'])
+  ]);
 
   const DEFAULTS = Object.freeze({
     confidenceThreshold: 0.5,
@@ -724,6 +734,7 @@
     BACKENDS,
     ORT_MODULE_URL,
     ORT_WASM_PATH,
+    ORT_RUNTIME_ASSET_BUNDLES,
     computeIoU,
     processDetections,
     decodeYoloOutput,

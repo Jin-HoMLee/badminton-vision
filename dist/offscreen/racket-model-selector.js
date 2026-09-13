@@ -153,10 +153,8 @@
    * Probe whether a racket model can actually run in this document: its
    * analyzer namespace must be loaded, its runtime (LiteRT loader or ONNX
    * Runtime Web) must be present, and for locally-vendored artifacts the
-   * model file must be reachable. The YOLO-World runtime may arrive lazily
-   * from a prepared vendor module; the adapter exposes the same resolution
-   * used at activation so the probe cannot mark usable a model activation
-   * would refuse, and vice versa.
+   * model file must be reachable. The YOLO-World probe checks the packaged
+   * runtime module as an asset; it never executes that module during listing.
    */
   async function probeRacketModelAvailability(modelId, environment = defaultEnvironment) {
     const binding = adapterBinding(modelId, environment);
@@ -166,18 +164,28 @@
     const env = environmentFor(environment);
     const config = binding.config;
     if (config.runtimeKind === 'onnxruntimeweb') {
-      // ONNX Runtime Web may be present as a global, as a ready promise, or
-      // as a lazily importable vendored module; the adapter resolves all
-      // three the same way at activation.
-      let runtimeAvailable = false;
-      if (onnxRuntimeLoaded(env)) {
-        runtimeAvailable = true;
-      } else if (env[binding.globalKey] && typeof env[binding.globalKey].resolveOnnxRuntime === 'function') {
-        const resolved = await env[binding.globalKey].resolveOnnxRuntime(env);
-        runtimeAvailable = Boolean(resolved && resolved.ort);
-      }
-      if (!runtimeAvailable) {
-        return { modelId, available: false, reason: 'onnx-runtime-web-not-loaded' };
+      if (!onnxRuntimeLoaded(env)) {
+        const runtimeBundles = Array.isArray(binding.adapter.ORT_RUNTIME_ASSET_BUNDLES)
+          ? binding.adapter.ORT_RUNTIME_ASSET_BUNDLES
+          : [];
+        if (runtimeBundles.length === 0) {
+          return { modelId, available: false, reason: 'onnx-runtime-web-not-loaded' };
+        }
+        const probes = new Map();
+        const probeRuntimeAsset = (url) => {
+          if (!probes.has(url)) probes.set(url, probeArtifact(url, env));
+          return probes.get(url);
+        };
+        let runtimeReady = false;
+        for (const runtimeBundle of runtimeBundles) {
+          if (!Array.isArray(runtimeBundle) || runtimeBundle.length === 0) continue;
+          const results = await Promise.all(runtimeBundle.map((url) => probeRuntimeAsset(url)));
+          if (results.every((result) => result.ok === true)) {
+            runtimeReady = true;
+            break;
+          }
+        }
+        if (!runtimeReady) return { modelId, available: false, reason: 'onnx-runtime-web-not-loaded' };
       }
       const artifactUrl = localArtifactUrl(modelId, env);
       if (!artifactUrl) return { modelId, available: false, reason: 'racket-model-artifact-url-unavailable' };

@@ -4,6 +4,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 
 - Add durable project-specific notes here as they are discovered through real work.
 - The public MV3 UI build/test commands and playback boundary are documented in `README.md` §11; keep runtime integration behind `src/runtime.js` and do not add playback mutators to content UI.
+- The release-package boundary and packed offline acceptance procedure are documented in `docs/e2e-smoke.md` §1; `npm run pack` rebuilds `dist/` and writes `badminton-vision-extension-v<manifest.version>.zip` from that directory only.
 
 ## Maintaining this file
 

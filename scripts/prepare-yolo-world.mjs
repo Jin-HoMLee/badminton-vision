@@ -123,7 +123,15 @@ async function copyOrtAssets() {
     fs.copyFileSync(source, path.join(ONNX_VENDOR_DIR, file));
     copied += 1;
   }
-  const wasmCandidates = ['ort-wasm-simd-threaded.wasm', 'ort-wasm-simd.wasm', 'ort-wasm.wasm'];
+  const wasmCandidates = [
+    'ort-wasm-simd-threaded.wasm', 'ort-wasm-simd.wasm', 'ort-wasm.wasm',
+    // Newer onnxruntime-web releases dynamically import a JSEP companion
+    // module alongside the threaded-SIMD wasm binary (the wasm backend's
+    // actual entry point); without it the wasm backend fails at runtime with
+    // "Failed to fetch dynamically imported module: .../ort-wasm-simd-threaded.jsep.mjs"
+    // even though the .wasm binary itself was copied.
+    'ort-wasm-simd-threaded.jsep.mjs', 'ort-wasm-simd-threaded.jsep.wasm'
+  ];
   for (const file of wasmCandidates) {
     const source = path.join(ortDist, file);
     if (!fs.existsSync(source)) continue;

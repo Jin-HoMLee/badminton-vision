@@ -147,14 +147,17 @@ async function writeContentBundle(destination) {
   }
   const sources = await Promise.all(contentBundleSources.map(async (file) => {
     const source = await readFile(join(root, file), "utf8");
-    return `/* ${file} */\n${source}`;
+    const normalizedSource = source
+      .replace(/[ \t]+$/gm, "")
+      .replace(/^(?=.)/gm, "  ");
+    return `/* ${file} */\n${normalizedSource}`;
   }));
   const bundle = [
     "/* Generated single-entry MV3 content script. Do not edit dist directly. */",
     "(function (root) {",
     "  if (root.__BV_CONTENT_BUNDLE_LOADED__) return;",
     "  root.__BV_CONTENT_BUNDLE_LOADED__ = true;",
-    ...sources.map((source) => source.replace(/^/gm, "  ")),
+    ...sources,
     "})(typeof globalThis === \"object\" ? globalThis : self);",
     ""
   ].join("\n");

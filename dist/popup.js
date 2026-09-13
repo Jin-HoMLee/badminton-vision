@@ -471,7 +471,7 @@
     // capability it provides.
     var knownRallyId = runtimeStatus && runtimeStatus.result && runtimeStatus.result.rally && runtimeStatus.result.rally.state !== "unknown" && runtimeStatus.result.rally.id != null ? String(runtimeStatus.result.rally.id) : null;
     var mediaClockWritten = typeof state.time === "string" && state.time !== fixtureDefaultTime;
-    var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : knownRallyId != null ? "Rally #" + knownRallyId : fixtureReady ? "Fixture analysis" : productionReady ? "Live analysis" : "Analysis starting") : detected ? "Badminton match found" : "No YouTube match";
+    var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : knownRallyId != null ? "Rally #" + knownRallyId : fixtureReady ? "Fixture analysis" : productionReady ? "Live analysis" : "Analysis starting") : detected ? (badmintonDetection === true ? "Badminton match found" : "YouTube video found") : "No YouTube match";
     var statusDetail = state.enabled ? (runtimeStale && runtimeStatus && Number.isFinite(runtimeStatus.ageSeconds) ? "+" + runtimeStatus.ageSeconds.toFixed(1) + "s" : productionReady ? backendLabel(runtimeStatus.backend) : fixtureReady ? "fixture probe · not production CV" : mediaClockWritten ? state.time : null) : null;
     var backendDetail = runtimeFallback
       ? (function () {
@@ -685,47 +685,54 @@
       // video-local state rather than being overwritten by the read callback.
       render();
       if (chrome.storage && chrome.storage.local) chrome.storage.local.get(["bvState", "bvRuntimeStatus", "bvVideoInfo", "bvSelectedPoseModel", "bvSelectedRacketModel"], function (result) {
-        if (result && result.bvState) {
-          state = detected
-            ? window.BVState.stateForVideo(result.bvState, activeVideoKey)
-            : window.BVState.initialExtensionState(result.bvState);
-          if (detected && state.seeded && !state.calibration) {
-            // Invalidate only the malformed court record. Labels, panel
-            // choices, and an enabled inference session are unrelated to the
-            // court map and must survive this repair state.
-            state = window.BVState.initialExtensionState(Object.assign({}, state, {
-              seeded: false,
-              seeding: false,
-              calibration: null,
-              seedPoints: [],
-              seedDraftPoints: [],
-              calibrationError: "This saved court has no fitted calibration. Set up the four outer corners to enable the court map."
-            }));
+        chrome.tabs.query({ active: true, currentWindow: true }, function (currentTabs) {
+          var currentTab = currentTabs && currentTabs[0];
+          activeTabUrl = currentTab && currentTab.url ? currentTab.url : null;
+          tabTitle = currentTab && currentTab.title ? currentTab.title : null;
+          detected = isWatchPage(activeTabUrl);
+          activeVideoKey = window.BVState.videoKeyForUrl(activeTabUrl);
+          if (result && result.bvState) {
+            state = detected
+              ? window.BVState.stateForVideo(result.bvState, activeVideoKey)
+              : window.BVState.initialExtensionState(result.bvState);
+            if (detected && state.seeded && !state.calibration) {
+              // Invalidate only the malformed court record. Labels, panel
+              // choices, and an enabled inference session are unrelated to the
+              // court map and must survive this repair state.
+              state = window.BVState.initialExtensionState(Object.assign({}, state, {
+                seeded: false,
+                seeding: false,
+                calibration: null,
+                seedPoints: [],
+                seedDraftPoints: [],
+                calibrationError: "This saved court has no fitted calibration. Set up the four outer corners to enable the court map."
+              }));
+            }
+          } else if (detected) {
+            state = window.BVState.stateForVideo(state, activeVideoKey);
           }
-        } else if (detected) {
-          state = window.BVState.stateForVideo(state, activeVideoKey);
-        }
-        if (result && result.bvRuntimeStatus) runtimeStatus = result.bvRuntimeStatus;
-        if (result && result.bvVideoInfo) {
-          videoInfo = result.bvVideoInfo;
-          badmintonDetection = typeof videoInfo.badmintonDetected === "boolean" ? videoInfo.badmintonDetected : null;
-        }
-        if (result && result.bvSelectedPoseModel) state.selectedPoseModel = selectablePoseModel(result.bvSelectedPoseModel);
-        // A work-in-progress selection persisted inside bvState (older builds
-        // could store BlazePose before the entry was disabled) must not
-        // re-select it either: the same filter guards both preference stores.
-        state.selectedPoseModel = selectablePoseModel(state.selectedPoseModel);
-        if (result && result.bvSelectedRacketModel) state.selectedRacketModel = selectableRacketModel(result.bvSelectedRacketModel);
-        // An unknown racket-model id persisted inside bvState must not re-select
-        // either; the same catalog filter guards both preference stores. The
-        // experimental YOLO-World id is a valid catalog entry and is preserved.
-        state.selectedRacketModel = selectableRacketModel(state.selectedRacketModel);
-        stateHydrated = true;
-        persist();
-        render();
-        refreshPoseModelReport();
-        refreshRacketModelReport();
-        replayPendingDispatches();
+          if (result && result.bvRuntimeStatus) runtimeStatus = result.bvRuntimeStatus;
+          if (result && result.bvVideoInfo) {
+            videoInfo = result.bvVideoInfo.url === activeTabUrl ? result.bvVideoInfo : null;
+            badmintonDetection = videoInfo && typeof videoInfo.badmintonDetected === "boolean" ? videoInfo.badmintonDetected : null;
+          }
+          if (result && result.bvSelectedPoseModel) state.selectedPoseModel = selectablePoseModel(result.bvSelectedPoseModel);
+          // A work-in-progress selection persisted inside bvState (older builds
+          // could store BlazePose before the entry was disabled) must not
+          // re-select it either: the same filter guards both preference stores.
+          state.selectedPoseModel = selectablePoseModel(state.selectedPoseModel);
+          if (result && result.bvSelectedRacketModel) state.selectedRacketModel = selectableRacketModel(result.bvSelectedRacketModel);
+          // An unknown racket-model id persisted inside bvState must not re-select
+          // either; the same catalog filter guards both preference stores. The
+          // experimental YOLO-World id is a valid catalog entry and is preserved.
+          state.selectedRacketModel = selectableRacketModel(state.selectedRacketModel);
+          stateHydrated = true;
+          persist();
+          render();
+          refreshPoseModelReport();
+          refreshRacketModelReport();
+          replayPendingDispatches();
+        });
       }); else {
         state.videoKey = activeVideoKey;
         stateHydrated = true;

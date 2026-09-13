@@ -290,7 +290,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
   };
 }
 
-async function createPopupSession({ deferStorage = false, failInjection = false, tabUrl = "https://www.youtube.com/watch?v=real-match", tabTitle = "Real Match Title - YouTube", videoInfo = null, initialVideoKey = "youtube:real-match", runtimeStatus = null, storedState = null } = {}) {
+async function createPopupSession({ deferStorage = false, failInjection = false, tabUrl = "https://www.youtube.com/watch?v=real-match", tabTitle = "Real Match Title - YouTube", tabSnapshots = null, videoInfo = null, initialVideoKey = "youtube:real-match", runtimeStatus = null, storedState = null } = {}) {
   const documentRef = new FakeDocument();
   const app = new FakeNode("main");
   app.setAttribute("id", "app");
@@ -300,6 +300,8 @@ async function createPopupSession({ deferStorage = false, failInjection = false,
   let injection = null;
   let closed = false;
   const storageReads = [];
+  const snapshots = Array.isArray(tabSnapshots) && tabSnapshots.length ? tabSnapshots : [{ url: tabUrl, title: tabTitle }];
+  let tabQueryCount = 0;
   const stored = Object.assign({ bvState: storedState || { videoKey: initialVideoKey, enabled: false, seeded: false }, bvVideoInfo: videoInfo }, runtimeStatus ? { bvRuntimeStatus: runtimeStatus } : {});
   const runtime = {
     lastError: null,
@@ -309,7 +311,10 @@ async function createPopupSession({ deferStorage = false, failInjection = false,
   const chromeApi = {
     runtime,
     tabs: {
-      query: (_query, callback) => callback([{ id: 7, url: tabUrl, title: tabTitle }]),
+      query: (_query, callback) => {
+        const snapshot = snapshots[Math.min(tabQueryCount++, snapshots.length - 1)];
+        callback(snapshot && snapshot.url ? [{ id: 7, url: snapshot.url, title: snapshot.title }] : []);
+      },
       sendMessage: (tabId, message, callback) => {
         sent.push({ tabId, message });
         if (sent.length === 1) runtime.lastError = { message: "Could not establish connection. Receiving end does not exist." };
@@ -2084,6 +2089,54 @@ test("popup shows the real tab video identity and keeps the fixture as a labeled
   assert.ok(textOf(other.app).includes("fixture preview"), "the fallback fixture is labeled");
   assert.ok(textOf(other.app).includes("Court Side Archive"), "the fixture channel identifies the preview source");
   assert.equal(textOf(other.app).includes("Detecting video"), false);
+});
+
+test("the negative case never claims a badminton match for a confirmed non-badminton video", async () => {
+  const basketballTitle = "UP vs UST | FULL GAME HIGHLIGHTS | UAAP SEASON 89 MEN'S BASKETBALL";
+  const popup = await createPopupSession({
+    tabTitle: basketballTitle + " - YouTube",
+    videoInfo: { url: "https://www.youtube.com/watch?v=real-match", title: basketballTitle, badmintonDetected: false }
+  });
+  assert.ok(textOf(popup.app).includes("sport unconfirmed"), "the negative signal is shown as its own badge");
+  assert.equal(textOf(popup.app).includes("badminton detected"), false, "the positive badge never appears for a confirmed non-badminton video");
+  assert.equal(textOf(popup.app).includes("Badminton match found"), false, "the status line never claims a badminton match once the sport signal is confirmed negative");
+  assert.ok(textOf(popup.app).includes("YouTube video found"), "the status line stays honest: a real watch page, unconfirmed as badminton");
+});
+
+test("popup ignores badminton metadata left over from a previous video navigation", async () => {
+  const basketballUrl = "https://www.youtube.com/watch?v=basketball-match";
+  const popup = await createPopupSession({
+    tabUrl: basketballUrl,
+    tabTitle: "Basketball highlights - YouTube",
+    videoInfo: {
+      url: "https://www.youtube.com/watch?v=badminton-match",
+      title: "Badminton final",
+      badmintonDetected: true
+    }
+  });
+  assert.equal(popup.app.getAttribute("data-bso-badminton-detected"), "unknown");
+  assert.equal(textOf(popup.app).includes("badminton detected"), false);
+  assert.equal(textOf(popup.app).includes("Badminton match found"), false);
+  assert.ok(textOf(popup.app).includes("YouTube video found"));
+});
+
+test("popup rechecks the active tab before applying metadata after hydration", async () => {
+  const firstUrl = "https://www.youtube.com/watch?v=badminton-match";
+  const currentUrl = "https://www.youtube.com/watch?v=basketball-match";
+  const popup = await createPopupSession({
+    deferStorage: true,
+    tabSnapshots: [
+      { url: firstUrl, title: "Badminton final - YouTube" },
+      { url: currentUrl, title: "Basketball highlights - YouTube" }
+    ],
+    videoInfo: { url: firstUrl, title: "Badminton final", badmintonDetected: true }
+  });
+  assert.equal(popup.app.getAttribute("data-bso-badminton-detected"), "unknown");
+  popup.flushStorage();
+  assert.equal(popup.app.getAttribute("data-bso-badminton-detected"), "unknown");
+  assert.equal(textOf(popup.app).includes("badminton detected"), false);
+  assert.equal(textOf(popup.app).includes("Badminton match found"), false);
+  assert.ok(textOf(popup.app).includes("YouTube video found"));
 });
 
 test("S and E keyboard shortcuts and the Start/End controls both capture the live video clock", async () => {

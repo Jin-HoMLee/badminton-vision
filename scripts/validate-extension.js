@@ -120,10 +120,13 @@ for (const perm of permissions) {
 
 const vendorPath = resolve('src/extension/offscreen/vendor');
 if (fs.existsSync(vendorPath)) {
-  const models = fs.readdirSync(vendorPath).filter(
-    f => f.includes('model') || f.includes('.tflite')
-  );
-  if (models.length === 0) {
+  const isModelArtifact = (name) => name === 'model.json' || /\.(?:onnx|tflite)$/i.test(name);
+  const containsModelArtifact = (directory) => fs.readdirSync(directory, { withFileTypes: true }).some((entry) => {
+    if (entry.isFile()) return isModelArtifact(entry.name);
+    return entry.isDirectory() && containsModelArtifact(path.join(directory, entry.name));
+  });
+  const hasModelArtifact = containsModelArtifact(vendorPath);
+  if (!hasModelArtifact) {
     console.warn('⚠️  No ML models found in vendor/ - verify this is intentional');
   }
 }
