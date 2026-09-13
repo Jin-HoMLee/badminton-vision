@@ -4,7 +4,7 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 
 - Add durable project-specific notes here as they are discovered through real work.
 - The public MV3 UI build/test commands and playback boundary are documented in `README.md` §11; keep runtime integration behind `src/runtime.js` and do not add playback mutators to content UI.
-- The release-package boundary is `npm run pack`: it rebuilds `dist/` and writes `badminton-vision-extension-v<manifest.version>.zip` from that directory only. Packed offline acceptance must extract that zip, compare the extracted files with `dist/`, load the extracted directory in the dedicated Chrome, and apply network emulation to the page, offscreen document, and service worker before checking local LiteOpenPose and EfficientDet detection.
+- The release-package boundary and packed offline acceptance procedure are documented in `docs/e2e-smoke.md` §1; `npm run pack` rebuilds `dist/` and writes `badminton-vision-extension-v<manifest.version>.zip` from that directory only.
 
 ## Maintaining this file
 

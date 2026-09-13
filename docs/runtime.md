@@ -14,8 +14,11 @@ Node harnesses); the public browser package always has the production script.
 ## Canonical build and load
 
 `manifest.json` at the repository root is the only source manifest for the
-public extension. `scripts/build.mjs` is the only packaging entrypoint; it
-combines the design-system UI and runtime foundation into `dist/`:
+public extension. `scripts/build.mjs` is the only source-build entrypoint; it
+combines the design-system UI and runtime foundation into `dist/`. The release
+command is `npm run pack`: it rebuilds `dist/` and archives only that directory
+as `badminton-vision-extension-v<manifest.version>.zip`. The packed-artifact
+load and offline procedure is in [`docs/e2e-smoke.md`](e2e-smoke.md) §1.
 
 ```sh
 npm run build
@@ -275,6 +278,12 @@ public build carries the AGPL-3.0 source-disclosure terms recorded in
 [`docs/yolo-world-experimental.md`](yolo-world-experimental.md) for the
 captain's compare-on-own-footage workflow.
 
+When the picker lists YOLO-World, availability checks the packaged ONNX
+Runtime module and one compatible local WASM asset bundle, including JSEP
+companions when that bundle requires them, without importing or initializing
+the runtime. ONNX Runtime and the model artifact are loaded only when the
+experimental entry is activated.
+
 The prepared YOLO-World artifact is not an interactive text-prompt model:
 `scripts/prepare-yolo-world.mjs` bakes the racket vocabulary into the graph
 with `model.set_classes(...)` before `model.export(...)` (using the
@@ -485,7 +494,7 @@ No TrackNet asset is used in the live runtime path.
 4. retain the last displayed result while inference lags, exposing `ageSeconds` and `stale` after 1.5 seconds;
 5. reset the local timeline on a backward media-time jump.
 
-The renderer never waits for inference and never seeks to catch up. Playback-rate changes therefore require no frame counter: both capture and rendering use media timestamps. Navigation and a replaced video get a new session and a clean watermark. The popup and overlay keep the analysis-behind age visible; fallback status says playback is unaffected.
+The renderer never waits for inference and never seeks to catch up. Playback-rate changes therefore require no frame counter: both capture and rendering use media timestamps. Navigation and a replaced video get a new session and a clean watermark. Native pause, a non-visible document, and `pagehide` stop capture, end the active bridge session, rotate the session ID, clear the synchronized view to unknown, and reject late results. A visible document and a native `play` event resume capture only when the video is playing; a page-hidden document does not resume. The popup and overlay keep the analysis-behind age visible; fallback status says playback is unaffected.
 
 ## Capability/fallback states
 

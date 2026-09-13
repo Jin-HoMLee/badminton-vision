@@ -15,9 +15,11 @@ A current stale build reproduced this with computed `left: 0px`, `right: auto`,
 transparent panel background, no border, and a 46px-wide collapsed button for
 both stacks. Adding the design-system `:host` contract produced the intended
 16px offsets, 288px feed width, opaque panel treatment, 1px border, and 30px
-control dimensions. The fresh package is produced only by `npm run build`; its
-CSS import closure is checked and its manifest has no retired `message_serialization`
-key or retired overlay entrypoints.
+control dimensions. The fresh unpacked extension is produced by `npm run build`;
+its CSS import closure is checked and its manifest has no retired
+`message_serialization` key or retired overlay entrypoints. The release archive
+workflow is documented in [`docs/runtime.md`](runtime.md) and
+[`docs/e2e-smoke.md`](e2e-smoke.md).
 
 ## Overlay interaction reproduction and boundary
 
@@ -84,8 +86,10 @@ stats and court-map bodies are selectively refreshed on result changes while
 their panel chrome remains attached. Geometry observation ignores overlay churn
 and unrelated page mutations, schedules relevant video-container geometry work
 once per frame, and still reacts to direct video insertion, replacement, and
-geometry changes. Inference, frame transport, playback, panel layout, and
-calibration are unchanged. The intentional load-shedding is measured by those
+geometry changes. Inference, frame transport, panel layout, and calibration are
+unchanged. Video playback controls and the no-mutation boundary are unchanged;
+runtime lifecycle handling for pause and page visibility is documented in
+[`docs/runtime.md`](runtime.md). The intentional load-shedding is measured by those
 regressions: a playing runtime result causes zero structural root renders,
 preserves the same header and feed/scroll nodes through a drag, and an
 unrelated DOM mutation causes zero video geometry reads while a video ancestor
