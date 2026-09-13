@@ -1,0 +1,122 @@
+[
+  {
+    "mediaTime": 1457.750788,
+    "state": "unknown",
+    "reason": "warming-up",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1457.939927,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1458.133622,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1458.328821,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1458.520079,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1458.712697,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1458.902456,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1459.092018,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1459.280805,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1459.469753,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1459.666164,
+    "state": "unknown",
+    "reason": "candidate-needs-continuity",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1459.853842,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1460.038874,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1460.23191,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1460.415611,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1460.60296,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1460.855314,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1461.044912,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1461.238803,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  },
+  {
+    "mediaTime": 1461.429087,
+    "state": "unknown",
+    "reason": "ambiguous-candidates",
+    "confidence": null
+  }
+]
