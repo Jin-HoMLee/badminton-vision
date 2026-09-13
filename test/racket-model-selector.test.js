@@ -4,6 +4,14 @@ const protocol = require('../src/extension/common/protocol.js');
 global.BSOProtocol = protocol;
 const selector = require('../src/extension/offscreen/racket-model-selector.js');
 
+const ONNX_RUNTIME_ASSETS = [
+  'ort.min.mjs',
+  'ort.wasm.min.mjs',
+  'ort-wasm-simd-threaded.wasm',
+  'ort-wasm-simd-threaded.jsep.mjs',
+  'ort-wasm-simd-threaded.jsep.wasm'
+];
+
 function analyzerClass(id, options = {}) {
   return class StubRacketAnalyzer {
     constructor(opts) {
@@ -41,7 +49,8 @@ function environment(overrides = {}) {
     BSOYoloWorldRacketAdapter: {
       YoloWorldRacketAnalyzer: analyzerClass('yolo-world-racket-detector-v1', { constructed: 0 }),
       MODEL: Object.freeze({ id: 'yolo-world-racket-detector-v1', modelUrl: './vendor/yolo-world/yolo_world_s_open_vocab.onnx' }),
-      ORT_MODULE_URL: './vendor/onnx/ort.min.mjs'
+      ORT_MODULE_URL: './vendor/onnx/ort.min.mjs',
+      ORT_REQUIRED_ASSETS: Object.freeze(ONNX_RUNTIME_ASSETS.map((name) => `./vendor/onnx/${name}`))
     },
     location: { href: 'chrome-extension://test/offscreen/offscreen.html' },
     URL,
@@ -123,8 +132,7 @@ test('the availability probe checks local ONNX assets without resolving the runt
   const env = environment({
     fetch: async (url) => {
       fetched.push(String(url));
-      const value = String(url);
-      return { ok: value.includes('ort.min.mjs') || value.includes('yolo_world_s_open_vocab.onnx'), status: 200 };
+      return { ok: true, status: 200 };
     }
   });
   env.BSOYoloWorldRacketAdapter.resolveOnnxRuntime = async () => {
@@ -133,9 +141,25 @@ test('the availability probe checks local ONNX assets without resolving the runt
   };
   const probed = await selector.probeRacketModelAvailability('yolo-world-racket-detector-v1', env);
   assert.equal(called, 0);
-  assert.ok(fetched.some((url) => url.includes('ort.min.mjs')));
+  for (const asset of ONNX_RUNTIME_ASSETS) assert.ok(fetched.some((url) => url.includes(asset)));
   assert.equal(probed.available, true);
   assert.equal(probed.reason, '');
+});
+
+test('the availability probe rejects an incomplete ONNX runtime bundle', async () => {
+  const fetched = [];
+  const env = environment({
+    fetch: async (url) => {
+      fetched.push(String(url));
+      const missing = String(url).includes('ort-wasm-simd-threaded.jsep.wasm');
+      return { ok: !missing, status: missing ? 404 : 200 };
+    }
+  });
+  const probed = await selector.probeRacketModelAvailability('yolo-world-racket-detector-v1', env);
+  assert.equal(probed.available, false);
+  assert.equal(probed.reason, 'onnx-runtime-web-not-loaded');
+  assert.ok(fetched.some((url) => url.includes('ort-wasm-simd-threaded.jsep.wasm')));
+  assert.equal(fetched.some((url) => url.includes('yolo_world_s_open_vocab.onnx')), false);
 });
 
 test('the EfficientDet probe short-circuits on the shipped LiteRT runtime', async () => {

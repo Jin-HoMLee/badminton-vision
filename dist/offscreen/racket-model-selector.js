@@ -165,10 +165,17 @@
     const config = binding.config;
     if (config.runtimeKind === 'onnxruntimeweb') {
       if (!onnxRuntimeLoaded(env)) {
-        const runtimeUrl = binding.adapter && binding.adapter.ORT_MODULE_URL;
-        const runtimeAsset = runtimeUrl ? await probeArtifact(runtimeUrl, env) : { ok: false };
-        if (runtimeAsset.ok !== true) {
+        const runtimeAssets = Array.isArray(binding.adapter.ORT_REQUIRED_ASSETS)
+          ? binding.adapter.ORT_REQUIRED_ASSETS
+          : [];
+        if (runtimeAssets.length === 0) {
           return { modelId, available: false, reason: 'onnx-runtime-web-not-loaded' };
+        }
+        for (const runtimeAssetUrl of runtimeAssets) {
+          const runtimeAsset = await probeArtifact(runtimeAssetUrl, env);
+          if (runtimeAsset.ok !== true) {
+            return { modelId, available: false, reason: 'onnx-runtime-web-not-loaded' };
+          }
         }
       }
       const artifactUrl = localArtifactUrl(modelId, env);

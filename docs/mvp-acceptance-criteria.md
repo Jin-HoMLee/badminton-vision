@@ -332,8 +332,9 @@ path:
    observed to correctly transition the runtime to `resyncing` /
    `inference:false` before the next accepted frame returned to `result` /
    `inference:true` — stale results are discarded, not backfilled. Full raw
-   log kept alongside this session's evidence (not committed — see note
-   below).
+   log is committed at
+   `docs/evidence/mvp-acceptance-2026-09-13/30min-soak-log.jsonl` and its
+   schema is described in that folder's `README.md`.
 
 3. **Coordinate mapping** verified in normal, theater, and fullscreen player
    modes, including device-pixel-ratio and letterboxing.
@@ -408,13 +409,12 @@ path:
      the mini-map plotted a position after a real 4-corner lock (§2).
 
 **Evidence location.** The curated screenshot set referenced above (13
-images) is committed at `docs/evidence/mvp-acceptance-2026-09-13/` with an
-index in that folder's `README.md`. The full session capture (~30
-screenshots, the 30-minute soak's raw JSON-lines log, and the raw A/B
-comparison frame captures) is larger and was not committed for repo-size
-reasons; it lived in this session's scratch directory and is not expected to
-survive past the session (not a durable location) — the committed subset plus
-the written notes above are the durable record.
+images) and the complete 30-minute soak JSON-lines log are committed at
+`docs/evidence/mvp-acceptance-2026-09-13/` with an index in that folder's
+`README.md`. The full session capture (~30 screenshots and raw A/B comparison
+frame captures) is larger and was not committed for repo-size reasons; the
+committed evidence subset, soak log, and written notes above are the durable
+record.
 
 ---
 

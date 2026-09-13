@@ -120,16 +120,12 @@ for (const perm of permissions) {
 
 const vendorPath = resolve('src/extension/offscreen/vendor');
 if (fs.existsSync(vendorPath)) {
-  const vendorEntries = fs.readdirSync(vendorPath, { withFileTypes: true });
-  const hasModelArtifact = vendorEntries.some((entry) => {
-    if (entry.name.includes('model') || entry.name.includes('.tflite')) return true;
-    if (!entry.isDirectory()) return false;
-    // Model artifacts live inside per-vendor subdirectories (e.g.
-    // vendor/lite-openpose/model.json), not at the vendor/ root itself.
-    return fs.readdirSync(path.join(vendorPath, entry.name)).some(
-      (f) => f.includes('model') || f.includes('.tflite') || f.endsWith('.onnx')
-    );
+  const isModelArtifact = (name) => name === 'model.json' || /\.(?:onnx|tflite)$/i.test(name);
+  const containsModelArtifact = (directory) => fs.readdirSync(directory, { withFileTypes: true }).some((entry) => {
+    if (entry.isFile()) return isModelArtifact(entry.name);
+    return entry.isDirectory() && containsModelArtifact(path.join(directory, entry.name));
   });
+  const hasModelArtifact = containsModelArtifact(vendorPath);
   if (!hasModelArtifact) {
     console.warn('⚠️  No ML models found in vendor/ - verify this is intentional');
   }

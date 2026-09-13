@@ -27,9 +27,9 @@ comparison entry, exactly as the project's existing design already treats it.
 3. Also timed pure per-call inference latency for YOLO-World on synthetic
    1280x720 frames (3 runs) to cross-check against the paused-frame timings
    and the project's own documented "research-measured ~2-6 s/frame" figure.
-4. Re-ran the same real-frame comparison with the network fully disconnected
-   (see the acceptance record's offline test) to confirm neither detector's
-   local artifact depends on network reachability once loaded.
+4. Re-ran the EfficientDet real-frame comparison with the network fully
+   disconnected (see the acceptance record's offline test) to confirm its
+   local artifact does not depend on network reachability once loaded.
 
 ## Setup cost
 
