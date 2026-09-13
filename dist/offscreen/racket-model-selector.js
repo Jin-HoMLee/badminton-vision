@@ -172,8 +172,8 @@
       let runtimeAvailable = false;
       if (onnxRuntimeLoaded(env)) {
         runtimeAvailable = true;
-      } else if (env[binding.globalKey] && typeof env[binding.globalKey].resolveOnnxRuntime === 'function') {
-        const resolved = await env[binding.globalKey].resolveOnnxRuntime(env);
+      } else if (binding.adapter && typeof binding.adapter.resolveOnnxRuntime === 'function') {
+        const resolved = await binding.adapter.resolveOnnxRuntime(env);
         runtimeAvailable = Boolean(resolved && resolved.ort);
       }
       if (!runtimeAvailable) {

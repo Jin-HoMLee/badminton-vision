@@ -116,6 +116,25 @@ test('the availability probe reports the YOLO-World artifact only when bundled a
   assert.equal(runtimeMissing.reason, 'onnx-runtime-web-not-loaded');
 });
 
+test('the probe resolves the lazily-importable ONNX runtime through the adapter, not a raw global lookup', async () => {
+  // Real startup never has env.ort set ahead of time; the adapter exposes a
+  // resolveOnnxRuntime() the probe must call through the resolved adapter
+  // binding (not env[binding.globalKey], which is undefined on the object
+  // adapterBinding() returns - see the regression this covers).
+  let called = 0;
+  const env = environment({
+    fetch: async (url) => ({ ok: String(url).includes('yolo_world_s_open_vocab.onnx'), status: 200 })
+  });
+  env.BSOYoloWorldRacketAdapter.resolveOnnxRuntime = async () => {
+    called += 1;
+    return { ort: {} };
+  };
+  const probed = await selector.probeRacketModelAvailability('yolo-world-racket-detector-v1', env);
+  assert.equal(called, 1);
+  assert.equal(probed.available, true);
+  assert.equal(probed.reason, '');
+});
+
 test('the EfficientDet probe short-circuits on the shipped LiteRT runtime', async () => {
   const env = environment({ fetch: async () => ({ ok: false, status: 404 }) });
   const probed = await selector.probeRacketModelAvailability('efficientdet-lite0-racket-v1', env);

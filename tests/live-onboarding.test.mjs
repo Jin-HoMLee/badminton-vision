@@ -2086,6 +2086,18 @@ test("popup shows the real tab video identity and keeps the fixture as a labeled
   assert.equal(textOf(other.app).includes("Detecting video"), false);
 });
 
+test("the negative case never claims a badminton match for a confirmed non-badminton video", async () => {
+  const basketballTitle = "UP vs UST | FULL GAME HIGHLIGHTS | UAAP SEASON 89 MEN'S BASKETBALL";
+  const popup = await createPopupSession({
+    tabTitle: basketballTitle + " - YouTube",
+    videoInfo: { url: "https://www.youtube.com/watch?v=real-match", title: basketballTitle, badmintonDetected: false }
+  });
+  assert.ok(textOf(popup.app).includes("sport unconfirmed"), "the negative signal is shown as its own badge");
+  assert.equal(textOf(popup.app).includes("badminton detected"), false, "the positive badge never appears for a confirmed non-badminton video");
+  assert.equal(textOf(popup.app).includes("Badminton match found"), false, "the status line never claims a badminton match once the sport signal is confirmed negative");
+  assert.ok(textOf(popup.app).includes("YouTube video found"), "the status line stays honest: a real watch page, unconfirmed as badminton");
+});
+
 test("S and E keyboard shortcuts and the Start/End controls both capture the live video clock", async () => {
   const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
   live.flushStorage();

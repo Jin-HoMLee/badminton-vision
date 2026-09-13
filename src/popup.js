@@ -471,7 +471,7 @@
     // capability it provides.
     var knownRallyId = runtimeStatus && runtimeStatus.result && runtimeStatus.result.rally && runtimeStatus.result.rally.state !== "unknown" && runtimeStatus.result.rally.id != null ? String(runtimeStatus.result.rally.id) : null;
     var mediaClockWritten = typeof state.time === "string" && state.time !== fixtureDefaultTime;
-    var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : knownRallyId != null ? "Rally #" + knownRallyId : fixtureReady ? "Fixture analysis" : productionReady ? "Live analysis" : "Analysis starting") : detected ? "Badminton match found" : "No YouTube match";
+    var statusLabel = state.seeding ? "Court setup in progress" : state.enabled ? (runtimeFallback ? "Analysis fallback" : runtimeStale ? "Analysis behind" : knownRallyId != null ? "Rally #" + knownRallyId : fixtureReady ? "Fixture analysis" : productionReady ? "Live analysis" : "Analysis starting") : detected ? (badmintonDetection === true ? "Badminton match found" : "YouTube video found") : "No YouTube match";
     var statusDetail = state.enabled ? (runtimeStale && runtimeStatus && Number.isFinite(runtimeStatus.ageSeconds) ? "+" + runtimeStatus.ageSeconds.toFixed(1) + "s" : productionReady ? backendLabel(runtimeStatus.backend) : fixtureReady ? "fixture probe · not production CV" : mediaClockWritten ? state.time : null) : null;
     var backendDetail = runtimeFallback
       ? (function () {
