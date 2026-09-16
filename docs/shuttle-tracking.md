@@ -50,11 +50,18 @@ as a trajectory until the next compatible candidate arrives.
 
 ## Bounded detection and state safety
 
-The detector converts the current and previous frame to luminance, computes a
-bounded temporal difference, and searches connected components for a small,
-compact, high-contrast residual. It rejects components that are too large,
-non-compact, low-confidence, or ambiguous. Confidence combines difference
-strength, contrast against the frame, compactness, component size, and temporal
+The detector computes an 8x8x8 RGB-histogram intersection distance between
+the current and previous bounded frames as the continuous `sceneChange` score.
+A score of `0.60` or higher emits the existing boolean `cameraCut` signal and
+quarantines the frame; the quarantined frame becomes the next scene baseline,
+so a held camera view does not repeatedly emit the cut signal. The old
+luminance difference remains a bounded per-pixel input for the compact shuttle
+candidate scan, but it no longer decides camera cuts. This distinction keeps
+fast spatial court motion from looking like a global scene change. The
+candidate scan searches connected components for a small, compact,
+high-contrast residual. It rejects components that are too large, non-compact,
+low-confidence, or ambiguous. Confidence combines difference strength,
+contrast against the frame, compactness, component size, and temporal
 continuity; it is an evidence score, not a model probability or accuracy
 estimate.
 
@@ -69,7 +76,7 @@ The adapter returns explicit `unknown` output and clears or quarantines its
 state for:
 
 - invalid samples, unreadable pixels, and frame dimension changes;
-- explicit or detected camera cuts (large global frame difference);
+- explicit or detected camera cuts (`sceneChange >= 0.60`);
 - duplicate, stale, or backwards media timestamps, and stale captured times;
 - missing candidates, candidate rejection, and ambiguous candidates;
 - continuity jumps, excessive gaps, and insufficient confidence.
@@ -105,5 +112,6 @@ adapter and integration pass exist.
 Focused deterministic coverage is in
 `test/shuttle-tracking-adapter.test.js` and covers positive candidates,
 static/large false positives, continuity quarantine, missing candidates,
-ambiguous candidates, camera-cut reset, invalid/stale frames, automatic cut
-detection, unknown output, and asynchronous backpressure.
+ambiguous candidates, RGB-histogram camera-cut detection versus the old
+mean-luminance false positive, scene-change baseline debounce/reset,
+invalid/stale frames, unknown output, and asynchronous backpressure.

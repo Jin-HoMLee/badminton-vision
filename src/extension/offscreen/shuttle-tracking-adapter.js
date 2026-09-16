@@ -18,7 +18,7 @@
     modelNeutral: true,
     runtimeIntegrationTest: false,
     productionModel: false,
-    algorithm: 'compact-moving-contrast-with-gated-temporal-continuity'
+    algorithm: 'rgb-histogram-scene-change-with-compact-moving-contrast-and-gated-temporal-continuity'
   });
 
   const DEFAULTS = Object.freeze({
@@ -28,6 +28,13 @@
     maxPixels: 65536,
     maxLongEdge: 256,
     minPixelDifference: 0.12,
+    // Histogram distance is invariant to where court/player pixels move, so
+    // fast motion does not look like a camera cut. Keep this threshold
+    // explicit: it is a score threshold, not a tunable luminance fraction.
+    sceneChangeThreshold: 0.60,
+    // Retained for callers that supplied the pre-histogram options. These
+    // values still shape the compact-candidate scan, but no longer decide a
+    // camera cut.
     cutMeanDifference: 0.32,
     cutChangedFraction: 0.5,
     minCandidateConfidence: 0.46,
@@ -186,6 +193,36 @@
       0.114 * Number(data[offset + 2])) / 255);
   }
 
+  function colourBin(value) {
+    // Eight equal bins per channel produce a bounded 8x8x8 RGB histogram.
+    // Clamp malformed-but-finite transport values so they cannot address
+    // outside the 512-bin histogram.
+    return Math.min(7, Math.max(0, Math.floor(clamp(Number(value) / 255, 0, 1) * 8)));
+  }
+
+  function rgbHistogram(pixels) {
+    const histogram = new Float64Array(8 * 8 * 8);
+    const total = pixels.width * pixels.height;
+    for (let pixel = 0; pixel < total; pixel += 1) {
+      const offset = pixel * pixels.channels;
+      const red = colourBin(pixels.data[offset]);
+      const green = colourBin(pixels.data[offset + 1]);
+      const blue = colourBin(pixels.data[offset + 2]);
+      histogram[(red * 8 + green) * 8 + blue] += 1 / total;
+    }
+    return histogram;
+  }
+
+  function rgbHistogramDistance(current, previous) {
+    const currentHistogram = rgbHistogram(current);
+    const previousHistogram = rgbHistogram(previous);
+    let intersection = 0;
+    for (let bin = 0; bin < currentHistogram.length; bin += 1) {
+      intersection += Math.min(currentHistogram[bin], previousHistogram[bin]);
+    }
+    return clamp(1 - intersection);
+  }
+
   function chroma(data, offset) {
     const red = Number(data[offset]);
     const green = Number(data[offset + 1]);
@@ -241,7 +278,12 @@
       currentMean,
       differenceMean,
       differenceStd: Math.sqrt(Math.max(0, differenceSquareMean - differenceMean * differenceMean)),
-      changedFraction: changed / total
+      changedFraction: changed / total,
+      // Unlike mean luminance difference, histogram intersection distance is
+      // insensitive to the spatial rearrangement caused by fast court motion.
+      // This is the continuous scene-change score published with every
+      // two-frame comparison.
+      sceneChange: rgbHistogramDistance(current, previous)
     };
   }
 
@@ -370,15 +412,21 @@
       return { candidates: [], rejected: [], cameraCut: false, reason: 'frame-history-unavailable' };
     }
     const stats = frameStatistics(current, previous, settings);
-    const cameraCut = stats.differenceMean >= settings.cutMeanDifference &&
-      stats.changedFraction >= settings.cutChangedFraction;
+    const sceneChange = rounded(stats.sceneChange);
+    const cameraCut = stats.sceneChange >= settings.sceneChangeThreshold;
     if (cameraCut) {
       return {
         candidates: [],
         rejected: [],
         cameraCut: true,
+        sceneChange,
         reason: 'camera-cut',
         evidence: {
+          sceneChange,
+          sceneChangeThreshold: settings.sceneChangeThreshold,
+          cameraCut: true,
+          // Keep the old diagnostics additive for consumers comparing the
+          // failed luminance path with the corrected signal.
           meanDifference: rounded(stats.differenceMean),
           changedFraction: rounded(stats.changedFraction)
         }
@@ -388,8 +436,12 @@
     return {
       ...detected,
       cameraCut: false,
+      sceneChange: rounded(stats.sceneChange),
       reason: detected.candidates.length ? 'candidate-detected' : 'no-candidate',
       evidence: {
+        sceneChange: rounded(stats.sceneChange),
+        sceneChangeThreshold: settings.sceneChangeThreshold,
+        cameraCut: false,
         meanDifference: rounded(stats.differenceMean),
         changedFraction: rounded(stats.changedFraction),
         threshold: detected.threshold,
@@ -502,6 +554,7 @@
       options = {},
       maxPixels,
       minPixelDifference,
+      sceneChangeThreshold,
       cutMeanDifference,
       cutChangedFraction,
       minCandidateConfidence,
@@ -522,6 +575,7 @@
       this.options = Object.assign({}, DEFAULTS, options, {
         ...(maxPixels == null ? {} : { maxPixels }),
         ...(minPixelDifference == null ? {} : { minPixelDifference }),
+        ...(sceneChangeThreshold == null ? {} : { sceneChangeThreshold }),
         ...(cutMeanDifference == null ? {} : { cutMeanDifference }),
         ...(cutChangedFraction == null ? {} : { cutChangedFraction }),
         ...(minCandidateConfidence == null ? {} : { minCandidateConfidence }),
