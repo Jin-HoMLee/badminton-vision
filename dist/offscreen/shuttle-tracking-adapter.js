@@ -32,11 +32,6 @@
     // fast motion does not look like a camera cut. Keep this threshold
     // explicit: it is a score threshold, not a tunable luminance fraction.
     sceneChangeThreshold: 0.60,
-    // Retained for callers that supplied the pre-histogram options. These
-    // values still shape the compact-candidate scan, but no longer decide a
-    // camera cut.
-    cutMeanDifference: 0.32,
-    cutChangedFraction: 0.5,
     minCandidateConfidence: 0.46,
     minTrackedConfidence: 0.52,
     maxContinuityDistance: 0.24,
@@ -555,8 +550,6 @@
       maxPixels,
       minPixelDifference,
       sceneChangeThreshold,
-      cutMeanDifference,
-      cutChangedFraction,
       minCandidateConfidence,
       minTrackedConfidence,
       maxContinuityDistance,
@@ -576,8 +569,6 @@
         ...(maxPixels == null ? {} : { maxPixels }),
         ...(minPixelDifference == null ? {} : { minPixelDifference }),
         ...(sceneChangeThreshold == null ? {} : { sceneChangeThreshold }),
-        ...(cutMeanDifference == null ? {} : { cutMeanDifference }),
-        ...(cutChangedFraction == null ? {} : { cutChangedFraction }),
         ...(minCandidateConfidence == null ? {} : { minCandidateConfidence }),
         ...(minTrackedConfidence == null ? {} : { minTrackedConfidence }),
         ...(maxContinuityDistance == null ? {} : { maxContinuityDistance }),
