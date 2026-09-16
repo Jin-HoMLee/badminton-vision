@@ -58,7 +58,10 @@ so a held camera view does not repeatedly emit the cut signal. The old
 luminance difference remains a bounded per-pixel input for the compact shuttle
 candidate scan, but it no longer decides camera cuts. This distinction keeps
 fast spatial court motion from looking like a global scene change. The
-candidate scan searches connected components for a small, compact,
+distribution-only score can miss a cut whose two frames have the same binned
+RGB distribution after spatial rearrangement; matched-histogram cuts remain an
+explicit limitation of this narrow signal. The candidate scan searches
+connected components for a small, compact,
 high-contrast residual. It rejects components that are too large, non-compact,
 low-confidence, or ambiguous. Confidence combines difference strength,
 contrast against the frame, compactness, component size, and temporal
@@ -100,7 +103,8 @@ rather than waiting for a result.
 Accuracy is not benchmarked by this adapter. It is especially vulnerable to
 video compression noise, motion blur, small or dark shuttle pixels, court
 lights/reflections, player or racket motion, rapid shuttle displacement,
-occlusion, zoom/crop changes, and camera cuts that are not globally obvious.
+occlusion, zoom/crop changes, and camera cuts that are not globally obvious or
+that preserve the same binned RGB distribution.
 The old position can be visible in a frame difference, so the compact/high
 contrast gates intentionally prefer rejection to guessing. A camera angle or
 resolution change may cause a reset. A `tracked` result means only that this
