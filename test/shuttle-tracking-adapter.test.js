@@ -45,6 +45,23 @@ function sample(requestId, mediaTime, pixels, extra = {}) {
   };
 }
 
+function twoToneFrame(invert = false, first = [0, 0, 0], second = [255, 255, 255]) {
+  const data = new Uint8Array(WIDTH * HEIGHT * 4);
+  const half = Math.floor(WIDTH / 2);
+  for (let y = 0; y < HEIGHT; y += 1) {
+    for (let x = 0; x < WIDTH; x += 1) {
+      const left = x < half;
+      const value = (left !== invert) ? first : second;
+      const offset = (y * WIDTH + x) * 4;
+      data[offset] = value[0];
+      data[offset + 1] = value[1];
+      data[offset + 2] = value[2];
+      data[offset + 3] = 255;
+    }
+  }
+  return { width: WIDTH, height: HEIGHT, data };
+}
+
 function shuttleResult(message) {
   assert.equal(message.type, protocol.TYPES.ANALYZER_RESULT);
   return message.result.shuttle;
@@ -162,14 +179,56 @@ test('invalid, stale, and backwards samples do not mutate the accepted trajector
   assert.equal(shuttleResult(resumed).reason, 'warming-up');
 });
 
-test('automatic global frame change is treated as a camera cut and first samples are unknown', () => {
+test('RGB histogram distance detects a genuine broadcast cut and quarantines downstream trajectory state', () => {
   const adapter = new shuttle.LocalShuttleTrajectoryAdapter();
-  const first = adapter.processFrame(sample('r0', 0, frame({ fill: 0 })));
-  assert.equal(shuttleResult(first).state, 'unknown');
+  adapter.processFrame(sample('r0', 0, frame({ fill: 0 })));
+  adapter.processFrame(sample('r1', 0.1, frame({ dots: [{ x: 8 }] })));
+  const tracked = adapter.processFrame(sample('r2', 0.2, frame({ dots: [{ x: 9 }] })));
+  assert.equal(shuttleResult(tracked).state, 'tracked');
+
+  const cut = adapter.processFrame(sample('r3', 0.3, frame({ fill: 255 })));
+  const value = shuttleResult(cut);
+  assert.equal(value.state, 'unknown');
+  assert.equal(value.reason, 'camera-cut');
+  assert.equal(value.confidence, null);
+  assert.equal(value.candidate, null);
+  assert.equal(value.trajectory.length, 0);
+  assert.equal(value.evidence.sceneChange >= 0.6, true);
+  assert.equal(value.evidence.cameraCut, true);
+  assert.equal(value.evidence.sceneChangeThreshold, 0.6);
+});
+
+test('histogram scene change rejects the old mean-luminance false positive during fast court motion', () => {
+  const previous = twoToneFrame(false);
+  const current = twoToneFrame(true);
+  const detected = shuttle.detectCandidates({ ...current, channels: 4 }, { ...previous, channels: 4 });
+  assert.equal(detected.cameraCut, false);
+  assert.equal(detected.evidence.cameraCut, false);
+  assert.equal(detected.sceneChange, 0);
+  // Every pixel moved between black and white, which made the old signal
+  // cross both of its cut gates despite this being the same colour scene.
+  assert.equal(detected.evidence.meanDifference, 1);
+  assert.equal(detected.evidence.changedFraction, 1);
+});
+
+test('scene-change boolean is debounced by the quarantined baseline and resets for the new scene', () => {
+  const adapter = new shuttle.LocalShuttleTrajectoryAdapter();
+  adapter.processFrame(sample('r0', 0, frame({ fill: 0 })));
   const cut = adapter.processFrame(sample('r1', 0.1, frame({ fill: 255 })));
-  assert.equal(shuttleResult(cut).state, 'unknown');
   assert.equal(shuttleResult(cut).reason, 'camera-cut');
-  assert.equal(shuttleResult(cut).confidence, null);
+
+  // The cut frame is the new baseline. Holding the new camera view must not
+  // emit another boolean cut, even though the previous result was quarantined.
+  const held = adapter.processFrame(sample('r2', 0.2, frame({ fill: 255 })));
+  assert.equal(shuttleResult(held).reason, 'no-candidate');
+  assert.equal(shuttleResult(held).evidence.sceneChange, 0);
+  assert.equal(shuttleResult(held).evidence.cameraCut, false);
+
+  // A reset clears the baseline, so the next frame warms up instead of
+  // comparing against the old camera scene.
+  adapter.reset('test-reset');
+  const warmed = adapter.processFrame(sample('r3', 0.3, frame({ fill: 255 })));
+  assert.equal(shuttleResult(warmed).reason, 'warming-up');
 });
 
 test('async analyzer drops concurrent work as backpressure without changing state', async () => {
