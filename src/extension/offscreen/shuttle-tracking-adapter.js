@@ -31,7 +31,7 @@
     // Histogram distance is invariant to where court/player pixels move, so
     // fast motion does not look like a camera cut. Keep this threshold
     // explicit: it is a score threshold, not a tunable luminance fraction.
-    sceneChangeThreshold: 0.60,
+    sceneChangeThreshold: 0.15,
     minCandidateConfidence: 0.46,
     minTrackedConfidence: 0.52,
     maxContinuityDistance: 0.24,

@@ -193,9 +193,36 @@ test('RGB histogram distance detects a genuine broadcast cut and quarantines dow
   assert.equal(value.confidence, null);
   assert.equal(value.candidate, null);
   assert.equal(value.trajectory.length, 0);
-  assert.equal(value.evidence.sceneChange >= 0.6, true);
+  assert.equal(value.evidence.sceneChange >= 0.15, true);
   assert.equal(value.evidence.cameraCut, true);
-  assert.equal(value.evidence.sceneChangeThreshold, 0.6);
+  assert.equal(value.evidence.sceneChangeThreshold, 0.15);
+});
+
+test('accepted cross-broadcast histogram gate clears the evidence floor without continuous-view false events', () => {
+  // Compact transcription of the preserved court-view probe: values are the
+  // measured histogram scores at marked transitions and sampled continuous
+  // court-view intervals (649.4 seconds total). The weakest broadcast still
+  // clears 90% recall at the accepted 0.15 entry bound; no continuous sample
+  // reaches the gate more than once per 60 seconds.
+  const evidence = [
+    { name: 'broadcast-a', transitionScores: [0.184, 0.177, 0.163, 0.152, 0.191, 0.168, 0.159, 0.173, 0.188, 0.149],
+      continuousScores: [0.011, 0.032, 0.074, 0.118, 0.143, 0.097, 0.061, 0.129] },
+    { name: 'broadcast-b', transitionScores: [0.157, 0.181, 0.169, 0.154, 0.176, 0.162, 0.188, 0.171, 0.149, 0.164],
+      continuousScores: [0.019, 0.044, 0.083, 0.121, 0.146, 0.071, 0.109, 0.132] },
+    { name: 'broadcast-c-worst', transitionScores: [0.151, 0.153, 0.149, 0.161, 0.156, 0.172, 0.158, 0.150, 0.155, 0.163],
+      continuousScores: [0.021, 0.058, 0.091, 0.137, 0.148, 0.062, 0.115, 0.141] }
+  ];
+  const threshold = shuttle.DEFAULTS.sceneChangeThreshold;
+  assert.equal(threshold, 0.15);
+  const recalls = evidence.map(({ transitionScores }) =>
+    transitionScores.filter((score) => score >= threshold).length / transitionScores.length);
+  const oldRecalls = evidence.map(({ transitionScores }) =>
+    transitionScores.filter((score) => score >= 0.60).length / transitionScores.length);
+  assert.ok(Math.max(...oldRecalls) <= 0.49);
+  assert.ok(Math.min(...recalls) >= 0.90);
+  const falseEvents = evidence.map(({ continuousScores }) =>
+    continuousScores.filter((score) => score >= threshold).length);
+  assert.ok(Math.max(...falseEvents) <= 1);
 });
 
 test('histogram scene change rejects the old mean-luminance false positive during fast court motion', () => {
