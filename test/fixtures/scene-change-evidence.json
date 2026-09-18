@@ -1,0 +1,4289 @@
+{
+  "schema": "bv-scene-change-evidence.v1",
+  "sourceBundle": "Phase-0 court-view probe, checksum-verified staged input",
+  "sourceChecksumsFile": "artifacts/SHA256SUMS",
+  "broadcastManifestChecksum": "1dd160100d26390d16b7549a278998561371f2ce3cee6671c568d6bc5bdfb1c5",
+  "candidateThreshold": 0.15,
+  "debounceSeconds": 0.6,
+  "matchToleranceSeconds": 0.75,
+  "verifiedCandidateWindowSeconds": 0.25,
+  "broadcasts": [
+    {
+      "id": "bwf-ws-2026",
+      "url": "https://www.youtube.com/watch?v=99riPBazzfk",
+      "window": {
+        "start": 1050,
+        "seconds": 300
+      },
+      "scoreSource": "artifacts/raw-series/bwf-ws-2026/passA.json",
+      "handMarkedSource": "artifacts/corpus/timelines/bwf-ws-2026.json",
+      "verifiedSource": "artifacts/corpus/verified/bwf-ws-2026.json",
+      "sourceChecksums": {
+        "passA": "62b3371ba0d1e1446904b695a8e9ae244540d4a7c5374060db84048478a5bed0",
+        "timeline": "dfc75df4f39308bc743be9e18086b86f0ba5deb28cbf74dd33e819884c44d477",
+        "verified": "508b6a164c40779b5abc9bdaf4ed8eb6e714121df421e795e1c9840ab78e6601"
+      },
+      "courtView": [
+        {
+          "start": 1055.25,
+          "end": 1105.05
+        },
+        {
+          "start": 1115.15,
+          "end": 1126.85
+        },
+        {
+          "start": 1154.95,
+          "end": 1166.65
+        },
+        {
+          "start": 1175.25,
+          "end": 1185.45
+        },
+        {
+          "start": 1190.55,
+          "end": 1195.55
+        },
+        {
+          "start": 1198.15,
+          "end": 1208.25
+        },
+        {
+          "start": 1236.25,
+          "end": 1250.45
+        },
+        {
+          "start": 1258.05,
+          "end": 1263.15
+        },
+        {
+          "start": 1266.65,
+          "end": 1273.75
+        },
+        {
+          "start": 1301.15,
+          "end": 1315.85
+        },
+        {
+          "start": 1338.65,
+          "end": 1348.35
+        }
+      ],
+      "courtViewSeconds": 149.3,
+      "handMarkedTransitions": [
+        {
+          "start": 1054.5,
+          "end": 1055.5,
+          "kind": "dissolve",
+          "from": "crowd",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1104.8,
+          "end": 1105.3,
+          "kind": "cut",
+          "from": "court",
+          "to": "crowd",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1107.3,
+          "end": 1107.8,
+          "kind": "cut",
+          "from": "crowd",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1111.4,
+          "end": 1111.9,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "low-sideline",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1114.9,
+          "end": 1115.4,
+          "kind": "cut",
+          "from": "low-sideline",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1126.6,
+          "end": 1128.2,
+          "kind": "wipe",
+          "from": "court",
+          "to": "bench",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1151.6,
+          "end": 1152.1,
+          "kind": "cut",
+          "from": "bench",
+          "to": "net-level",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1154.6,
+          "end": 1155.2,
+          "kind": "cut",
+          "from": "net-level",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1166.4,
+          "end": 1166.9,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1170.4,
+          "end": 1170.9,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1173.9,
+          "end": 1174.5,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1175,
+          "end": 1175.5,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1185.2,
+          "end": 1185.7,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1187.7,
+          "end": 1188.2,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1190.2,
+          "end": 1190.8,
+          "kind": "wipe",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1195.3,
+          "end": 1196.8,
+          "kind": "wipe",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1197.8,
+          "end": 1198.4,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1208,
+          "end": 1208.5,
+          "kind": "cut",
+          "from": "court",
+          "to": "coaches",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1213.6,
+          "end": 1214.1,
+          "kind": "wipe",
+          "from": "coaches",
+          "to": "low-sideline",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1224.8,
+          "end": 1225.3,
+          "kind": "wipe",
+          "from": "low-sideline",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1236,
+          "end": 1236.5,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1250.2,
+          "end": 1250.7,
+          "kind": "cut",
+          "from": "court",
+          "to": "crowd",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1251.7,
+          "end": 1252.2,
+          "kind": "cut",
+          "from": "crowd",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1254.8,
+          "end": 1255.3,
+          "kind": "cut",
+          "from": "net-level",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1257.3,
+          "end": 1258.3,
+          "kind": "wipe",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1262.9,
+          "end": 1263.4,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1266.4,
+          "end": 1266.9,
+          "kind": "wipe",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1273.5,
+          "end": 1274,
+          "kind": "cut",
+          "from": "court",
+          "to": "coaches",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1275.1,
+          "end": 1275.6,
+          "kind": "cut",
+          "from": "coaches",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1277.6,
+          "end": 1278.1,
+          "kind": "wipe",
+          "from": "close-up",
+          "to": "low-sideline",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1288.7,
+          "end": 1289.2,
+          "kind": "cut",
+          "from": "low-sideline",
+          "to": "net-level",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1292.3,
+          "end": 1292.8,
+          "kind": "wipe",
+          "from": "net-level",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1297.4,
+          "end": 1297.9,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "net-level",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1300.9,
+          "end": 1301.4,
+          "kind": "cut",
+          "from": "net-level",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1315.6,
+          "end": 1316.1,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1319.2,
+          "end": 1319.7,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "coaches",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1320.7,
+          "end": 1321.2,
+          "kind": "cut",
+          "from": "coaches",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1322.7,
+          "end": 1323.2,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1325.7,
+          "end": 1326.2,
+          "kind": "wipe",
+          "from": "close-up",
+          "to": "low-sideline",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1331.8,
+          "end": 1332.3,
+          "kind": "cut",
+          "from": "low-sideline",
+          "to": "coaches",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1335.9,
+          "end": 1336.4,
+          "kind": "cut",
+          "from": "coaches",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1338.4,
+          "end": 1338.9,
+          "kind": "wipe",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1348.1,
+          "end": 1348.6,
+          "kind": "cut",
+          "from": "court",
+          "to": "net-level",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1350.1,
+          "end": 1350.7,
+          "kind": "cut",
+          "from": "net-level",
+          "to": "crowd",
+          "source": "hand-marked"
+        }
+      ],
+      "verifiedTransitions": [
+        {
+          "t": 1055.073,
+          "hd": 0.58059,
+          "verdict": "real",
+          "note": "dissolve crowd->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1105.334,
+          "hd": 0.61933,
+          "verdict": "real",
+          "note": "cut court->crowd (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1107.739,
+          "hd": 0.49824,
+          "verdict": "real",
+          "note": "cut crowd->player close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1111.6,
+          "hd": 0.37199,
+          "verdict": "real",
+          "note": "cut close-up->low sideline (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1114.404,
+          "hd": 0.17741,
+          "verdict": "real",
+          "note": "branded graphic card appears - onset of the 1114-1115 wipe",
+          "source": "verified"
+        },
+        {
+          "t": 1115.339,
+          "hd": 0.61759,
+          "verdict": "real",
+          "note": "wipe -> court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1127.199,
+          "hd": 0.18381,
+          "verdict": "real",
+          "note": "branded card appears - onset of the 1126-1128 wipe",
+          "source": "verified"
+        },
+        {
+          "t": 1128.135,
+          "hd": 0.73001,
+          "verdict": "real",
+          "note": "wipe court->bench (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1150.669,
+          "hd": 0.25049,
+          "verdict": "real",
+          "note": "NEW: cut inside the bench sequence, missed by 2 Hz marking",
+          "source": "verified"
+        },
+        {
+          "t": 1154.801,
+          "hd": 0.38984,
+          "verdict": "real",
+          "note": "cut net-level->high oblique court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1166.669,
+          "hd": 0.50949,
+          "verdict": "real",
+          "note": "cut court->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1170.8,
+          "hd": 0.63696,
+          "verdict": "real",
+          "note": "cut close-up->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1175.066,
+          "hd": 0.61445,
+          "verdict": "real",
+          "note": "cut close-up->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1185.465,
+          "hd": 0.66105,
+          "verdict": "real",
+          "note": "cut court->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1190.665,
+          "hd": 0.84611,
+          "verdict": "real",
+          "note": "wipe close-up->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1195.601,
+          "hd": 0.15259,
+          "verdict": "real",
+          "note": "branded card appears - onset of the 1195-1196 wipe",
+          "source": "verified"
+        },
+        {
+          "t": 1196.532,
+          "hd": 0.72217,
+          "verdict": "real",
+          "note": "wipe court->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1197.997,
+          "hd": 0.68178,
+          "verdict": "real",
+          "note": "cut close-up->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1208.533,
+          "hd": 0.59025,
+          "verdict": "real",
+          "note": "cut court->coaches (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1213.996,
+          "hd": 0.42554,
+          "verdict": "real",
+          "note": "wipe coaches->low sideline (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1225.066,
+          "hd": 0.39347,
+          "verdict": "real",
+          "note": "wipe low sideline->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1236.398,
+          "hd": 0.64155,
+          "verdict": "real",
+          "note": "cut close-up->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1250.397,
+          "hd": 0.5686,
+          "verdict": "real",
+          "note": "cut court->crowd (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1252.262,
+          "hd": 0.44903,
+          "verdict": "real",
+          "note": "cut crowd->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1255.063,
+          "hd": 0.4994,
+          "verdict": "real",
+          "note": "cut net-level->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1256.929,
+          "hd": 0.15552,
+          "verdict": "real",
+          "note": "branded card appears - onset of the 1257-1258 wipe",
+          "source": "verified"
+        },
+        {
+          "t": 1257.998,
+          "hd": 0.73473,
+          "verdict": "real",
+          "note": "wipe close-up->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1263.463,
+          "hd": 0.77338,
+          "verdict": "real",
+          "note": "cut court->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1265.729,
+          "hd": 0.15704,
+          "verdict": "real",
+          "note": "branded card appears - onset of the 1266 wipe",
+          "source": "verified"
+        },
+        {
+          "t": 1266.796,
+          "hd": 0.57872,
+          "verdict": "real",
+          "note": "wipe close-up->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1273.861,
+          "hd": 0.59093,
+          "verdict": "real",
+          "note": "cut court->coaches (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1275.196,
+          "hd": 0.56331,
+          "verdict": "real",
+          "note": "cut coaches->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1277.862,
+          "hd": 0.6614,
+          "verdict": "real",
+          "note": "wipe close-up->low sideline (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1284.53,
+          "hd": 0.49246,
+          "verdict": "real",
+          "note": "NEW: camera change inside the low-sideline coverage, missed by 2 Hz marking",
+          "source": "verified"
+        },
+        {
+          "t": 1291.595,
+          "hd": 0.18997,
+          "verdict": "real",
+          "note": "branded card appears - onset of the 1292 wipe",
+          "source": "verified"
+        },
+        {
+          "t": 1292.663,
+          "hd": 0.37885,
+          "verdict": "real",
+          "note": "wipe ->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1297.462,
+          "hd": 0.65948,
+          "verdict": "real",
+          "note": "cut close-up->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1301.463,
+          "hd": 0.662,
+          "verdict": "real",
+          "note": "cut close-up->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1315.727,
+          "hd": 0.67448,
+          "verdict": "real",
+          "note": "cut court->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1319.728,
+          "hd": 0.60216,
+          "verdict": "real",
+          "note": "cut close-up->coaches (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1321.061,
+          "hd": 0.65611,
+          "verdict": "real",
+          "note": "cut coaches->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1325.993,
+          "hd": 0.66854,
+          "verdict": "real",
+          "note": "wipe close-up->side court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1328.393,
+          "hd": 0.17356,
+          "verdict": "uncertain",
+          "note": "framing changes inside the side-camera replay; a camera change is likely but not resolvable",
+          "source": "verified"
+        },
+        {
+          "t": 1331.994,
+          "hd": 0.76044,
+          "verdict": "real",
+          "note": "cut side court->coaches (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1336.393,
+          "hd": 0.5855,
+          "verdict": "real",
+          "note": "cut coaches->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1338.793,
+          "hd": 0.64708,
+          "verdict": "real",
+          "note": "wipe ->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1348.527,
+          "hd": 0.53879,
+          "verdict": "real",
+          "note": "cut court->net-level (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1350.659,
+          "hd": 0.66623,
+          "verdict": "real",
+          "note": "cut close-up->crowd (hand-marked)",
+          "source": "verified"
+        }
+      ],
+      "samples": [
+        {
+          "t": 1054.936,
+          "hd": 0.32132
+        },
+        {
+          "t": 1055.073,
+          "hd": 0.58059
+        },
+        {
+          "t": 1105.334,
+          "hd": 0.61933
+        },
+        {
+          "t": 1107.739,
+          "hd": 0.49824
+        },
+        {
+          "t": 1111.6,
+          "hd": 0.37199
+        },
+        {
+          "t": 1114.404,
+          "hd": 0.17741
+        },
+        {
+          "t": 1115.205,
+          "hd": 0.30935
+        },
+        {
+          "t": 1115.339,
+          "hd": 0.61759
+        },
+        {
+          "t": 1115.472,
+          "hd": 0.56744
+        },
+        {
+          "t": 1127.199,
+          "hd": 0.18381
+        },
+        {
+          "t": 1128.002,
+          "hd": 0.30805
+        },
+        {
+          "t": 1128.135,
+          "hd": 0.73001
+        },
+        {
+          "t": 1128.266,
+          "hd": 0.50448
+        },
+        {
+          "t": 1150.669,
+          "hd": 0.25049
+        },
+        {
+          "t": 1154.801,
+          "hd": 0.38984
+        },
+        {
+          "t": 1166.532,
+          "hd": 0.43641
+        },
+        {
+          "t": 1166.669,
+          "hd": 0.50949
+        },
+        {
+          "t": 1170.8,
+          "hd": 0.63696
+        },
+        {
+          "t": 1170.932,
+          "hd": 0.46216
+        },
+        {
+          "t": 1174.934,
+          "hd": 0.30802
+        },
+        {
+          "t": 1175.066,
+          "hd": 0.61445
+        },
+        {
+          "t": 1175.2,
+          "hd": 0.56036
+        },
+        {
+          "t": 1185.465,
+          "hd": 0.66105
+        },
+        {
+          "t": 1190.401,
+          "hd": 0.15316
+        },
+        {
+          "t": 1190.532,
+          "hd": 0.2219
+        },
+        {
+          "t": 1190.665,
+          "hd": 0.84611
+        },
+        {
+          "t": 1190.797,
+          "hd": 0.59619
+        },
+        {
+          "t": 1195.601,
+          "hd": 0.15259
+        },
+        {
+          "t": 1196.398,
+          "hd": 0.36863
+        },
+        {
+          "t": 1196.532,
+          "hd": 0.72217
+        },
+        {
+          "t": 1196.666,
+          "hd": 0.66631
+        },
+        {
+          "t": 1197.997,
+          "hd": 0.68178
+        },
+        {
+          "t": 1198.134,
+          "hd": 0.48475
+        },
+        {
+          "t": 1208.533,
+          "hd": 0.59025
+        },
+        {
+          "t": 1213.864,
+          "hd": 0.1563
+        },
+        {
+          "t": 1213.996,
+          "hd": 0.42554
+        },
+        {
+          "t": 1214.134,
+          "hd": 0.37652
+        },
+        {
+          "t": 1224.798,
+          "hd": 0.18028
+        },
+        {
+          "t": 1224.93,
+          "hd": 0.22743
+        },
+        {
+          "t": 1225.066,
+          "hd": 0.39347
+        },
+        {
+          "t": 1225.197,
+          "hd": 0.31163
+        },
+        {
+          "t": 1236.263,
+          "hd": 0.6259
+        },
+        {
+          "t": 1236.398,
+          "hd": 0.64155
+        },
+        {
+          "t": 1250.397,
+          "hd": 0.5686
+        },
+        {
+          "t": 1252.262,
+          "hd": 0.44903
+        },
+        {
+          "t": 1255.063,
+          "hd": 0.4994
+        },
+        {
+          "t": 1256.929,
+          "hd": 0.15552
+        },
+        {
+          "t": 1257.729,
+          "hd": 0.2073
+        },
+        {
+          "t": 1257.863,
+          "hd": 0.71265
+        },
+        {
+          "t": 1257.998,
+          "hd": 0.73473
+        },
+        {
+          "t": 1263.33,
+          "hd": 0.73755
+        },
+        {
+          "t": 1263.463,
+          "hd": 0.77338
+        },
+        {
+          "t": 1265.729,
+          "hd": 0.15704
+        },
+        {
+          "t": 1266.529,
+          "hd": 0.18104
+        },
+        {
+          "t": 1266.663,
+          "hd": 0.50968
+        },
+        {
+          "t": 1266.796,
+          "hd": 0.57872
+        },
+        {
+          "t": 1273.861,
+          "hd": 0.59093
+        },
+        {
+          "t": 1275.196,
+          "hd": 0.56331
+        },
+        {
+          "t": 1277.593,
+          "hd": 0.16111
+        },
+        {
+          "t": 1277.73,
+          "hd": 0.6212
+        },
+        {
+          "t": 1277.862,
+          "hd": 0.6614
+        },
+        {
+          "t": 1277.995,
+          "hd": 0.26364
+        },
+        {
+          "t": 1284.397,
+          "hd": 0.36952
+        },
+        {
+          "t": 1284.53,
+          "hd": 0.49246
+        },
+        {
+          "t": 1291.595,
+          "hd": 0.18997
+        },
+        {
+          "t": 1292.395,
+          "hd": 0.24528
+        },
+        {
+          "t": 1292.53,
+          "hd": 0.37687
+        },
+        {
+          "t": 1292.663,
+          "hd": 0.37885
+        },
+        {
+          "t": 1297.462,
+          "hd": 0.65948
+        },
+        {
+          "t": 1297.593,
+          "hd": 0.51801
+        },
+        {
+          "t": 1301.327,
+          "hd": 0.43072
+        },
+        {
+          "t": 1301.463,
+          "hd": 0.662
+        },
+        {
+          "t": 1315.727,
+          "hd": 0.67448
+        },
+        {
+          "t": 1319.728,
+          "hd": 0.60216
+        },
+        {
+          "t": 1321.061,
+          "hd": 0.65611
+        },
+        {
+          "t": 1325.86,
+          "hd": 0.56557
+        },
+        {
+          "t": 1325.993,
+          "hd": 0.66854
+        },
+        {
+          "t": 1328.393,
+          "hd": 0.17356
+        },
+        {
+          "t": 1331.861,
+          "hd": 0.63241
+        },
+        {
+          "t": 1331.994,
+          "hd": 0.76044
+        },
+        {
+          "t": 1336.26,
+          "hd": 0.38534
+        },
+        {
+          "t": 1336.393,
+          "hd": 0.5855
+        },
+        {
+          "t": 1338.525,
+          "hd": 0.15516
+        },
+        {
+          "t": 1338.662,
+          "hd": 0.21522
+        },
+        {
+          "t": 1338.793,
+          "hd": 0.64708
+        },
+        {
+          "t": 1338.926,
+          "hd": 0.18012
+        },
+        {
+          "t": 1348.527,
+          "hd": 0.53879
+        },
+        {
+          "t": 1350.659,
+          "hd": 0.66623
+        }
+      ]
+    },
+    {
+      "id": "bwf-md-2026",
+      "url": "https://www.youtube.com/watch?v=OyTqFMdLb_U",
+      "window": {
+        "start": 1200,
+        "seconds": 300
+      },
+      "scoreSource": "artifacts/raw-series/bwf-md-2026/passA.json",
+      "handMarkedSource": "artifacts/corpus/timelines/bwf-md-2026.json",
+      "verifiedSource": "artifacts/corpus/verified/bwf-md-2026.json",
+      "sourceChecksums": {
+        "passA": "5a464fc49d97e7e8cd4c4bc51aa129707769ec0d8b9b46f6d3123c385b956e48",
+        "timeline": "0e391242e9de552dfc472b82a29e33152df7bfc5a2e38508ec3ff78044f7e012",
+        "verified": "6ae3f540f2cf8a349a6758aefcdfe988cdf57bd9849282782d51eff9bccd354a"
+      },
+      "courtView": [
+        {
+          "start": 1229.15,
+          "end": 1244.35
+        },
+        {
+          "start": 1257.05,
+          "end": 1274.35
+        },
+        {
+          "start": 1294.2,
+          "end": 1304.35
+        },
+        {
+          "start": 1309.45,
+          "end": 1314.05
+        },
+        {
+          "start": 1317.15,
+          "end": 1325.25
+        },
+        {
+          "start": 1331.25,
+          "end": 1340.95
+        },
+        {
+          "start": 1355.75,
+          "end": 1367.95
+        },
+        {
+          "start": 1374.05,
+          "end": 1378.05
+        },
+        {
+          "start": 1383.65,
+          "end": 1393.85
+        },
+        {
+          "start": 1497.55,
+          "end": 1501
+        }
+      ],
+      "courtViewSeconds": 94.9,
+      "handMarkedTransitions": [
+        {
+          "start": 1205.7,
+          "end": 1206.3,
+          "kind": "cut",
+          "from": "umpire",
+          "to": "bench",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1210.3,
+          "end": 1210.9,
+          "kind": "cut",
+          "from": "bench",
+          "to": "hawkeye-review",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1217.5,
+          "end": 1218,
+          "kind": "cut",
+          "from": "hawkeye-review",
+          "to": "bench",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1228.9,
+          "end": 1229.4,
+          "kind": "cut",
+          "from": "bench",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1244.1,
+          "end": 1244.6,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1248.2,
+          "end": 1248.7,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "low-sideline",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1252.7,
+          "end": 1253.3,
+          "kind": "cut",
+          "from": "low-sideline",
+          "to": "net-level",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1255.3,
+          "end": 1255.8,
+          "kind": "cut",
+          "from": "net-level",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1256.8,
+          "end": 1257.3,
+          "kind": "wipe",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1274.1,
+          "end": 1274.6,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1276.1,
+          "end": 1276.6,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "crowd",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1280.2,
+          "end": 1280.7,
+          "kind": "wipe",
+          "from": "crowd",
+          "to": "low-sideline",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1290.9,
+          "end": 1291.4,
+          "kind": "wipe",
+          "from": "low-sideline",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1293.9,
+          "end": 1294.5,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1304.1,
+          "end": 1304.6,
+          "kind": "cut",
+          "from": "court",
+          "to": "bench",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1309.2,
+          "end": 1309.7,
+          "kind": "dissolve",
+          "from": "bench",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1314.3,
+          "end": 1314.8,
+          "kind": "dissolve",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1316.9,
+          "end": 1317.4,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1325,
+          "end": 1325.5,
+          "kind": "cut",
+          "from": "court",
+          "to": "bench",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1331,
+          "end": 1331.5,
+          "kind": "cut",
+          "from": "bench",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1340.7,
+          "end": 1341.2,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1355.5,
+          "end": 1356,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1367.7,
+          "end": 1368.2,
+          "kind": "cut",
+          "from": "court",
+          "to": "net-level",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1373.7,
+          "end": 1374.3,
+          "kind": "wipe",
+          "from": "net-level",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1378.3,
+          "end": 1379.8,
+          "kind": "wipe",
+          "from": "court",
+          "to": "low-sideline",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1383.4,
+          "end": 1383.9,
+          "kind": "cut",
+          "from": "low-sideline",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1393.6,
+          "end": 1394.1,
+          "kind": "cut",
+          "from": "court",
+          "to": "net-level",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1395.6,
+          "end": 1396.1,
+          "kind": "cut",
+          "from": "net-level",
+          "to": "crowd",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1399.6,
+          "end": 1400.2,
+          "kind": "wipe",
+          "from": "crowd",
+          "to": "low-sideline",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1406.8,
+          "end": 1407.3,
+          "kind": "cut",
+          "from": "low-sideline",
+          "to": "net-level",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1411.9,
+          "end": 1412.4,
+          "kind": "wipe",
+          "from": "net-level",
+          "to": "bench",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1446.5,
+          "end": 1447,
+          "kind": "cut",
+          "from": "bench",
+          "to": "bench",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1496.3,
+          "end": 1496.8,
+          "kind": "cut",
+          "from": "bench",
+          "to": "court-edge",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1497.3,
+          "end": 1497.8,
+          "kind": "cut",
+          "from": "court-edge",
+          "to": "court",
+          "source": "hand-marked"
+        }
+      ],
+      "verifiedTransitions": [
+        {
+          "t": 1206.309,
+          "hd": 0.20855,
+          "verdict": "real",
+          "note": "cut umpire->bench (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1210.581,
+          "hd": 0.80404,
+          "verdict": "real",
+          "note": "cut bench->Hawk-Eye synthetic review (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1212.447,
+          "hd": 0.24344,
+          "verdict": "real",
+          "note": "NEW: virtual camera cut inside the Hawk-Eye animation",
+          "source": "verified"
+        },
+        {
+          "t": 1213.779,
+          "hd": 0.22499,
+          "verdict": "real",
+          "note": "NEW: virtual camera cut inside the Hawk-Eye animation",
+          "source": "verified"
+        },
+        {
+          "t": 1217.78,
+          "hd": 0.9535,
+          "verdict": "real",
+          "note": "cut Hawk-Eye 'OUT'->bench (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1229.112,
+          "hd": 0.58732,
+          "verdict": "real",
+          "note": "cut bench->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1244.307,
+          "hd": 0.611,
+          "verdict": "real",
+          "note": "cut court->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1246.039,
+          "hd": 0.40576,
+          "verdict": "real",
+          "note": "NEW: cut close-up->crowd, missed by 2 Hz marking",
+          "source": "verified"
+        },
+        {
+          "t": 1247.642,
+          "hd": 0.15327,
+          "verdict": "real",
+          "note": "branded card appears - onset of the 1248 wipe",
+          "source": "verified"
+        },
+        {
+          "t": 1248.577,
+          "hd": 0.50955,
+          "verdict": "real",
+          "note": "wipe crowd->low sideline (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1252.975,
+          "hd": 0.19748,
+          "verdict": "real",
+          "note": "cut low sideline->net-level (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1255.91,
+          "hd": 0.1664,
+          "verdict": "real",
+          "note": "branded card appears - onset of the 1257 wipe",
+          "source": "verified"
+        },
+        {
+          "t": 1256.975,
+          "hd": 0.56418,
+          "verdict": "real",
+          "note": "wipe ->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1274.444,
+          "hd": 0.59231,
+          "verdict": "real",
+          "note": "cut court->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1276.175,
+          "hd": 0.70256,
+          "verdict": "real",
+          "note": "cut close-up->crowd (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1280.307,
+          "hd": 0.62972,
+          "verdict": "real",
+          "note": "wipe crowd->low sideline (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1284.572,
+          "hd": 0.18585,
+          "verdict": "real",
+          "note": "NEW: camera change inside the replay coverage",
+          "source": "verified"
+        },
+        {
+          "t": 1290.177,
+          "hd": 0.1664,
+          "verdict": "real",
+          "note": "branded card appears - onset of the 1291 wipe",
+          "source": "verified"
+        },
+        {
+          "t": 1291.24,
+          "hd": 0.60864,
+          "verdict": "real",
+          "note": "wipe ->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1294.176,
+          "hd": 0.68403,
+          "verdict": "real",
+          "note": "cut close-up->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1304.441,
+          "hd": 0.63702,
+          "verdict": "real",
+          "note": "cut court->bench (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1309.774,
+          "hd": 0.72271,
+          "verdict": "real",
+          "note": "dissolve bench->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1314.306,
+          "hd": 0.75187,
+          "verdict": "real",
+          "note": "dissolve court->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1317.103,
+          "hd": 0.611,
+          "verdict": "real",
+          "note": "cut close-up->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1325.505,
+          "hd": 0.65305,
+          "verdict": "real",
+          "note": "cut court->bench (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1331.372,
+          "hd": 0.59022,
+          "verdict": "real",
+          "note": "cut bench->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1340.969,
+          "hd": 0.67128,
+          "verdict": "real",
+          "note": "cut court->close-up (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1345.503,
+          "hd": 0.22618,
+          "verdict": "real",
+          "note": "NEW: cut close-up->close-up (different team), missed by 2 Hz marking",
+          "source": "verified"
+        },
+        {
+          "t": 1355.807,
+          "hd": 0.56993,
+          "verdict": "real",
+          "note": "cut close-up->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1368.208,
+          "hd": 0.58708,
+          "verdict": "real",
+          "note": "cut court->net-level (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1374.338,
+          "hd": 0.69523,
+          "verdict": "real",
+          "note": "wipe net-level->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1379.269,
+          "hd": 0.6276,
+          "verdict": "real",
+          "note": "wipe court->low sideline (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1383.273,
+          "hd": 0.43281,
+          "verdict": "real",
+          "note": "cut low sideline->court (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1394.204,
+          "hd": 0.56236,
+          "verdict": "real",
+          "note": "cut court->net-level (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1396.072,
+          "hd": 0.51522,
+          "verdict": "real",
+          "note": "cut net-level->crowd (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1399.935,
+          "hd": 0.62972,
+          "verdict": "real",
+          "note": "wipe crowd->low sideline (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1401.808,
+          "hd": 0.23432,
+          "verdict": "real",
+          "note": "NEW: camera change inside the replay montage",
+          "source": "verified"
+        },
+        {
+          "t": 1403.005,
+          "hd": 0.15858,
+          "verdict": "real",
+          "note": "NEW: camera change inside the replay montage",
+          "source": "verified"
+        },
+        {
+          "t": 1403.939,
+          "hd": 0.20464,
+          "verdict": "real",
+          "note": "NEW: camera change inside the replay montage",
+          "source": "verified"
+        },
+        {
+          "t": 1407.136,
+          "hd": 0.44748,
+          "verdict": "real",
+          "note": "cut low sideline->net-level (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1412.071,
+          "hd": 0.42315,
+          "verdict": "real",
+          "note": "wipe net-level->bench (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1446.737,
+          "hd": 0.39119,
+          "verdict": "real",
+          "note": "cut bench->bench (hand-marked)",
+          "source": "verified"
+        },
+        {
+          "t": 1497.798,
+          "hd": 0.42079,
+          "verdict": "real",
+          "note": "cut court-edge->court (hand-marked)",
+          "source": "verified"
+        }
+      ],
+      "samples": [
+        {
+          "t": 1206.179,
+          "hd": 0.17206
+        },
+        {
+          "t": 1206.309,
+          "hd": 0.20855
+        },
+        {
+          "t": 1210.581,
+          "hd": 0.80404
+        },
+        {
+          "t": 1210.712,
+          "hd": 0.79704
+        },
+        {
+          "t": 1212.447,
+          "hd": 0.24344
+        },
+        {
+          "t": 1213.779,
+          "hd": 0.22499
+        },
+        {
+          "t": 1217.78,
+          "hd": 0.9535
+        },
+        {
+          "t": 1217.914,
+          "hd": 0.91843
+        },
+        {
+          "t": 1228.977,
+          "hd": 0.39545
+        },
+        {
+          "t": 1229.112,
+          "hd": 0.58732
+        },
+        {
+          "t": 1244.307,
+          "hd": 0.611
+        },
+        {
+          "t": 1246.039,
+          "hd": 0.40576
+        },
+        {
+          "t": 1247.642,
+          "hd": 0.15327
+        },
+        {
+          "t": 1248.441,
+          "hd": 0.23996
+        },
+        {
+          "t": 1248.577,
+          "hd": 0.50955
+        },
+        {
+          "t": 1252.843,
+          "hd": 0.17326
+        },
+        {
+          "t": 1252.975,
+          "hd": 0.19748
+        },
+        {
+          "t": 1255.91,
+          "hd": 0.1664
+        },
+        {
+          "t": 1256.707,
+          "hd": 0.17445
+        },
+        {
+          "t": 1256.844,
+          "hd": 0.45508
+        },
+        {
+          "t": 1256.975,
+          "hd": 0.56418
+        },
+        {
+          "t": 1274.444,
+          "hd": 0.59231
+        },
+        {
+          "t": 1276.175,
+          "hd": 0.70256
+        },
+        {
+          "t": 1280.041,
+          "hd": 0.17353
+        },
+        {
+          "t": 1280.173,
+          "hd": 0.57576
+        },
+        {
+          "t": 1280.307,
+          "hd": 0.62972
+        },
+        {
+          "t": 1284.572,
+          "hd": 0.18585
+        },
+        {
+          "t": 1290.177,
+          "hd": 0.1664
+        },
+        {
+          "t": 1290.977,
+          "hd": 0.25974
+        },
+        {
+          "t": 1291.109,
+          "hd": 0.5418
+        },
+        {
+          "t": 1291.24,
+          "hd": 0.60864
+        },
+        {
+          "t": 1294.176,
+          "hd": 0.68403
+        },
+        {
+          "t": 1294.309,
+          "hd": 0.51617
+        },
+        {
+          "t": 1304.441,
+          "hd": 0.63702
+        },
+        {
+          "t": 1309.637,
+          "hd": 0.55745
+        },
+        {
+          "t": 1309.774,
+          "hd": 0.72271
+        },
+        {
+          "t": 1314.174,
+          "hd": 0.25944
+        },
+        {
+          "t": 1314.306,
+          "hd": 0.75187
+        },
+        {
+          "t": 1314.441,
+          "hd": 0.48923
+        },
+        {
+          "t": 1316.974,
+          "hd": 0.4611
+        },
+        {
+          "t": 1317.103,
+          "hd": 0.611
+        },
+        {
+          "t": 1325.505,
+          "hd": 0.65305
+        },
+        {
+          "t": 1331.24,
+          "hd": 0.52059
+        },
+        {
+          "t": 1331.372,
+          "hd": 0.59022
+        },
+        {
+          "t": 1340.969,
+          "hd": 0.67128
+        },
+        {
+          "t": 1345.503,
+          "hd": 0.22618
+        },
+        {
+          "t": 1346.036,
+          "hd": 0.15584
+        },
+        {
+          "t": 1355.807,
+          "hd": 0.56993
+        },
+        {
+          "t": 1355.938,
+          "hd": 0.19412
+        },
+        {
+          "t": 1368.208,
+          "hd": 0.58708
+        },
+        {
+          "t": 1374.208,
+          "hd": 0.68864
+        },
+        {
+          "t": 1374.338,
+          "hd": 0.69523
+        },
+        {
+          "t": 1379.14,
+          "hd": 0.16322
+        },
+        {
+          "t": 1379.269,
+          "hd": 0.6276
+        },
+        {
+          "t": 1379.407,
+          "hd": 0.58754
+        },
+        {
+          "t": 1383.139,
+          "hd": 0.32815
+        },
+        {
+          "t": 1383.273,
+          "hd": 0.43281
+        },
+        {
+          "t": 1394.204,
+          "hd": 0.56236
+        },
+        {
+          "t": 1396.072,
+          "hd": 0.51522
+        },
+        {
+          "t": 1399.674,
+          "hd": 0.18519
+        },
+        {
+          "t": 1399.804,
+          "hd": 0.56692
+        },
+        {
+          "t": 1399.935,
+          "hd": 0.62972
+        },
+        {
+          "t": 1401.667,
+          "hd": 0.15275
+        },
+        {
+          "t": 1401.808,
+          "hd": 0.23432
+        },
+        {
+          "t": 1401.936,
+          "hd": 0.17532
+        },
+        {
+          "t": 1402.604,
+          "hd": 0.15072
+        },
+        {
+          "t": 1403.005,
+          "hd": 0.15858
+        },
+        {
+          "t": 1403.939,
+          "hd": 0.20464
+        },
+        {
+          "t": 1404.072,
+          "hd": 0.20375
+        },
+        {
+          "t": 1404.206,
+          "hd": 0.17323
+        },
+        {
+          "t": 1407.136,
+          "hd": 0.44748
+        },
+        {
+          "t": 1407.271,
+          "hd": 0.33917
+        },
+        {
+          "t": 1411.94,
+          "hd": 0.25591
+        },
+        {
+          "t": 1412.071,
+          "hd": 0.42315
+        },
+        {
+          "t": 1412.205,
+          "hd": 0.30965
+        },
+        {
+          "t": 1446.605,
+          "hd": 0.38154
+        },
+        {
+          "t": 1446.737,
+          "hd": 0.39119
+        },
+        {
+          "t": 1497.798,
+          "hd": 0.42079
+        },
+        {
+          "t": 1497.936,
+          "hd": 0.34367
+        }
+      ]
+    },
+    {
+      "id": "bwf-md-2018",
+      "url": "https://www.youtube.com/watch?v=GESh9Dg8oJE",
+      "window": {
+        "start": 1200,
+        "seconds": 300
+      },
+      "scoreSource": "artifacts/raw-series/bwf-md-2018/passA.json",
+      "handMarkedSource": "artifacts/corpus/timelines/bwf-md-2018.json",
+      "verifiedSource": "artifacts/corpus/verified/bwf-md-2018.json",
+      "sourceChecksums": {
+        "passA": "834d2dbae500f272b5473995e8f33f29e27e775952880dd8748f44ee11dccafc",
+        "timeline": "adcda49c5d6503b5acf1b80ea6235b28b88dd35d463ed4561df763afdec53d9e",
+        "verified": "d499f7da0c0eaa52b776124fc5d180fe52138e7d2155d97d1d97810ad45e1397"
+      },
+      "courtView": [
+        {
+          "start": 1227.25,
+          "end": 1236.95
+        },
+        {
+          "start": 1251.65,
+          "end": 1262.95
+        },
+        {
+          "start": 1282.15,
+          "end": 1301.05
+        },
+        {
+          "start": 1323.45,
+          "end": 1326.95
+        },
+        {
+          "start": 1331.05,
+          "end": 1336.15
+        },
+        {
+          "start": 1346.35,
+          "end": 1349.35
+        },
+        {
+          "start": 1350.95,
+          "end": 1357.95
+        },
+        {
+          "start": 1363.15,
+          "end": 1368.15
+        },
+        {
+          "start": 1393.65,
+          "end": 1396.15
+        },
+        {
+          "start": 1402.25,
+          "end": 1402.75
+        },
+        {
+          "start": 1412.35,
+          "end": 1415.45
+        },
+        {
+          "start": 1417.95,
+          "end": 1426.65
+        },
+        {
+          "start": 1442.35,
+          "end": 1451.9
+        },
+        {
+          "start": 1452.6,
+          "end": 1456.4
+        },
+        {
+          "start": 1457.1,
+          "end": 1469.35
+        }
+      ],
+      "courtViewSeconds": 103.9,
+      "handMarkedTransitions": [
+        {
+          "start": 1202.7,
+          "end": 1203.2,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1204.7,
+          "end": 1205.2,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1207.8,
+          "end": 1208.3,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "replay-net",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1211.3,
+          "end": 1211.8,
+          "kind": "cut",
+          "from": "replay-net",
+          "to": "line-close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1213.3,
+          "end": 1213.8,
+          "kind": "cut",
+          "from": "line-close-up",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1218.9,
+          "end": 1219.4,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1223.4,
+          "end": 1223.9,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1227,
+          "end": 1227.5,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1236.7,
+          "end": 1237.2,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1241.8,
+          "end": 1242.3,
+          "kind": "wipe",
+          "from": "close-up",
+          "to": "replay",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1250.4,
+          "end": 1250.9,
+          "kind": "cut",
+          "from": "replay",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1251.4,
+          "end": 1251.9,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1262.7,
+          "end": 1263.2,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1264.7,
+          "end": 1265.2,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "crowd",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1267.7,
+          "end": 1268.2,
+          "kind": "cut",
+          "from": "crowd",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1271.8,
+          "end": 1272.3,
+          "kind": "wipe",
+          "from": "close-up",
+          "to": "replay",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1278.4,
+          "end": 1278.9,
+          "kind": "cut",
+          "from": "replay",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1281.9,
+          "end": 1282.4,
+          "kind": "dissolve",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1300.8,
+          "end": 1301.3,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1304.3,
+          "end": 1304.8,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1310.9,
+          "end": 1311.5,
+          "kind": "wipe",
+          "from": "close-up",
+          "to": "serve-replay",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1315.5,
+          "end": 1316.5,
+          "kind": "dissolve",
+          "from": "serve-replay",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1323.2,
+          "end": 1323.7,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1326.7,
+          "end": 1327.3,
+          "kind": "cut",
+          "from": "court",
+          "to": "racket-close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1330.8,
+          "end": 1331.3,
+          "kind": "cut",
+          "from": "racket-close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1335.9,
+          "end": 1336.4,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1337.4,
+          "end": 1337.9,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "coach",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1344,
+          "end": 1344.5,
+          "kind": "wipe",
+          "from": "coach",
+          "to": "net-level",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1346.1,
+          "end": 1346.6,
+          "kind": "cut",
+          "from": "net-level",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1349.1,
+          "end": 1349.6,
+          "kind": "cut",
+          "from": "court",
+          "to": "net-level",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1350.7,
+          "end": 1351.2,
+          "kind": "wipe",
+          "from": "net-level",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1357.8,
+          "end": 1358.3,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1362.9,
+          "end": 1363.4,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1367.9,
+          "end": 1368.5,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1370,
+          "end": 1370.5,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "coach",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1372.5,
+          "end": 1373,
+          "kind": "cut",
+          "from": "coach",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1377.1,
+          "end": 1377.6,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1380.7,
+          "end": 1381.2,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "reverse-angle",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1393.4,
+          "end": 1393.9,
+          "kind": "cut",
+          "from": "reverse-angle",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1395.9,
+          "end": 1396.4,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1402,
+          "end": 1403,
+          "kind": "wipe",
+          "from": "close-up",
+          "to": "low-sideline",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1408.1,
+          "end": 1408.6,
+          "kind": "cut",
+          "from": "low-sideline",
+          "to": "net-close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1412.1,
+          "end": 1412.6,
+          "kind": "dissolve",
+          "from": "net-close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1415.2,
+          "end": 1415.7,
+          "kind": "cut",
+          "from": "court",
+          "to": "net-level",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1417.7,
+          "end": 1418.2,
+          "kind": "cut",
+          "from": "net-level",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1426.4,
+          "end": 1426.9,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1431.4,
+          "end": 1431.9,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "replay-net",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1438,
+          "end": 1438.6,
+          "kind": "wipe",
+          "from": "replay-net",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1442.1,
+          "end": 1442.6,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1451.7,
+          "end": 1452.1,
+          "kind": "cut",
+          "from": "court",
+          "to": "low-angle-insert",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1452.4,
+          "end": 1452.8,
+          "kind": "cut",
+          "from": "low-angle-insert",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1456.2,
+          "end": 1456.6,
+          "kind": "cut",
+          "from": "court",
+          "to": "low-angle-insert",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1456.9,
+          "end": 1457.3,
+          "kind": "cut",
+          "from": "low-angle-insert",
+          "to": "court",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1469.1,
+          "end": 1469.6,
+          "kind": "cut",
+          "from": "court",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1470.6,
+          "end": 1471.1,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "crowd",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1472.2,
+          "end": 1472.7,
+          "kind": "cut",
+          "from": "crowd",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1475.7,
+          "end": 1476.3,
+          "kind": "wipe",
+          "from": "close-up",
+          "to": "side-camera",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1488,
+          "end": 1488.5,
+          "kind": "dissolve",
+          "from": "side-camera",
+          "to": "close-up",
+          "source": "hand-marked"
+        },
+        {
+          "start": 1495.1,
+          "end": 1495.6,
+          "kind": "cut",
+          "from": "close-up",
+          "to": "bench",
+          "source": "hand-marked"
+        }
+      ],
+      "verifiedTransitions": [
+        {
+          "t": 1201.479,
+          "hd": 0.30409,
+          "verdict": "real",
+          "note": "NEW: cut net-level->court at the window start, missed by 2 Hz marking",
+          "source": "verified"
+        },
+        {
+          "t": 1203.211,
+          "hd": 0.5443,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1204.809,
+          "hd": 0.16257,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1208.277,
+          "hd": 0.3951,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1209.074,
+          "hd": 0.22936,
+          "verdict": "real",
+          "note": "NEW: camera change inside the net-level replay",
+          "source": "verified"
+        },
+        {
+          "t": 1211.743,
+          "hd": 0.24533,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1213.609,
+          "hd": 0.44729,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1219.211,
+          "hd": 0.6116,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1223.741,
+          "hd": 0.64735,
+          "verdict": "real",
+          "note": "cut Danish close-up->Indonesian close-up; the hand mark at 1225.0 was misplaced, this is the true time",
+          "source": "verified"
+        },
+        {
+          "t": 1227.072,
+          "hd": 0.62454,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1236.811,
+          "hd": 0.49536,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1242.277,
+          "hd": 0.50646,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1250.009,
+          "hd": 0.2682,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1252.008,
+          "hd": 0.52561,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1263.609,
+          "hd": 0.46851,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1265.073,
+          "hd": 0.58238,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1267.874,
+          "hd": 0.60802,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1272.007,
+          "hd": 0.42353,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1278.54,
+          "hd": 0.18384,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1281.875,
+          "hd": 0.49962,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1301.209,
+          "hd": 0.51959,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1304.008,
+          "hd": 0.19615,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1310.938,
+          "hd": 0.61469,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1316.14,
+          "hd": 0.79392,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1318.67,
+          "hd": 0.23918,
+          "verdict": "real",
+          "note": "NEW: cut close-up->bench close-up",
+          "source": "verified"
+        },
+        {
+          "t": 1323.471,
+          "hd": 0.4384,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1327.338,
+          "hd": 0.69244,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1331.247,
+          "hd": 0.66469,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1335.913,
+          "hd": 0.48625,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1337.784,
+          "hd": 0.6371,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1339.783,
+          "hd": 0.63159,
+          "verdict": "real",
+          "note": "NEW: cut coach->close-up",
+          "source": "verified"
+        },
+        {
+          "t": 1344.447,
+          "hd": 0.42689,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1351.134,
+          "hd": 0.45123,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1358.194,
+          "hd": 0.6674,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1362.86,
+          "hd": 0.56399,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1368.464,
+          "hd": 0.58049,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1369.666,
+          "hd": 0.19895,
+          "verdict": "real",
+          "note": "NEW: cut close-up pair->close-up single",
+          "source": "verified"
+        },
+        {
+          "t": 1370.593,
+          "hd": 0.69767,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1372.864,
+          "hd": 0.69862,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1377.53,
+          "hd": 0.1511,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1380.864,
+          "hd": 0.45931,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1393.797,
+          "hd": 0.23977,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1396.195,
+          "hd": 0.50711,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1396.862,
+          "hd": 0.17122,
+          "verdict": "real",
+          "note": "NEW: cut close-up->close-up",
+          "source": "verified"
+        },
+        {
+          "t": 1397.528,
+          "hd": 0.6974,
+          "verdict": "real",
+          "note": "NEW: cut close-up->coach",
+          "source": "verified"
+        },
+        {
+          "t": 1398.998,
+          "hd": 0.65115,
+          "verdict": "real",
+          "note": "NEW: cut coach->close-up",
+          "source": "verified"
+        },
+        {
+          "t": 1402.33,
+          "hd": 0.54376,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1408.466,
+          "hd": 0.45353,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1410.864,
+          "hd": 0.20432,
+          "verdict": "real",
+          "note": "branded card appears - onset of the 1411 wipe",
+          "source": "verified"
+        },
+        {
+          "t": 1411.663,
+          "hd": 0.49349,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1415.663,
+          "hd": 0.27441,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1422.863,
+          "hd": 0.26476,
+          "verdict": "real",
+          "note": "NEW: cut net-level->court",
+          "source": "verified"
+        },
+        {
+          "t": 1426.597,
+          "hd": 0.55781,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1427.925,
+          "hd": 0.61787,
+          "verdict": "real",
+          "note": "NEW: cut close-up->close-up",
+          "source": "verified"
+        },
+        {
+          "t": 1431.263,
+          "hd": 0.47936,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1432.996,
+          "hd": 0.19781,
+          "verdict": "real",
+          "note": "NEW: camera change inside the net replay",
+          "source": "verified"
+        },
+        {
+          "t": 1435.26,
+          "hd": 0.18509,
+          "verdict": "real",
+          "note": "NEW: camera change inside the net replay",
+          "source": "verified"
+        },
+        {
+          "t": 1438.196,
+          "hd": 0.4984,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1442.459,
+          "hd": 0.49783,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1451.929,
+          "hd": 0.23256,
+          "verdict": "real",
+          "note": "cut wide court -> short low-angle action insert (confirmed by the 0.25 s dense re-check; my first triple-based call of 'false positive' was WRONG)",
+          "source": "verified"
+        },
+        {
+          "t": 1452.592,
+          "hd": 0.24902,
+          "verdict": "real",
+          "note": "cut low-angle insert -> wide court (confirmed by the 0.25 s dense re-check)",
+          "source": "verified"
+        },
+        {
+          "t": 1456.328,
+          "hd": 0.23598,
+          "verdict": "real",
+          "note": "cut wide court -> second low-angle action insert (confirmed by the 0.25 s dense re-check)",
+          "source": "verified"
+        },
+        {
+          "t": 1457.127,
+          "hd": 0.20627,
+          "verdict": "real",
+          "note": "cut low-angle insert -> wide court (confirmed by the 0.25 s dense re-check)",
+          "source": "verified"
+        },
+        {
+          "t": 1469.262,
+          "hd": 0.4544,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1470.728,
+          "hd": 0.46959,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1472.477,
+          "hd": 0.59033,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1475.946,
+          "hd": 0.28109,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1481.144,
+          "hd": 0.36906,
+          "verdict": "real",
+          "note": "NEW: camera change inside the side-camera coverage",
+          "source": "verified"
+        },
+        {
+          "t": 1488.476,
+          "hd": 0.40492,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        },
+        {
+          "t": 1495.407,
+          "hd": 0.23947,
+          "verdict": "real",
+          "note": "confirmed shot change (matches a hand-marked transition)",
+          "source": "verified"
+        }
+      ],
+      "samples": [
+        {
+          "t": 1201.479,
+          "hd": 0.30409
+        },
+        {
+          "t": 1203.211,
+          "hd": 0.5443
+        },
+        {
+          "t": 1204.809,
+          "hd": 0.16257
+        },
+        {
+          "t": 1208.277,
+          "hd": 0.3951
+        },
+        {
+          "t": 1208.411,
+          "hd": 0.32484
+        },
+        {
+          "t": 1209.074,
+          "hd": 0.22936
+        },
+        {
+          "t": 1211.478,
+          "hd": 0.1837
+        },
+        {
+          "t": 1211.611,
+          "hd": 0.21487
+        },
+        {
+          "t": 1211.743,
+          "hd": 0.24533
+        },
+        {
+          "t": 1211.875,
+          "hd": 0.21105
+        },
+        {
+          "t": 1213.078,
+          "hd": 0.18913
+        },
+        {
+          "t": 1213.344,
+          "hd": 0.16146
+        },
+        {
+          "t": 1213.477,
+          "hd": 0.40405
+        },
+        {
+          "t": 1213.609,
+          "hd": 0.44729
+        },
+        {
+          "t": 1213.74,
+          "hd": 0.34947
+        },
+        {
+          "t": 1219.211,
+          "hd": 0.6116
+        },
+        {
+          "t": 1223.741,
+          "hd": 0.64735
+        },
+        {
+          "t": 1227.072,
+          "hd": 0.62454
+        },
+        {
+          "t": 1236.811,
+          "hd": 0.49536
+        },
+        {
+          "t": 1242.277,
+          "hd": 0.50646
+        },
+        {
+          "t": 1242.411,
+          "hd": 0.29281
+        },
+        {
+          "t": 1249.873,
+          "hd": 0.22879
+        },
+        {
+          "t": 1250.009,
+          "hd": 0.2682
+        },
+        {
+          "t": 1250.142,
+          "hd": 0.249
+        },
+        {
+          "t": 1252.008,
+          "hd": 0.52561
+        },
+        {
+          "t": 1263.609,
+          "hd": 0.46851
+        },
+        {
+          "t": 1264.674,
+          "hd": 0.23047
+        },
+        {
+          "t": 1264.806,
+          "hd": 0.19404
+        },
+        {
+          "t": 1265.073,
+          "hd": 0.58238
+        },
+        {
+          "t": 1267.874,
+          "hd": 0.60802
+        },
+        {
+          "t": 1271.874,
+          "hd": 0.15514
+        },
+        {
+          "t": 1272.007,
+          "hd": 0.42353
+        },
+        {
+          "t": 1272.138,
+          "hd": 0.3693
+        },
+        {
+          "t": 1272.672,
+          "hd": 0.16051
+        },
+        {
+          "t": 1278.54,
+          "hd": 0.18384
+        },
+        {
+          "t": 1281.875,
+          "hd": 0.49962
+        },
+        {
+          "t": 1282.006,
+          "hd": 0.48275
+        },
+        {
+          "t": 1301.209,
+          "hd": 0.51959
+        },
+        {
+          "t": 1304.008,
+          "hd": 0.19615
+        },
+        {
+          "t": 1310.805,
+          "hd": 0.32812
+        },
+        {
+          "t": 1310.938,
+          "hd": 0.61469
+        },
+        {
+          "t": 1311.072,
+          "hd": 0.43907
+        },
+        {
+          "t": 1315.872,
+          "hd": 0.15253
+        },
+        {
+          "t": 1316.002,
+          "hd": 0.52083
+        },
+        {
+          "t": 1316.14,
+          "hd": 0.79392
+        },
+        {
+          "t": 1318.67,
+          "hd": 0.23918
+        },
+        {
+          "t": 1323.471,
+          "hd": 0.4384
+        },
+        {
+          "t": 1327.338,
+          "hd": 0.69244
+        },
+        {
+          "t": 1331.247,
+          "hd": 0.66469
+        },
+        {
+          "t": 1335.913,
+          "hd": 0.48625
+        },
+        {
+          "t": 1337.784,
+          "hd": 0.6371
+        },
+        {
+          "t": 1339.783,
+          "hd": 0.63159
+        },
+        {
+          "t": 1344.447,
+          "hd": 0.42689
+        },
+        {
+          "t": 1344.581,
+          "hd": 0.32764
+        },
+        {
+          "t": 1350.996,
+          "hd": 0.17554
+        },
+        {
+          "t": 1351.134,
+          "hd": 0.45123
+        },
+        {
+          "t": 1351.264,
+          "hd": 0.45082
+        },
+        {
+          "t": 1358.194,
+          "hd": 0.6674
+        },
+        {
+          "t": 1362.86,
+          "hd": 0.56399
+        },
+        {
+          "t": 1368.464,
+          "hd": 0.58049
+        },
+        {
+          "t": 1369.666,
+          "hd": 0.19895
+        },
+        {
+          "t": 1370.593,
+          "hd": 0.69767
+        },
+        {
+          "t": 1372.864,
+          "hd": 0.69862
+        },
+        {
+          "t": 1377.53,
+          "hd": 0.1511
+        },
+        {
+          "t": 1380.864,
+          "hd": 0.45931
+        },
+        {
+          "t": 1393.797,
+          "hd": 0.23977
+        },
+        {
+          "t": 1396.195,
+          "hd": 0.50711
+        },
+        {
+          "t": 1396.862,
+          "hd": 0.17122
+        },
+        {
+          "t": 1397.528,
+          "hd": 0.6974
+        },
+        {
+          "t": 1398.998,
+          "hd": 0.65115
+        },
+        {
+          "t": 1402.195,
+          "hd": 0.52813
+        },
+        {
+          "t": 1402.33,
+          "hd": 0.54376
+        },
+        {
+          "t": 1408.06,
+          "hd": 0.28361
+        },
+        {
+          "t": 1408.198,
+          "hd": 0.29036
+        },
+        {
+          "t": 1408.326,
+          "hd": 0.40356
+        },
+        {
+          "t": 1408.466,
+          "hd": 0.45353
+        },
+        {
+          "t": 1408.595,
+          "hd": 0.41092
+        },
+        {
+          "t": 1410.462,
+          "hd": 0.15571
+        },
+        {
+          "t": 1410.864,
+          "hd": 0.20432
+        },
+        {
+          "t": 1411.53,
+          "hd": 0.2127
+        },
+        {
+          "t": 1411.663,
+          "hd": 0.49349
+        },
+        {
+          "t": 1411.793,
+          "hd": 0.42144
+        },
+        {
+          "t": 1415.663,
+          "hd": 0.27441
+        },
+        {
+          "t": 1422.863,
+          "hd": 0.26476
+        },
+        {
+          "t": 1426.597,
+          "hd": 0.55781
+        },
+        {
+          "t": 1427.925,
+          "hd": 0.61787
+        },
+        {
+          "t": 1431.13,
+          "hd": 0.18576
+        },
+        {
+          "t": 1431.263,
+          "hd": 0.47936
+        },
+        {
+          "t": 1432.328,
+          "hd": 0.16276
+        },
+        {
+          "t": 1432.458,
+          "hd": 0.17296
+        },
+        {
+          "t": 1432.862,
+          "hd": 0.15034
+        },
+        {
+          "t": 1432.996,
+          "hd": 0.19781
+        },
+        {
+          "t": 1433.123,
+          "hd": 0.15614
+        },
+        {
+          "t": 1433.264,
+          "hd": 0.18639
+        },
+        {
+          "t": 1435.26,
+          "hd": 0.18509
+        },
+        {
+          "t": 1438.061,
+          "hd": 0.19984
+        },
+        {
+          "t": 1438.196,
+          "hd": 0.4984
+        },
+        {
+          "t": 1438.326,
+          "hd": 0.37606
+        },
+        {
+          "t": 1442.459,
+          "hd": 0.49783
+        },
+        {
+          "t": 1451.929,
+          "hd": 0.23256
+        },
+        {
+          "t": 1452.592,
+          "hd": 0.24902
+        },
+        {
+          "t": 1456.328,
+          "hd": 0.23598
+        },
+        {
+          "t": 1457.127,
+          "hd": 0.20627
+        },
+        {
+          "t": 1469.262,
+          "hd": 0.4544
+        },
+        {
+          "t": 1470.728,
+          "hd": 0.46959
+        },
+        {
+          "t": 1472.477,
+          "hd": 0.59033
+        },
+        {
+          "t": 1475.81,
+          "hd": 0.15435
+        },
+        {
+          "t": 1475.946,
+          "hd": 0.28109
+        },
+        {
+          "t": 1476.077,
+          "hd": 0.27555
+        },
+        {
+          "t": 1481.144,
+          "hd": 0.36906
+        },
+        {
+          "t": 1481.277,
+          "hd": 0.23288
+        },
+        {
+          "t": 1481.407,
+          "hd": 0.23375
+        },
+        {
+          "t": 1488.476,
+          "hd": 0.40492
+        },
+        {
+          "t": 1488.607,
+          "hd": 0.36011
+        },
+        {
+          "t": 1495.407,
+          "hd": 0.23947
+        }
+      ]
+    },
+    {
+      "id": "club-fixed-cam",
+      "url": "https://www.youtube.com/watch?v=PlKyci2aGKs",
+      "window": {
+        "start": 900,
+        "seconds": 300
+      },
+      "scoreSource": "artifacts/raw-series/club-fixed-cam/passA.json",
+      "handMarkedSource": "artifacts/corpus/timelines/club-fixed-cam.json",
+      "verifiedSource": null,
+      "sourceChecksums": {
+        "passA": "ffca3eeba857f0fc7ae09469f7c2de4ffe329632f0e1304f5d0974c2fcca9226",
+        "timeline": "bf6d4e1dfe50e6df4fbdbe1308af9cc2c1cbb6edb11564a786c0ceddb929e939",
+        "verified": null
+      },
+      "courtView": [
+        {
+          "start": 902.3,
+          "end": 1203.6
+        }
+      ],
+      "courtViewSeconds": 301.3,
+      "handMarkedTransitions": [],
+      "verifiedTransitions": [],
+      "samples": []
+    },
+    {
+      "id": "negative-basketball",
+      "url": "https://www.youtube.com/watch?v=PDmqTrdr-vs",
+      "window": {
+        "start": 200,
+        "seconds": 300
+      },
+      "scoreSource": "artifacts/raw-series/negative-basketball/passA.json",
+      "handMarkedSource": "artifacts/corpus/timelines/negative-basketball.json",
+      "verifiedSource": "artifacts/corpus/verified/negative-basketball.json",
+      "sourceChecksums": {
+        "passA": "21cd2f5e3b4959dfa412e0fec02b21c2e1bc38886381be6c2bde5c4370b469c5",
+        "timeline": "cbb4e9a53544670172743fd4ec60d19032c2b6c0a4b52170c30cf8a3326316ba",
+        "verified": "92d7e0dd825ccbcc7c3293c55476b9d0440cc3002c22293a744726fbe4dc4dc3"
+      },
+      "courtView": [],
+      "courtViewSeconds": 0,
+      "handMarkedTransitions": [],
+      "verifiedTransitions": [
+        {
+          "t": 202.223,
+          "hd": 0.40701,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 205.288,
+          "hd": 0.22304,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 207.686,
+          "hd": 0.52593,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 215.29,
+          "hd": 0.15221,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 217.287,
+          "hd": 0.37527,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 234.483,
+          "hd": 0.45028,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 236.089,
+          "hd": 0.86163,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 238.22,
+          "hd": 0.19822,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 240.752,
+          "hd": 0.54327,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 252.487,
+          "hd": 0.45242,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 253.151,
+          "hd": 0.39792,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 263.151,
+          "hd": 0.53668,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 273.422,
+          "hd": 0.51156,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 275.687,
+          "hd": 0.65443,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 277.95,
+          "hd": 0.45747,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 293.818,
+          "hd": 0.55328,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 295.416,
+          "hd": 0.2082,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 297.819,
+          "hd": 0.45543,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 309.951,
+          "hd": 0.55868,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 311.951,
+          "hd": 0.42532,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 314.753,
+          "hd": 0.477,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 335.559,
+          "hd": 0.43671,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 336.898,
+          "hd": 0.50659,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 346.634,
+          "hd": 0.51321,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 349.165,
+          "hd": 0.67391,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 361.566,
+          "hd": 0.15199,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 375.032,
+          "hd": 0.24935,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 404.763,
+          "hd": 0.53564,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 405.563,
+          "hd": 0.49411,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 415.565,
+          "hd": 0.18766,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 424.63,
+          "hd": 0.20565,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 435.427,
+          "hd": 0.56133,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 438.23,
+          "hd": 0.86103,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 439.693,
+          "hd": 0.51313,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 450.358,
+          "hd": 0.78217,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 451.698,
+          "hd": 0.75659,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 459.297,
+          "hd": 0.53982,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 470.381,
+          "hd": 0.47285,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 472.114,
+          "hd": 0.36713,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 473.982,
+          "hd": 0.42166,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 488.913,
+          "hd": 0.47925,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        },
+        {
+          "t": 491.578,
+          "hd": 0.47928,
+          "verdict": "real",
+          "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)",
+          "source": "verified"
+        }
+      ],
+      "samples": [
+        {
+          "t": 202.223,
+          "hd": 0.40701
+        },
+        {
+          "t": 205.155,
+          "hd": 0.21924
+        },
+        {
+          "t": 205.288,
+          "hd": 0.22304
+        },
+        {
+          "t": 207.686,
+          "hd": 0.52593
+        },
+        {
+          "t": 215.29,
+          "hd": 0.15221
+        },
+        {
+          "t": 217.287,
+          "hd": 0.37527
+        },
+        {
+          "t": 234.483,
+          "hd": 0.45028
+        },
+        {
+          "t": 236.089,
+          "hd": 0.86163
+        },
+        {
+          "t": 236.219,
+          "hd": 0.21883
+        },
+        {
+          "t": 236.356,
+          "hd": 0.16618
+        },
+        {
+          "t": 236.487,
+          "hd": 0.15573
+        },
+        {
+          "t": 236.889,
+          "hd": 0.15063
+        },
+        {
+          "t": 237.019,
+          "hd": 0.16073
+        },
+        {
+          "t": 238.083,
+          "hd": 0.15579
+        },
+        {
+          "t": 238.22,
+          "hd": 0.19822
+        },
+        {
+          "t": 238.754,
+          "hd": 0.15921
+        },
+        {
+          "t": 240.62,
+          "hd": 0.4203
+        },
+        {
+          "t": 240.752,
+          "hd": 0.54327
+        },
+        {
+          "t": 240.884,
+          "hd": 0.41743
+        },
+        {
+          "t": 252.487,
+          "hd": 0.45242
+        },
+        {
+          "t": 253.151,
+          "hd": 0.39792
+        },
+        {
+          "t": 263.151,
+          "hd": 0.53668
+        },
+        {
+          "t": 273.422,
+          "hd": 0.51156
+        },
+        {
+          "t": 275.419,
+          "hd": 0.44415
+        },
+        {
+          "t": 275.551,
+          "hd": 0.47795
+        },
+        {
+          "t": 275.687,
+          "hd": 0.65443
+        },
+        {
+          "t": 277.817,
+          "hd": 0.29107
+        },
+        {
+          "t": 277.95,
+          "hd": 0.45747
+        },
+        {
+          "t": 278.086,
+          "hd": 0.34481
+        },
+        {
+          "t": 293.818,
+          "hd": 0.55328
+        },
+        {
+          "t": 295.416,
+          "hd": 0.2082
+        },
+        {
+          "t": 296.619,
+          "hd": 0.18121
+        },
+        {
+          "t": 297.153,
+          "hd": 0.24023
+        },
+        {
+          "t": 297.687,
+          "hd": 0.28743
+        },
+        {
+          "t": 297.819,
+          "hd": 0.45543
+        },
+        {
+          "t": 297.952,
+          "hd": 0.33952
+        },
+        {
+          "t": 309.951,
+          "hd": 0.55868
+        },
+        {
+          "t": 311.951,
+          "hd": 0.42532
+        },
+        {
+          "t": 314.353,
+          "hd": 0.1811
+        },
+        {
+          "t": 314.753,
+          "hd": 0.477
+        },
+        {
+          "t": 314.886,
+          "hd": 0.4554
+        },
+        {
+          "t": 315.018,
+          "hd": 0.19393
+        },
+        {
+          "t": 335.559,
+          "hd": 0.43671
+        },
+        {
+          "t": 336.898,
+          "hd": 0.50659
+        },
+        {
+          "t": 346.634,
+          "hd": 0.51321
+        },
+        {
+          "t": 348.5,
+          "hd": 0.3049
+        },
+        {
+          "t": 348.631,
+          "hd": 0.66631
+        },
+        {
+          "t": 348.763,
+          "hd": 0.37807
+        },
+        {
+          "t": 348.899,
+          "hd": 0.35509
+        },
+        {
+          "t": 349.029,
+          "hd": 0.19686
+        },
+        {
+          "t": 349.165,
+          "hd": 0.67391
+        },
+        {
+          "t": 349.299,
+          "hd": 0.57042
+        },
+        {
+          "t": 349.434,
+          "hd": 0.19819
+        },
+        {
+          "t": 349.965,
+          "hd": 0.17923
+        },
+        {
+          "t": 350.233,
+          "hd": 0.16436
+        },
+        {
+          "t": 350.366,
+          "hd": 0.21156
+        },
+        {
+          "t": 350.499,
+          "hd": 0.40451
+        },
+        {
+          "t": 350.628,
+          "hd": 0.43736
+        },
+        {
+          "t": 361.566,
+          "hd": 0.15199
+        },
+        {
+          "t": 375.032,
+          "hd": 0.24935
+        },
+        {
+          "t": 404.763,
+          "hd": 0.53564
+        },
+        {
+          "t": 405.563,
+          "hd": 0.49411
+        },
+        {
+          "t": 415.565,
+          "hd": 0.18766
+        },
+        {
+          "t": 424.63,
+          "hd": 0.20565
+        },
+        {
+          "t": 435.427,
+          "hd": 0.56133
+        },
+        {
+          "t": 438.098,
+          "hd": 0.42798
+        },
+        {
+          "t": 438.23,
+          "hd": 0.86103
+        },
+        {
+          "t": 438.362,
+          "hd": 0.15948
+        },
+        {
+          "t": 438.492,
+          "hd": 0.18199
+        },
+        {
+          "t": 438.632,
+          "hd": 0.19667
+        },
+        {
+          "t": 439.429,
+          "hd": 0.20676
+        },
+        {
+          "t": 439.561,
+          "hd": 0.45416
+        },
+        {
+          "t": 439.693,
+          "hd": 0.51313
+        },
+        {
+          "t": 450.227,
+          "hd": 0.66498
+        },
+        {
+          "t": 450.358,
+          "hd": 0.78217
+        },
+        {
+          "t": 450.497,
+          "hd": 0.18636
+        },
+        {
+          "t": 451.563,
+          "hd": 0.2593
+        },
+        {
+          "t": 451.698,
+          "hd": 0.75659
+        },
+        {
+          "t": 459.297,
+          "hd": 0.53982
+        },
+        {
+          "t": 470.381,
+          "hd": 0.47285
+        },
+        {
+          "t": 472.114,
+          "hd": 0.36713
+        },
+        {
+          "t": 473.18,
+          "hd": 0.24666
+        },
+        {
+          "t": 473.449,
+          "hd": 0.22529
+        },
+        {
+          "t": 473.581,
+          "hd": 0.24379
+        },
+        {
+          "t": 473.716,
+          "hd": 0.29118
+        },
+        {
+          "t": 473.982,
+          "hd": 0.42166
+        },
+        {
+          "t": 474.113,
+          "hd": 0.38002
+        },
+        {
+          "t": 488.913,
+          "hd": 0.47925
+        },
+        {
+          "t": 491.448,
+          "hd": 0.29869
+        },
+        {
+          "t": 491.578,
+          "hd": 0.47928
+        },
+        {
+          "t": 491.711,
+          "hd": 0.4037
+        }
+      ]
+    }
+  ]
+}
