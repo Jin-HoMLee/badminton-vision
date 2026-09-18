@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const protocol = require('../src/extension/common/protocol.js');
 global.BSOProtocol = protocol;
 const shuttle = require('../src/extension/offscreen/shuttle-tracking-adapter.js');
+const sceneChangeEvidence = require('./fixtures/scene-change-evidence.json');
 
 const WIDTH = 40;
 const HEIGHT = 20;
@@ -65,6 +66,78 @@ function twoToneFrame(invert = false, first = [0, 0, 0], second = [255, 255, 255
 function shuttleResult(message) {
   assert.equal(message.type, protocol.TYPES.ANALYZER_RESULT);
   return message.result.shuttle;
+}
+
+function mergeGroundTruth(broadcast) {
+  const spans = broadcast.handMarkedTransitions.map((transition) => ({
+    start: transition.start,
+    end: transition.end,
+    sources: [transition.source]
+  }));
+  const uncertain = [];
+  for (const transition of broadcast.verifiedTransitions) {
+    if (transition.verdict === 'real') {
+      spans.push({
+        start: transition.t - sceneChangeEvidence.verifiedCandidateWindowSeconds,
+        end: transition.t + sceneChangeEvidence.verifiedCandidateWindowSeconds,
+        sources: [transition.source]
+      });
+    } else if (transition.verdict === 'uncertain') {
+      uncertain.push(transition.t);
+    }
+  }
+  spans.sort((a, b) => a.start - b.start);
+  const transitions = [];
+  for (const span of spans) {
+    const previous = transitions.at(-1);
+    if (previous && span.start <= previous.end + sceneChangeEvidence.matchToleranceSeconds) {
+      previous.end = Math.max(previous.end, span.end);
+      previous.sources = [...new Set([...previous.sources, ...span.sources])];
+    } else {
+      transitions.push({ ...span, sources: span.sources.slice() });
+    }
+  }
+  return { transitions, uncertain };
+}
+
+function courtViewContains(broadcast, mediaTime) {
+  return broadcast.courtView.some((interval) => mediaTime >= interval.start && mediaTime < interval.end);
+}
+
+function scoreSceneChanges(broadcast, threshold) {
+  const truth = mergeGroundTruth(broadcast);
+  const events = shuttle.detectSceneChangeEvents(broadcast.samples, threshold);
+  const hits = new Array(truth.transitions.length).fill(false);
+  const falseEvents = [];
+  let uncertainHits = 0;
+  for (const event of events) {
+    let matched = false;
+    truth.transitions.forEach((transition, index) => {
+      if (event.t >= transition.start - sceneChangeEvidence.matchToleranceSeconds &&
+          event.t <= transition.end + sceneChangeEvidence.matchToleranceSeconds) {
+        hits[index] = true;
+        matched = true;
+      }
+    });
+    if (matched) continue;
+    if (truth.uncertain.some((time) => Math.abs(time - event.t) <= sceneChangeEvidence.matchToleranceSeconds)) {
+      uncertainHits += 1;
+      continue;
+    }
+    falseEvents.push(event);
+  }
+  const courtSeconds = broadcast.courtView.reduce((sum, interval) => sum + interval.end - interval.start, 0);
+  const detected = hits.filter(Boolean).length;
+  return {
+    events: events.length,
+    transitions: truth.transitions.length,
+    detected,
+    recall: truth.transitions.length ? detected / truth.transitions.length : null,
+    falseEvents: falseEvents.length,
+    falseInCourt: falseEvents.filter((event) => courtViewContains(broadcast, event.t)).length,
+    falsePer60Seconds: courtSeconds ? falseEvents.length / (courtSeconds / 60) : null,
+    uncertainHits
+  };
 }
 
 test('local adapter emits a model-neutral tracked candidate after temporal continuity', () => {
@@ -193,9 +266,38 @@ test('RGB histogram distance detects a genuine broadcast cut and quarantines dow
   assert.equal(value.confidence, null);
   assert.equal(value.candidate, null);
   assert.equal(value.trajectory.length, 0);
-  assert.equal(value.evidence.sceneChange >= 0.6, true);
+  assert.equal(value.evidence.sceneChange >= 0.15, true);
   assert.equal(value.evidence.cameraCut, true);
-  assert.equal(value.evidence.sceneChangeThreshold, 0.6);
+  assert.equal(value.evidence.sceneChangeThreshold, 0.15);
+});
+
+test('checksum-backed cross-broadcast histogram gate meets the 0.15 entry bound', () => {
+  assert.equal(sceneChangeEvidence.candidateThreshold, shuttle.DEFAULTS.sceneChangeThreshold);
+  assert.equal(sceneChangeEvidence.debounceSeconds, shuttle.SCENE_CHANGE_DEBOUNCE_SECONDS);
+  assert.match(sceneChangeEvidence.broadcastManifestChecksum, /^[0-9a-f]{64}$/);
+  assert.equal(sceneChangeEvidence.broadcasts.length, 5);
+
+  for (const broadcast of sceneChangeEvidence.broadcasts) {
+    assert.match(broadcast.id, /^(bwf-ws-2026|bwf-md-2026|bwf-md-2018|club-fixed-cam|negative-basketball)$/);
+    assert.match(broadcast.url, /^https:\/\/www\.youtube\.com\/watch\?v=/);
+    assert.ok(broadcast.sourceChecksums.passA, `${broadcast.id} is missing its pass-A checksum`);
+    assert.ok(broadcast.sourceChecksums.timeline, `${broadcast.id} is missing its timeline checksum`);
+    assert.ok(broadcast.samples.every((sample) => sample.hd >= sceneChangeEvidence.candidateThreshold));
+    assert.equal(
+      Number(broadcast.courtView.reduce((sum, interval) => sum + interval.end - interval.start, 0).toFixed(1)),
+      broadcast.courtViewSeconds,
+      `${broadcast.id} court-view duration must match its intervals`
+    );
+
+    const score = scoreSceneChanges(broadcast, shuttle.DEFAULTS.sceneChangeThreshold);
+    if (score.transitions > 0) {
+      assert.ok(score.recall >= 0.90, `${broadcast.id} recall ${score.recall.toFixed(4)} < 0.90`);
+    }
+    assert.ok(score.falsePer60Seconds == null || score.falsePer60Seconds <= 1,
+      `${broadcast.id} false-event rate ${score.falsePer60Seconds} > 1 per 60 seconds`);
+    assert.ok(score.falseInCourt <= 1, `${broadcast.id} has repeated court-view false events`);
+    assert.equal(score.falseEvents, 0, `${broadcast.id} has an unmarked scene-change event`);
+  }
 });
 
 test('histogram scene change rejects the old mean-luminance false positive during fast court motion', () => {

@@ -52,7 +52,7 @@ as a trajectory until the next compatible candidate arrives.
 
 The detector computes an 8x8x8 RGB-histogram intersection distance between
 the current and previous bounded frames as the continuous `sceneChange` score.
-A score of `0.60` or higher emits the existing boolean `cameraCut` signal and
+A score of `0.15` or higher emits the existing boolean `cameraCut` signal and
 quarantines the frame; the quarantined frame becomes the next scene baseline,
 so a held camera view does not repeatedly emit the cut signal. The old
 luminance difference remains a bounded per-pixel input for the compact shuttle
@@ -68,6 +68,15 @@ contrast against the frame, compactness, component size, and temporal
 continuity; it is an evidence score, not a model probability or accuracy
 estimate.
 
+`detectSceneChangeEvents(samples, threshold)` is the shared timestamped audit
+helper. It applies the same score threshold and merges consecutive crossings
+within `0.6` seconds, preserving the strongest score in each event.
+The committed fixture at `test/fixtures/scene-change-evidence.json` records the
+checksum-identified broadcast samples and transition truth used to audit the
+`0.15` entry bound. Its focused test requires at least `0.90` transition recall
+per broadcast and no more than one unmarked event per 60 seconds of court-view
+duration; it contains no video or frame assets.
+
 The default transport budget is a 256px long edge (at most 65,536 pixels per
 frame). Oversized readable frames are nearest-neighbour bounded before
 detection, and the work is linear in the bounded pixel count. There is one
@@ -79,7 +88,7 @@ The adapter returns explicit `unknown` output and clears or quarantines its
 state for:
 
 - invalid samples, unreadable pixels, and frame dimension changes;
-- explicit or detected camera cuts (`sceneChange >= 0.60`);
+- explicit or detected camera cuts (`sceneChange >= 0.15`);
 - duplicate, stale, or backwards media timestamps, and stale captured times;
 - missing candidates, candidate rejection, and ambiguous candidates;
 - continuity jumps, excessive gaps, and insufficient confidence.
@@ -100,7 +109,9 @@ browser's offscreen scheduler; this repository does not claim a device-specific
 millisecond benchmark. Use the runtime's existing stale/backpressure status
 rather than waiting for a result.
 
-Accuracy is not benchmarked by this adapter. It is especially vulnerable to
+Downstream shuttle accuracy is not benchmarked by this adapter. The scene-change
+entry bound is audited separately as described above. Candidate tracking remains
+especially vulnerable to
 video compression noise, motion blur, small or dark shuttle pixels, court
 lights/reflections, player or racket motion, rapid shuttle displacement,
 occlusion, zoom/crop changes, and camera cuts that are not globally obvious or
