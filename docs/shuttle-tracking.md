@@ -52,7 +52,7 @@ as a trajectory until the next compatible candidate arrives.
 
 The detector computes an 8x8x8 RGB-histogram intersection distance between
 the current and previous bounded frames as the continuous `sceneChange` score.
-A score of `0.15` or higher emits the existing boolean `cameraCut` signal and
+A score of `0.60` or higher emits the existing boolean `cameraCut` signal and
 quarantines the frame; the quarantined frame becomes the next scene baseline,
 so a held camera view does not repeatedly emit the cut signal. The old
 luminance difference remains a bounded per-pixel input for the compact shuttle
@@ -79,7 +79,7 @@ The adapter returns explicit `unknown` output and clears or quarantines its
 state for:
 
 - invalid samples, unreadable pixels, and frame dimension changes;
-- explicit or detected camera cuts (`sceneChange >= 0.15`);
+- explicit or detected camera cuts (`sceneChange >= 0.60`);
 - duplicate, stale, or backwards media timestamps, and stale captured times;
 - missing candidates, candidate rejection, and ambiguous candidates;
 - continuity jumps, excessive gaps, and insufficient confidence.
