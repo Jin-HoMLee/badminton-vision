@@ -206,7 +206,7 @@ The existing shuttle-insights extension is the reuse foundation for the manual p
 - `data/badminton-reuse-audit/report.md` — shuttle-insights foundation, manual labeling, shortcuts, CSV, drag/resize/theme, 83/83 tests.
 - `data/badminton-statistics-technical-research/report.md` — empirical YouTube frame capture, synchronization architecture, offscreen inference, court/homography, and TrackNet risk.
 - `.lavish/board.html` — final captain-reviewed playable wireframe prototype (session ended after the requested feedback pass).
-- [`corpus/`](corpus/README.md) — hand-marked five-broadcast timeline evaluation corpus (public URLs + media-time intervals + provenance only) with its schema and offline validation for Phase-1 camera-grammar work.
+- [`corpus/`](corpus/README.md) — five-broadcast timeline evaluation corpus with hand-marked court/scene evidence, provisional rally review targets, and public URLs + media-time provenance only; its schema and offline validation support Phase-1 camera-grammar work.
 
 ## 11. Public extension build and UI/runtime integration
 

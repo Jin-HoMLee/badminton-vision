@@ -52,7 +52,7 @@ names a broadcast not listed here is invalid.
 The review manifest mirrors every timeline. A timeline with provisional
 `rallyActive` intervals has a direct source-video link for each start and end
 boundary, and its entry's `reviewStatus` is
-`provisional-pending-human-verification` until a human confirms the links. A
+`pending-human-verification` until a human confirms the links. A
 timeline without `rallyActive` uses `reviewStatus: "unmarked"` and an empty
 `boundaries` array.
 
@@ -75,8 +75,8 @@ timeline without `rallyActive` uses `reviewStatus: "unmarked"` and an empty
   // The world feed is showing the wide playing-court view. Complement = non-court.
   "courtView":    [{ "start": 1055.25, "end": 1105.05 }],
 
-  // Human live-play windows, independently adjudicated from court framing;
-  // camera inserts inside a continuing rally stay inside the same interval.
+  // Provisional live-play review targets to be independently adjudicated from
+  // playback; camera inserts inside a continuing rally stay inside the same interval.
   "rallyActive":  [{ "start": 1055.25, "end": 1105.05 }],
 
   // Hard visual discontinuities (shot changes), as intervals at the marking
