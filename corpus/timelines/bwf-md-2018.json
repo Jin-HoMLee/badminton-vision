@@ -494,20 +494,5 @@
     }
   ],
   "notes": "All England 2018 world feed, 720p source, warmer/darker hall, much heavier use of super-slow-motion replay inserts (racket/shuttle macro shots at 1327-1331 and 1311-1316) than the 2026 feed. Close-up-to-close-up cuts are under-marked at the 2 Hz marking rate. A 0.25 s dense re-check of 1449-1459 s (probe/debug/bwf-md-2018/dense) found two ~0.7 s low-angle action inserts inside one rally (1451.9-1452.6 and 1456.4-1457.1); the four cuts around them are marked and the court interval is split accordingly. This production cuts mid-rally, which the 2026 feed does not. the 1225.0 mark was relocated to 1223.4.",
-  "sceneChangesComplete": true,
-  "rallyActiveDefinition": "Human live-play intervals adjudicated separately from court framing; the documented low-angle inserts remain within the continuing rally interval.",
-  "rallyActive": [
-    { "start": 1228.25, "end": 1235.95 },
-    { "start": 1252.65, "end": 1261.95 },
-    { "start": 1283.15, "end": 1300.05 },
-    { "start": 1324.45, "end": 1326.45 },
-    { "start": 1332.05, "end": 1335.15 },
-    { "start": 1347.35, "end": 1348.35 },
-    { "start": 1351.95, "end": 1357 },
-    { "start": 1364.15, "end": 1367.15 },
-    { "start": 1394.65, "end": 1395.15 },
-    { "start": 1413.35, "end": 1414.95 },
-    { "start": 1418.95, "end": 1425.65 },
-    { "start": 1442.35, "end": 1469.35 }
-  ]
+  "sceneChangesComplete": true
 }

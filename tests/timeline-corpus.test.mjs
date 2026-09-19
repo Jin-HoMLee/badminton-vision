@@ -27,7 +27,6 @@ const REQUIRED_KEYS = [
   "club-fixed-cam",
   "negative-basketball"
 ];
-const RALLY_LABEL_KEYS = ["bwf-ws-2026", "bwf-md-2026", "bwf-md-2018"];
 // Verification files exist only where the probe adjudicated detector candidates.
 const REQUIRED_VERIFIED_KEYS = ["bwf-ws-2026", "bwf-md-2026", "bwf-md-2018", "negative-basketball"];
 const CLUB_DIR = "club-fixed-cam";
@@ -158,11 +157,6 @@ test("every timeline references a declared broadcast with a consistent url, wind
     );
     assert.equal(typeof timeline.sceneChangesComplete, "boolean", `${file} sceneChangesComplete`);
     if ("rallyActive" in timeline) assert.ok(Array.isArray(timeline.rallyActive), `${file} rallyActive`);
-    if (RALLY_LABEL_KEYS.includes(key)) {
-      assert.ok(Array.isArray(timeline.rallyActive), `${file} canonical rallyActive labels`);
-      assert.equal(typeof timeline.rallyActiveDefinition, "string", `${file} rallyActiveDefinition`);
-      assert.equal(Object.hasOwn(timeline, "shuttleTrackable"), false, `${file} must not fabricate shuttleTrackable labels`);
-    }
 
     const { start, end } = timeline.window;
     assert.ok(Number.isFinite(start) && Number.isFinite(end) && start < end, `${file} window must be ordered`);
@@ -181,17 +175,17 @@ test("every timeline references a declared broadcast with a consistent url, wind
   }
 });
 
-test("rally labels remain independent from camera framing", async () => {
-  for (const key of RALLY_LABEL_KEYS) {
+test("unreviewed sources do not claim rally ground truth", async () => {
+  for (const key of REQUIRED_KEYS) {
     const timeline = await readJson(join(corpusDir, "timelines", `${key}.json`));
-    assert.notDeepEqual(timeline.rallyActive, timeline.courtView, `${key} rally labels must not copy court framing`);
+    if (key === "negative-basketball") {
+      assert.deepEqual(timeline.rallyActive, [], "the negative broadcast must remain inactive");
+    } else {
+      assert.equal(Object.hasOwn(timeline, "rallyActive"), false, `${key} rally labels require direct playback review`);
+    }
+    assert.equal(Object.hasOwn(timeline, "rallyActiveDefinition"), false, `${key} rally provenance must not claim unreviewed labels`);
   }
 
-  const olderDoubles = await readJson(join(corpusDir, "timelines/bwf-md-2018.json"));
-  assert.ok(
-    olderDoubles.rallyActive.some((interval) => interval.start <= 1451.9 && interval.end >= 1457.1),
-    "the known mid-rally camera inserts must remain inside one active-rally interval"
-  );
   const fixedCamera = await readJson(join(corpusDir, "timelines/club-fixed-cam.json"));
   assert.equal(Object.hasOwn(fixedCamera, "rallyActive"), false, "the fixed-camera control must not infer live play from framing");
 });

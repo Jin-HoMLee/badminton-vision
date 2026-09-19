@@ -21,7 +21,7 @@
       "verifiedSource": "artifacts/corpus/verified/bwf-ws-2026.json",
       "sourceChecksums": {
         "passA": "62b3371ba0d1e1446904b695a8e9ae244540d4a7c5374060db84048478a5bed0",
-        "timeline": "2203e2edddb60aa4d06bcd16cabed2c026b5d15af28e6257b2de5ade87189fee",
+        "timeline": "c6b1edd6c153b7ef3cdadcbd5ac6ad776763b520799eb043e040d8fe89d1b5ed",
         "verified": "508b6a164c40779b5abc9bdaf4ed8eb6e714121df421e795e1c9840ab78e6601"
       },
       "courtView": [
@@ -1131,7 +1131,7 @@
       "verifiedSource": "artifacts/corpus/verified/bwf-md-2026.json",
       "sourceChecksums": {
         "passA": "5a464fc49d97e7e8cd4c4bc51aa129707769ec0d8b9b46f6d3123c385b956e48",
-        "timeline": "d0b598f78e5f7102081131adb0da95667989eed657a818a3153622e4c38fc7d8",
+        "timeline": "f1154eab821fe3aca88023bdd8a54c1b47197d73e687fc6461115461f8662c3d",
         "verified": "6ae3f540f2cf8a349a6758aefcdfe988cdf57bd9849282782d51eff9bccd354a"
       },
       "courtView": [
@@ -2086,7 +2086,7 @@
       "verifiedSource": "artifacts/corpus/verified/bwf-md-2018.json",
       "sourceChecksums": {
         "passA": "834d2dbae500f272b5473995e8f33f29e27e775952880dd8748f44ee11dccafc",
-        "timeline": "06f64f15b5efe18d32e726fdf6486317dd4208eeb537ed989bdcf3a9d2bc6f0f",
+        "timeline": "2415c8c05c5d9e0198c402a6d30a301495064c5b0b27899f793d1244bb2eb8f2",
         "verified": "d499f7da0c0eaa52b776124fc5d180fe52138e7d2155d97d1d97810ad45e1397"
       },
       "courtView": [

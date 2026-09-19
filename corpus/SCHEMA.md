@@ -8,9 +8,9 @@ manifest records `rights.status: "not-cleared"`, with no license, permission,
 public-domain, or reuse-rights evidence.
 
 The Phase-0 court-view probe produced the inherited court-view, scene-change,
-and verification records; the timeline files also carry the Phase-1
-`rallyActive` additions. See `README.md` in this directory for how to add and
-validate marked intervals.
+and verification records. `rallyActive` remains optional and is absent from
+the unreviewed canonical timelines in this pass. See `README.md` in this
+directory for how to add and validate marked intervals.
 
 ## `broadcasts.json` - `bv-timeline-corpus/broadcasts.v1`
 
@@ -133,9 +133,9 @@ a zero-cut fixed camera) has no verification file.
 ## Corrections from the Phase-0 schema candidate
 
 The court-view, scene-change, and verification records were inherited from the
-Phase-0 probe. The timeline files are not byte-identical to that source because
-this phase adds separately adjudicated `rallyActive` labels; this schema
-documents both the inherited records and those additions.
+Phase-0 probe. This pass does not add `rallyActive` labels because the source
+playback was not reviewable; this schema documents the optional field without
+claiming unverified ground truth.
 
 1. **`sceneChanges` were documented as points (`{ "t": 1063.5, ... }`) but are
    stored as intervals (`{ "start", "end", ... }`).** The interval form is what

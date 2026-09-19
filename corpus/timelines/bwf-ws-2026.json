@@ -368,19 +368,5 @@
     }
   ],
   "notes": "Cuts between two visually similar non-court shots (close-up to close-up, inside the 23 s bench sequence 1128-1152, and inside multi-camera side coverage) are under-marked at the 2 Hz marking rate; see the candidate-verification pass in probe/debug/*/verify for the cuts recovered there.",
-  "sceneChangesComplete": true,
-  "rallyActiveDefinition": "Human live-play intervals adjudicated separately from court framing; setup and transition edges are excluded.",
-  "rallyActive": [
-    { "start": 1057.25, "end": 1103.05 },
-    { "start": 1117.15, "end": 1125.85 },
-    { "start": 1156.45, "end": 1165.15 },
-    { "start": 1176.75, "end": 1184.45 },
-    { "start": 1191.55, "end": 1194.55 },
-    { "start": 1199.15, "end": 1207.25 },
-    { "start": 1237.25, "end": 1249.45 },
-    { "start": 1259.05, "end": 1262.15 },
-    { "start": 1267.65, "end": 1273.25 },
-    { "start": 1302.15, "end": 1314.85 },
-    { "start": 1339.65, "end": 1347.35 }
-  ]
+  "sceneChangesComplete": true
 }
