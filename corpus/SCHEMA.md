@@ -49,12 +49,12 @@ names a broadcast not listed here is invalid.
 
 ## `rally-review.json` - `bv-rally-review.v1`
 
-The review manifest mirrors every `rallyActive` provisional interval with a
-direct source-video link for its start and end boundary. Its top-level status
-and each entry's `reviewStatus` must remain
-`provisional-pending-human-verification` until a human confirms the links.
-Empty `boundaries` arrays are intentional for controls and negatives that have
-no provisional active interval.
+The review manifest mirrors every timeline. A timeline with provisional
+`rallyActive` intervals has a direct source-video link for each start and end
+boundary, and its entry's `reviewStatus` is
+`provisional-pending-human-verification` until a human confirms the links. A
+timeline without `rallyActive` uses `reviewStatus: "unmarked"` and an empty
+`boundaries` array.
 
 ## `timelines/<key>.json` - `bv-timeline-corpus/timeline.v1`
 

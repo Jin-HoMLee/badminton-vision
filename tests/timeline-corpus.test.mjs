@@ -192,13 +192,19 @@ test("provisional rally boundaries remain linked and unverified", async () => {
     const timeline = await readJson(join(corpusDir, "timelines", `${key}.json`));
     const entry = byKey.get(key);
     assert.equal(entry.url, timeline.url, `${key} review URL must match the timeline`);
-    assert.equal(entry.reviewStatus, "pending-human-verification", `${key} rally review must remain pending`);
-    assert.equal(timeline.rallyActiveStatus, "provisional-pending-human-verification", `${key} rally labels must remain provisional`);
-    assert.equal(typeof timeline.rallyActiveDefinition, "string", `${key} rallyActiveDefinition`);
     assert.equal(Object.hasOwn(timeline, "shuttleTrackable"), false, `${key} must not fabricate shuttleTrackable labels`);
+    if (Object.hasOwn(timeline, "rallyActive")) {
+      assert.equal(entry.reviewStatus, "pending-human-verification", `${key} rally review must remain pending`);
+      assert.equal(timeline.rallyActiveStatus, "provisional-pending-human-verification", `${key} rally labels must remain provisional`);
+      assert.equal(typeof timeline.rallyActiveDefinition, "string", `${key} rallyActiveDefinition`);
+    } else {
+      assert.equal(entry.reviewStatus, "unmarked", `${key} unmarked rally review must remain unmarked`);
+      assert.equal(Object.hasOwn(timeline, "rallyActiveStatus"), false, `${key} unmarked timeline must not claim rally status`);
+      assert.equal(Object.hasOwn(timeline, "rallyActiveDefinition"), false, `${key} unmarked timeline must not claim rally provenance`);
+    }
     assert.deepEqual(
       entry.boundaries.map(({ start, end }) => ({ start, end })),
-      timeline.rallyActive,
+      timeline.rallyActive ?? [],
       `${key} review boundaries must match provisional intervals`
     );
     const sourceUrl = new URL(timeline.url);
