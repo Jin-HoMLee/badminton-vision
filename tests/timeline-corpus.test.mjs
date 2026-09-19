@@ -20,7 +20,7 @@ const VERIFIED_SCHEMA = "bv-timeline-corpus/verified-candidates.v1";
 const CANDIDATE_THRESHOLD = 0.15;
 const VERDICTS = new Set(["real", "false", "uncertain"]);
 const SCENE_CHANGE_KINDS = new Set(["cut", "wipe", "dissolve"]);
-const EXPECTED_KEYS = [
+const REQUIRED_KEYS = [
   "bwf-ws-2026",
   "bwf-md-2026",
   "bwf-md-2018",
@@ -28,7 +28,7 @@ const EXPECTED_KEYS = [
   "negative-basketball"
 ];
 // Verification files exist only where the probe adjudicated detector candidates.
-const EXPECTED_VERIFIED_KEYS = ["bwf-ws-2026", "bwf-md-2026", "bwf-md-2018", "negative-basketball"];
+const REQUIRED_VERIFIED_KEYS = ["bwf-ws-2026", "bwf-md-2026", "bwf-md-2018", "negative-basketball"];
 const CLUB_DIR = "club-fixed-cam";
 // The measured playback window starts at or after the requested window and can
 // run a few sampling ticks past its nominal end.
@@ -78,14 +78,19 @@ function assertOrderedIntervals(label, intervals, window, toleranceSeconds) {
   });
 }
 
-test("broadcast manifest declares exactly the expected five-broadcast inventory", async () => {
+test("broadcast manifest keeps the canonical inventory and rights boundary", async () => {
   const manifest = await readJson(join(corpusDir, "broadcasts.json"));
   assert.equal(manifest.schema, BROADCASTS_SCHEMA);
   assert.equal(typeof manifest.note, "string");
   assert.ok(Array.isArray(manifest.broadcasts));
+  assert.deepEqual(manifest.rights, {
+    status: "not-cleared",
+    basis: "public source URLs only; no license, permission, public-domain, or reuse-rights evidence recorded",
+    mediaIncluded: false
+  });
 
   const keys = manifest.broadcasts.map((broadcast) => broadcast.key);
-  assert.deepEqual([...keys].sort(), [...EXPECTED_KEYS].sort());
+  for (const key of REQUIRED_KEYS) assert.ok(keys.includes(key), `${key} is a required canonical broadcast`);
   assert.equal(new Set(keys).size, keys.length, "broadcast keys must be unique");
 
   for (const broadcast of manifest.broadcasts) {
@@ -107,8 +112,9 @@ test("every timeline references a declared broadcast with a consistent url, wind
   const byKey = new Map(manifest.broadcasts.map((broadcast) => [broadcast.key, broadcast]));
   const files = await corpusFiles();
   assert.deepEqual(
-    files.timelines.map((file) => file.replace(/\.json$/, "")),
-    [...EXPECTED_KEYS].sort()
+    files.timelines.map((file) => file.replace(/\.json$/, "")).sort(),
+    [...byKey.keys()].sort(),
+    "each declared broadcast needs one timeline"
   );
 
   for (const file of files.timelines) {
@@ -131,6 +137,11 @@ test("every timeline references a declared broadcast with a consistent url, wind
       `${file} renderedResolution must match its declared quality`
     );
     assert.equal(typeof timeline.sceneChangesComplete, "boolean", `${file} sceneChangesComplete`);
+    if ("rallyActive" in timeline) assert.ok(Array.isArray(timeline.rallyActive), `${file} rallyActive`);
+    if (REQUIRED_KEYS.includes(key)) {
+      assert.ok(Array.isArray(timeline.rallyActive), `${file} canonical rallyActive labels`);
+      assert.equal(Object.hasOwn(timeline, "shuttleTrackable"), false, `${file} must not fabricate shuttleTrackable labels`);
+    }
 
     const { start, end } = timeline.window;
     assert.ok(Number.isFinite(start) && Number.isFinite(end) && start < end, `${file} window must be ordered`);
@@ -155,6 +166,9 @@ test("court-view and scene-change marks are ordered intervals inside the measure
     const timeline = await readJson(join(corpusDir, "timelines", file));
     const tolerance = timeline.markResolutionSeconds;
     assertOrderedIntervals(`${file} courtView`, timeline.courtView, timeline.window, tolerance);
+    if (Array.isArray(timeline.rallyActive)) {
+      assertOrderedIntervals(`${file} rallyActive`, timeline.rallyActive, timeline.window, tolerance);
+    }
     assertOrderedIntervals(`${file} sceneChanges`, timeline.sceneChanges, timeline.window, tolerance);
 
     for (const [index, change] of timeline.sceneChanges.entries()) {
@@ -166,26 +180,29 @@ test("court-view and scene-change marks are ordered intervals inside the measure
   }
 });
 
-test("the corpus retains the probe's five-broadcast evidence totals", async () => {
-  const files = await corpusFiles();
+test("the canonical broadcasts retain their probe evidence and control semantics", async () => {
   const manifest = await readJson(join(corpusDir, "broadcasts.json"));
   const byKey = new Map(manifest.broadcasts.map((broadcast) => [broadcast.key, broadcast]));
+  const fixture = await readJson(fixturePath);
+  const fixtureByKey = new Map(fixture.broadcasts.map((broadcast) => [broadcast.id, broadcast]));
 
   let courtViewSeconds = 0;
   let transitions = 0;
-  for (const file of files.timelines) {
+  for (const key of REQUIRED_KEYS) {
+    const file = `${key}.json`;
     const timeline = await readJson(join(corpusDir, "timelines", file));
     courtViewSeconds += timeline.courtView.reduce((sum, interval) => sum + interval.end - interval.start, 0);
     transitions += timeline.sceneChanges.length;
   }
-  assert.equal(Number(courtViewSeconds.toFixed(1)), 649.4, "marked court-view seconds");
-  assert.equal(transitions, 137, "hand-marked transitions");
+  const expectedCourtViewSeconds = REQUIRED_KEYS.reduce((sum, key) => sum + fixtureByKey.get(key).courtViewSeconds, 0);
+  const expectedTransitions = REQUIRED_KEYS.reduce((sum, key) => sum + fixtureByKey.get(key).handMarkedTransitions.length, 0);
+  assert.equal(Number(courtViewSeconds.toFixed(1)), Number(expectedCourtViewSeconds.toFixed(1)), "marked court-view seconds");
+  assert.equal(transitions, expectedTransitions, "hand-marked transitions");
 
-  const expectedCourtView = { "bwf-ws-2026": 11, "bwf-md-2026": 10, "bwf-md-2018": 15, "club-fixed-cam": 1, "negative-basketball": 0 };
-  for (const file of files.timelines) {
-    const key = file.replace(/\.json$/, "");
+  for (const key of REQUIRED_KEYS) {
+    const file = `${key}.json`;
     const timeline = await readJson(join(corpusDir, "timelines", file));
-    assert.equal(timeline.courtView.length, expectedCourtView[key], `${key} court-view interval count`);
+    assert.equal(timeline.courtView.length, fixtureByKey.get(key).courtView.length, `${key} court-view interval count`);
   }
 
   // The negative is marked and deliberately incomplete; the fixed camera has no
@@ -194,6 +211,7 @@ test("the corpus retains the probe's five-broadcast evidence totals", async () =
   assert.equal(negative.sceneChangesComplete, false, "negative broadcast must be marked incomplete");
   assert.equal(negative.verifiedCandidatesOnly, true, "negative broadcast transitions come only from verification");
   assert.equal(negative.courtView.length, 0);
+  assert.deepEqual(negative.rallyActive, []);
   assert.equal(negative.sceneChanges.length, 0);
   const club = await readJson(join(corpusDir, "timelines", `${CLUB_DIR}.json`));
   assert.equal(club.sceneChangesComplete, true);
@@ -205,10 +223,8 @@ test("verification files retain the threshold, method, ordered verdicts and reco
   const manifest = await readJson(join(corpusDir, "broadcasts.json"));
   const declared = new Set(manifest.broadcasts.map((broadcast) => broadcast.key));
   const files = await corpusFiles();
-  assert.deepEqual(
-    files.verified.map((file) => file.replace(/\.json$/, "")),
-    [...EXPECTED_VERIFIED_KEYS].sort()
-  );
+  const verifiedKeys = files.verified.map((file) => file.replace(/\.json$/, ""));
+  for (const key of REQUIRED_VERIFIED_KEYS) assert.ok(verifiedKeys.includes(key), `${key} needs its canonical verification file`);
 
   let candidates = 0;
   for (const file of files.verified) {
@@ -250,7 +266,12 @@ test("verification files retain the threshold, method, ordered verdicts and reco
       assert.ok(verified.correction.length > 0, `${file} correction`);
     }
   }
-  assert.equal(candidates, 203, "verified candidate count");
+  const fixture = await readJson(fixturePath);
+  const expectedCandidates = fixture.broadcasts.reduce(
+    (sum, broadcast) => sum + (Array.isArray(broadcast.verifiedTransitions) ? broadcast.verifiedTransitions.length : 0),
+    0
+  );
+  assert.equal(candidates, expectedCandidates, "verified candidate count");
 });
 
 test("committed corpus is text-only with no absolute filesystem paths", async () => {

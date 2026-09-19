@@ -1,6 +1,11 @@
 {
   "schema": "bv-timeline-corpus/broadcasts.v1",
-  "note": "URLs and media-time windows only. No video is stored or redistributed.",
+  "note": "Metadata-only corpus: public source URLs and media-time windows are recorded, but no license, permission, public-domain, or reuse-rights evidence is recorded. No video is stored or redistributed.",
+  "rights": {
+    "status": "not-cleared",
+    "basis": "public source URLs only; no license, permission, public-domain, or reuse-rights evidence recorded",
+    "mediaIncluded": false
+  },
   "broadcasts": [
     {
       "key": "bwf-ws-2026",

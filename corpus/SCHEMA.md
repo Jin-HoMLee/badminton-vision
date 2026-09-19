@@ -3,7 +3,9 @@
 A broadcast manifest, one timeline file per broadcast, and optional candidate
 verification files make up the corpus. Nothing but public URLs, media-time
 offsets, and hand-marked classes is stored; no video frames or derived imagery
-are part of the corpus.
+are part of the corpus. The metadata is not a rights grant: the committed
+manifest records `rights.status: "not-cleared"`, with no license, permission,
+public-domain, or reuse-rights evidence.
 
 The Phase-0 court-view probe produced this data; this file is its committed
 schema. See `README.md` in this directory for how to add and validate marked
@@ -14,7 +16,12 @@ intervals.
 ```jsonc
 {
   "schema": "bv-timeline-corpus/broadcasts.v1",
-  "note": "URLs and media-time windows only. No video is stored or redistributed.",
+  "note": "Metadata-only corpus; no rights evidence or media is included.",
+  "rights": {
+    "status": "not-cleared",
+    "basis": "public source URLs only; no license, permission, public-domain, or reuse-rights evidence recorded",
+    "mediaIncluded": false
+  },
   "broadcasts": [{
     "key":        "bwf-ws-2026",           // stable slug, used as the timeline filename
     "url":        "https://www.youtube.com/watch?v=...",
@@ -51,6 +58,9 @@ names a broadcast not listed here is invalid.
   // The world feed is showing the wide playing-court view. Complement = non-court.
   "courtView":    [{ "start": 1055.25, "end": 1105.05 }],
 
+  // Coarse human-marked live-play windows; this does not claim shuttle visibility.
+  "rallyActive":  [{ "start": 1055.25, "end": 1105.05 }],
+
   // Hard visual discontinuities (shot changes), as intervals at the marking
   // resolution. `kind` is cut | wipe | dissolve; `from`/`to` are free-text
   // shot labels, not a closed vocabulary.
@@ -65,9 +75,7 @@ names a broadcast not listed here is invalid.
   "verifiedCandidatesOnly": false,
 
   // OPTIONAL, additive, filled by later scouts - unset means "not yet marked",
-  // never "false".
-  "rallyActive":     [{ "start": 1051.0, "end": 1060.2 }],
-  "shuttleTrackable":[{ "start": 1051.0, "end": 1060.2, "value": false }],
+  // never "false". `shuttleTrackable` is intentionally absent from this pass.
 
   "notes": "free text, including known under-marking"
 }
@@ -101,7 +109,9 @@ a zero-cut fixed camera) has no verification file.
 2. **`provenance` is mandatory.** Imported ShuttleSet/BadmintonDB intervals
    must keep their own value and must not be merged into a hand-marked array.
 3. **Absent means unmarked.** A missing `rallyActive` key means "nobody marked
-   this yet"; an empty array means "marked, and there is none".
+   this yet"; an empty array means "marked, and there is none". This corpus
+   does not define `shuttleTrackable`; shuttle visibility must be labeled in a
+   later pass rather than inferred from `rallyActive`.
 4. **`markResolutionSeconds` governs the evaluation tolerance.** Any matcher
    must use a tolerance at least this large and say so. It is also the bound
    on how far a marked interval edge may sit outside the measured `window`:

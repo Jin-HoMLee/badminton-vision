@@ -2,7 +2,7 @@
   "schema": "bv-scene-change-evidence.v1",
   "sourceBundle": "Phase-0 court-view probe, checksum-verified staged input",
   "sourceChecksumsFile": "artifacts/SHA256SUMS",
-  "broadcastManifestChecksum": "1dd160100d26390d16b7549a278998561371f2ce3cee6671c568d6bc5bdfb1c5",
+  "broadcastManifestChecksum": "7525a1a2e9ea0f0c64aef1bd536c81a78237e5681c8ae486d6913df5095a09d6",
   "candidateThreshold": 0.15,
   "debounceSeconds": 0.6,
   "matchToleranceSeconds": 0.75,
@@ -20,7 +20,7 @@
       "verifiedSource": "artifacts/corpus/verified/bwf-ws-2026.json",
       "sourceChecksums": {
         "passA": "62b3371ba0d1e1446904b695a8e9ae244540d4a7c5374060db84048478a5bed0",
-        "timeline": "dfc75df4f39308bc743be9e18086b86f0ba5deb28cbf74dd33e819884c44d477",
+        "timeline": "af68faee1afbef146f84eb800896c647854fc9a77917c069f077dab6053b8cab",
         "verified": "508b6a164c40779b5abc9bdaf4ed8eb6e714121df421e795e1c9840ab78e6601"
       },
       "courtView": [
@@ -1129,7 +1129,7 @@
       "verifiedSource": "artifacts/corpus/verified/bwf-md-2026.json",
       "sourceChecksums": {
         "passA": "5a464fc49d97e7e8cd4c4bc51aa129707769ec0d8b9b46f6d3123c385b956e48",
-        "timeline": "0e391242e9de552dfc472b82a29e33152df7bfc5a2e38508ec3ff78044f7e012",
+        "timeline": "a8b69fda686ab7461bdcc9a03f5ab76dcc0ff3b9eeadedca78991a00606c7e72",
         "verified": "6ae3f540f2cf8a349a6758aefcdfe988cdf57bd9849282782d51eff9bccd354a"
       },
       "courtView": [
@@ -2083,7 +2083,7 @@
       "verifiedSource": "artifacts/corpus/verified/bwf-md-2018.json",
       "sourceChecksums": {
         "passA": "834d2dbae500f272b5473995e8f33f29e27e775952880dd8748f44ee11dccafc",
-        "timeline": "adcda49c5d6503b5acf1b80ea6235b28b88dd35d463ed4561df763afdec53d9e",
+        "timeline": "a2d4410cc1a392a01ba3a0a4303d861393e6c39aa56f145555206690cb506398",
         "verified": "d499f7da0c0eaa52b776124fc5d180fe52138e7d2155d97d1d97810ad45e1397"
       },
       "courtView": [
@@ -3590,7 +3590,7 @@
       "verifiedSource": null,
       "sourceChecksums": {
         "passA": "ffca3eeba857f0fc7ae09469f7c2de4ffe329632f0e1304f5d0974c2fcca9226",
-        "timeline": "bf6d4e1dfe50e6df4fbdbe1308af9cc2c1cbb6edb11564a786c0ceddb929e939",
+        "timeline": "3bd4db21496ec04d969136d8f0f93255d1a62ba813ad561b694d266cbe884aba",
         "verified": null
       },
       "courtView": [
@@ -3616,7 +3616,7 @@
       "verifiedSource": "artifacts/corpus/verified/negative-basketball.json",
       "sourceChecksums": {
         "passA": "21cd2f5e3b4959dfa412e0fec02b21c2e1bc38886381be6c2bde5c4370b469c5",
-        "timeline": "cbb4e9a53544670172743fd4ec60d19032c2b6c0a4b52170c30cf8a3326316ba",
+        "timeline": "21d78fba6b9fb14046c6ee22930690bd702356f817b1fb588fdf9c90f8eeed4d",
         "verified": "92d7e0dd825ccbcc7c3293c55476b9d0440cc3002c22293a744726fbe4dc4dc3"
       },
       "courtView": [],

@@ -18,6 +18,9 @@
     }
   ],
   "sceneChanges": [],
+  "rallyActive": [
+    { "start": 902.3, "end": 1203.6 }
+  ],
   "notes": "One fixed camera, one unbroken shot, no replays, no score graphics, no cuts across the whole 301 s window. This is the zero-true-cut control for E2: every scene-change event a detector raises here is a false positive by construction. Doubles (four players), dim indoor hall, low-contrast wood floor.",
   "sceneChangesComplete": true
 }

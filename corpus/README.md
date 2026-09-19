@@ -1,10 +1,15 @@
-# Phase-1 evaluation corpus: hand-marked broadcast timelines
+# Phase-1 evaluation corpus: hand-marked broadcast timeline metadata
 
-A small, legally reusable evaluation corpus for camera-grammar rally
-segmentation. Each entry is a **public source URL plus media-time intervals and
-provenance** - no video, no extracted frames, no screenshots, no browser
-profiles, no machine-specific paths. The corpus is offline: nothing here needs
-network access or playback to read or validate.
+A small, metadata-only evaluation corpus for camera-grammar rally segmentation.
+Each entry is a **public source URL plus media-time intervals and provenance** -
+no video, no extracted frames, no screenshots, no browser profiles, no
+machine-specific paths. The corpus is offline: nothing here needs network
+access or playback to read or validate.
+
+> Rights disclaimer: these records are **not a legally usable clip corpus**.
+> `rights.status` is `not-cleared` because this change records no license,
+> permission, public-domain, or reuse-rights evidence. A public URL is not a
+> rights grant. No media is stored or redistributed.
 
 It comes from the Phase-0 court-view probe (E1/E2 entry gates). That
 investigation's report is not copied here; this directory is the durable
@@ -12,9 +17,12 @@ substrate, and `SCHEMA.md` is the field-level contract.
 
 ## Inventory
 
-Five broadcasts, each with a 300 s window. `courtView` is the marked
-wide-court interval list; `transitions` is the hand-marked `sceneChanges`
-count; `verified` is the per-candidate adjudication count.
+Five canonical broadcasts, each with a 300 s window. `courtView` is the marked
+wide-court interval list; `rallyActive` is the human-marked live-play window
+list; `transitions` is the hand-marked `sceneChanges` count; `verified` is the
+per-candidate adjudication count. The inventory is extensible: added broadcasts
+must add their manifest and timeline records, and any changed source checksums
+must be regenerated in the derived fixture.
 
 | key | discipline | render | window (s) | court-view | transitions | verified |
 |---|---|---|---|---|---|---|
@@ -44,9 +52,9 @@ file because it raises no candidates (it is the zero-true-cut control).
    filename, and the `url` must all agree with the manifest entry.
 3. Mark from contact sheets rendered from the live player at the
    `markResolutionSeconds` quantum (this corpus uses 2 Hz sheets, 0.5 s).
-   Record the exact court-view definition you applied in
-   `courtViewDefinition`; a missing optional field means "not marked", never
-   "false".
+   Record the exact court-view and live-play definitions you applied in
+   `courtViewDefinition` and `rallyActive`; a missing optional field means "not
+   marked", never "false". Do not infer `shuttleTrackable` from either label.
 4. If you adjudicated detector candidates, add `corpus/verified/<key>.json`.
    Record verdict reversals in `correction`; never overwrite the original.
 5. If a broadcast is only partially marked, set `sceneChangesComplete: false`
@@ -89,8 +97,9 @@ otherwise the recorded provenance no longer describes the corpus.
 - One 300 s window per broadcast, chosen for play density rather than sampled
   at random. Per-event recall and per-second-of-court-view rates are the
   comparable numbers; the transition rate is not unbiased across a whole match.
-- `rallyActive` and `shuttleTrackable` are unset everywhere; nobody has marked
-  them yet.
+- `rallyActive` is a coarse human-marked live-play window, not an assertion that
+  every frame contains a trackable shuttle. `shuttleTrackable` remains absent
+  because no shuttle-visibility labels were collected in this pass.
 
 ## Provenance of the files themselves
 
