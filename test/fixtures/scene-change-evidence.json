@@ -2,6 +2,7 @@
   "schema": "bv-scene-change-evidence.v1",
   "sourceBundle": "Phase-0 court-view probe, checksum-verified staged input",
   "sourceChecksumsFile": "artifacts/SHA256SUMS",
+  "broadcastManifestChecksum": "03aab66ca3abaf0c7399d89aefbae2e0f8c04bf6780d976569009867b49a1b01",
   "candidateThreshold": 0.15,
   "debounceSeconds": 0.6,
   "matchToleranceSeconds": 0.75,
@@ -9,6 +10,7 @@
   "broadcasts": [
     {
       "id": "bwf-ws-2026",
+      "sceneChangesComplete": true,
       "url": "https://www.youtube.com/watch?v=99riPBazzfk",
       "window": {
         "start": 1050,
@@ -1118,6 +1120,7 @@
     },
     {
       "id": "bwf-md-2026",
+      "sceneChangesComplete": true,
       "url": "https://www.youtube.com/watch?v=OyTqFMdLb_U",
       "window": {
         "start": 1200,
@@ -2072,6 +2075,7 @@
     },
     {
       "id": "bwf-md-2018",
+      "sceneChangesComplete": true,
       "url": "https://www.youtube.com/watch?v=GESh9Dg8oJE",
       "window": {
         "start": 1200,
@@ -3579,6 +3583,7 @@
     },
     {
       "id": "club-fixed-cam",
+      "sceneChangesComplete": true,
       "url": "https://www.youtube.com/watch?v=PlKyci2aGKs",
       "window": {
         "start": 900,
@@ -3605,6 +3610,7 @@
     },
     {
       "id": "negative-basketball",
+      "sceneChangesComplete": false,
       "url": "https://www.youtube.com/watch?v=PDmqTrdr-vs",
       "window": {
         "start": 200,

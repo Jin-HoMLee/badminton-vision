@@ -6,10 +6,11 @@ no video, no extracted frames, no screenshots, no browser profiles, no
 machine-specific paths. The corpus is offline: nothing here needs network
 access or playback to read or validate.
 
-> Rights disclaimer: these records are **not a legally usable clip corpus**.
-> `rights.status` is `not-cleared` because this change records no license,
-> permission, public-domain, or reuse-rights evidence. A public URL is not a
-> rights grant. No media is stored or redistributed.
+> Scope decision: this is the metadata-only Option A reference set. It makes no
+> claim that any source clip is legally usable: `rights.status` is
+> `not-cleared` because this change records no license, permission,
+> public-domain, or reuse-rights evidence. A public URL is not a rights grant.
+> No media is stored or redistributed.
 
 It comes from the Phase-0 court-view probe (E1/E2 entry gates). That
 investigation's report is not copied here; this directory is the durable
@@ -87,10 +88,12 @@ and no committed file contains an absolute filesystem path.
 
 It also pins the provenance chain for the five canonical broadcasts into the
 derived evaluation fixture `test/fixtures/scene-change-evidence.json`, which
-embeds the canonical URLs/windows plus the sha256 of each canonical
-`timelines/<key>.json` and `verified/<key>.json` as produced by the Phase-0 probe. The
-corpus JSON is committed byte-identical, so those recorded checksums stay
-verifiable. **If you change a canonical corpus file, regenerate that fixture;
+embeds a canonical manifest checksum, the canonical URLs/windows, and the sha256
+of each committed canonical `timelines/<key>.json` and
+`verified/<key>.json`. The timeline checksums include the Phase-1
+`rallyActive` additions, while the inherited court-view, scene-change, and
+verification records remain tied to the Phase-0 probe. **If you change a
+canonical corpus file, regenerate that fixture;
 for a noncanonical addition or change, update its manifest `sourceChecksums`** -
 otherwise the recorded provenance no longer describes the corpus.
 
@@ -112,10 +115,13 @@ otherwise the recorded provenance no longer describes the corpus.
 
 ## Provenance of the files themselves
 
-The corpus JSON and `SCHEMA.md` were preserved from the Phase-0 probe
-(`data/badminton-court-view-probe/artifacts/corpus/`). The JSON is byte-identical
-to what that probe produced; `SCHEMA.md` was corrected to describe the data it
-claims to describe (see its "Corrections" section). The `markedFrom` and
-`method` strings refer to the probe's `probe/` scratch workspace, which is
-intentionally not committed because it holds debug imagery - they record how
-the marks were made, not repository paths.
+The broadcast manifest, court-view intervals, scene-change intervals, and
+verification records were inherited from the Phase-0 probe
+(`data/badminton-court-view-probe/artifacts/corpus/`). The Phase-1 timeline
+files add separately adjudicated `rallyActive` labels, so the current timeline
+JSON is not byte-identical to that source snapshot. `SCHEMA.md` was corrected
+to describe the inherited fields and the later additions (see its
+"Corrections" section). The `markedFrom` and `method` strings refer to the
+probe's `probe/` scratch workspace, which is intentionally not committed
+because it holds debug imagery - they record how the marks were made, not
+repository paths.

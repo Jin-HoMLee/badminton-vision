@@ -7,9 +7,10 @@ are part of the corpus. The metadata is not a rights grant: the committed
 manifest records `rights.status: "not-cleared"`, with no license, permission,
 public-domain, or reuse-rights evidence.
 
-The Phase-0 court-view probe produced this data; this file is its committed
-schema. See `README.md` in this directory for how to add and validate marked
-intervals.
+The Phase-0 court-view probe produced the inherited court-view, scene-change,
+and verification records; the timeline files also carry the Phase-1
+`rallyActive` additions. See `README.md` in this directory for how to add and
+validate marked intervals.
 
 ## `broadcasts.json` - `bv-timeline-corpus/broadcasts.v1`
 
@@ -131,9 +132,10 @@ a zero-cut fixed camera) has no verification file.
 
 ## Corrections from the Phase-0 schema candidate
 
-The committed corpus data is byte-identical to the Phase-0 probe output; only
-this schema document was corrected, because two parts of it did not describe
-the data it claims to describe.
+The court-view, scene-change, and verification records were inherited from the
+Phase-0 probe. The timeline files are not byte-identical to that source because
+this phase adds separately adjudicated `rallyActive` labels; this schema
+documents both the inherited records and those additions.
 
 1. **`sceneChanges` were documented as points (`{ "t": 1063.5, ... }`) but are
    stored as intervals (`{ "start", "end", ... }`).** The interval form is what

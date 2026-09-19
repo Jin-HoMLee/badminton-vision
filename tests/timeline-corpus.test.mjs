@@ -321,6 +321,15 @@ test("committed corpus checksums still match the derived scene-change evidence f
   const manifest = await readJson(join(corpusDir, "broadcasts.json"));
   const manifestByKey = new Map(manifest.broadcasts.map((broadcast) => [broadcast.key, broadcast]));
   const canonicalKeys = new Set(REQUIRED_KEYS);
+  const canonicalManifest = {
+    ...manifest,
+    broadcasts: manifest.broadcasts.filter((broadcast) => canonicalKeys.has(broadcast.key))
+  };
+  assert.equal(
+    createHash("sha256").update(`${JSON.stringify(canonicalManifest, null, 2)}\n`).digest("hex"),
+    fixture.broadcastManifestChecksum,
+    "canonical broadcast manifest provenance drifted from the fixture"
+  );
   assert.deepEqual(
     fixture.broadcasts.map((broadcast) => broadcast.id).sort(),
     REQUIRED_KEYS.slice().sort(),
@@ -333,13 +342,18 @@ test("committed corpus checksums still match the derived scene-change evidence f
     assert.equal(manifestBroadcast.url, broadcast.url, `${broadcast.id} manifest URL drifted from the fixture`);
     assert.deepEqual(manifestBroadcast.window, broadcast.window, `${broadcast.id} manifest window drifted from the fixture`);
     const timelinePath = join(corpusDir, "timelines", `${broadcast.id}.json`);
+    const timeline = await readJson(timelinePath);
+    assert.equal(
+      timeline.sceneChangesComplete,
+      broadcast.sceneChangesComplete,
+      `${broadcast.id} scene-change completeness drifted from the fixture`
+    );
     assert.equal(
       await sha256(timelinePath),
       broadcast.sourceChecksums.timeline,
       `${broadcast.id} timeline no longer matches its recorded checksum; regenerate the derived fixture if the corpus changed`
     );
 
-    const timeline = await readJson(timelinePath);
     assert.deepEqual(broadcast.courtView, timeline.courtView, `${broadcast.id} court-view intervals drifted from the fixture`);
     assert.equal(
       broadcast.handMarkedTransitions.length,
