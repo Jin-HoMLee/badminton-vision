@@ -425,6 +425,12 @@ test("committed corpus checksums still match the derived scene-change evidence f
         broadcast.sourceChecksums.verified,
         `${key} verification checksum must match its manifest provenance`
       );
+    } else {
+      assert.equal(
+        Boolean(broadcast.sourceChecksums?.verified),
+        false,
+        `${key} cannot declare a verification checksum without a verification file`
+      );
     }
   }
 });
