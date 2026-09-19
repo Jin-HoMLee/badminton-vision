@@ -44,6 +44,25 @@ async function sha256(path) {
   return createHash("sha256").update(await readFile(path)).digest("hex");
 }
 
+function normalizeSceneChange(record) {
+  return {
+    start: record.start,
+    end: record.end,
+    kind: record.kind,
+    from: record.from,
+    to: record.to
+  };
+}
+
+function normalizeVerifiedTransition(record) {
+  return {
+    t: record.t,
+    hd: record.hd,
+    verdict: record.verdict,
+    note: record.note
+  };
+}
+
 async function corpusFiles() {
   const timelines = await readdir(join(corpusDir, "timelines"));
   const verified = await readdir(join(corpusDir, "verified"));
@@ -355,10 +374,10 @@ test("committed corpus checksums still match the derived scene-change evidence f
     );
 
     assert.deepEqual(broadcast.courtView, timeline.courtView, `${broadcast.id} court-view intervals drifted from the fixture`);
-    assert.equal(
-      broadcast.handMarkedTransitions.length,
-      timeline.sceneChanges.length,
-      `${broadcast.id} hand-marked transition count drifted from the fixture`
+    assert.deepEqual(
+      broadcast.handMarkedTransitions.map(normalizeSceneChange),
+      timeline.sceneChanges.map(normalizeSceneChange),
+      `${broadcast.id} hand-marked transitions drifted from the fixture`
     );
     assert.equal(
       Number(broadcast.courtViewSeconds),
@@ -374,10 +393,10 @@ test("committed corpus checksums still match the derived scene-change evidence f
         `${broadcast.id} verification file no longer matches its recorded checksum; regenerate the derived fixture if the corpus changed`
       );
       const verified = await readJson(verifiedPath);
-      assert.equal(
-        broadcast.verifiedTransitions.length,
-        verified.verdicts.length,
-        `${broadcast.id} verdict count drifted from the fixture`
+      assert.deepEqual(
+        broadcast.verifiedTransitions.map(normalizeVerifiedTransition),
+        verified.verdicts.map(normalizeVerifiedTransition),
+        `${broadcast.id} verification records drifted from the fixture`
       );
     } else {
       assert.equal(
