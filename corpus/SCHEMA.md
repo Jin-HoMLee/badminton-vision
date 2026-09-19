@@ -8,9 +8,10 @@ manifest records `rights.status: "not-cleared"`, with no license, permission,
 public-domain, or reuse-rights evidence.
 
 The Phase-0 court-view probe produced the inherited court-view, scene-change,
-and verification records. `rallyActive` remains optional and is absent from
-the unreviewed canonical timelines in this pass. See `README.md` in this
-directory for how to add and validate marked intervals.
+and verification records. The timeline files also carry provisional
+`rallyActive` review targets; they are not ground truth until the linked
+boundaries in `rally-review.json` receive direct human verification. See
+`README.md` in this directory for how to add and validate marked intervals.
 
 ## `broadcasts.json` - `bv-timeline-corpus/broadcasts.v1`
 
@@ -46,6 +47,15 @@ directory for how to add and validate marked intervals.
 single source of truth for the inventory: a timeline or verification file that
 names a broadcast not listed here is invalid.
 
+## `rally-review.json` - `bv-rally-review.v1`
+
+The review manifest mirrors every `rallyActive` provisional interval with a
+direct source-video link for its start and end boundary. Its top-level status
+and each entry's `reviewStatus` must remain
+`provisional-pending-human-verification` until a human confirms the links.
+Empty `boundaries` arrays are intentional for controls and negatives that have
+no provisional active interval.
+
 ## `timelines/<key>.json` - `bv-timeline-corpus/timeline.v1`
 
 ```jsonc
@@ -59,7 +69,8 @@ names a broadcast not listed here is invalid.
   "markResolutionSeconds": 0.5,            // the quantum these marks are trustworthy to
   "renderedResolution": "1920x1080",
   "courtViewDefinition": "<the exact rule the marker applied, in prose>",
-  "rallyActiveDefinition": "<separate human live-play adjudication, if marked>",
+  "rallyActiveStatus": "provisional-pending-human-verification",
+  "rallyActiveDefinition": "<provisional review target, not ground truth>",
 
   // The world feed is showing the wide playing-court view. Complement = non-court.
   "courtView":    [{ "start": 1055.25, "end": 1105.05 }],
@@ -116,9 +127,12 @@ a zero-cut fixed camera) has no verification file.
 2. **`provenance` is mandatory.** Imported ShuttleSet/BadmintonDB intervals
    must keep their own value and must not be merged into a hand-marked array.
 3. **Absent means unmarked.** A missing `rallyActive` key means "nobody marked
-   this yet"; an empty array means "marked, and there is none". This corpus
-   does not define `shuttleTrackable`; shuttle visibility must be labeled in a
-   later pass rather than inferred from `rallyActive`.
+   this yet"; an empty array means "marked, and there is none". Provisional
+   `rallyActive` arrays require `rallyActiveStatus:
+   "provisional-pending-human-verification"` and must not be used as ground
+   truth until `rally-review.json` is verified. This corpus does not define
+   `shuttleTrackable`; shuttle visibility must be labeled in a later pass rather
+   than inferred from `rallyActive`.
 4. **`markResolutionSeconds` governs the evaluation tolerance.** Any matcher
    must use a tolerance at least this large and say so. It is also the bound
    on how far a marked interval edge may sit outside the measured `window`:
@@ -133,9 +147,9 @@ a zero-cut fixed camera) has no verification file.
 ## Corrections from the Phase-0 schema candidate
 
 The court-view, scene-change, and verification records were inherited from the
-Phase-0 probe. This pass does not add `rallyActive` labels because the source
-playback was not reviewable; this schema documents the optional field without
-claiming unverified ground truth.
+Phase-0 probe. This pass adds provisional `rallyActive` review targets and
+timestamp links, explicitly marked pending human verification; it does not
+claim those targets as ground truth.
 
 1. **`sceneChanges` were documented as points (`{ "t": 1063.5, ... }`) but are
    stored as intervals (`{ "start", "end", ... }`).** The interval form is what

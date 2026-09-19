@@ -1,6 +1,6 @@
-# Phase-1 evaluation substrate: hand-marked broadcast timeline metadata
+# Phase-1 evaluation corpus: hand-marked broadcast timeline metadata
 
-A small, metadata-only evaluation substrate for camera-grammar segmentation.
+A small, metadata-only evaluation corpus for camera-grammar rally segmentation.
 Each entry is a **public source URL plus media-time intervals and provenance** -
 no video, no extracted frames, no screenshots, no browser profiles, no
 machine-specific paths. The corpus is offline: nothing here needs network
@@ -19,9 +19,9 @@ substrate, and `SCHEMA.md` is the field-level contract.
 ## Inventory
 
 Five canonical broadcasts, each with a 300 s window. `courtView` is the marked
-wide-court interval list; `rallyActive`, when present, is a separately reviewed
-live-play window list; `transitions` is the hand-marked `sceneChanges` count;
-`verified` is the per-candidate adjudication count. The inventory is extensible:
+wide-court interval list; `rallyActive` is a provisional live-play review-target
+list; `transitions` is the hand-marked `sceneChanges` count; `verified` is the
+per-candidate adjudication count. The inventory is extensible:
 added broadcasts must add their manifest and timeline records plus their own manifest checksums;
 the fixed Phase-0 fixture remains responsible only for the five canonical
 records.
@@ -39,11 +39,12 @@ candidates. Axes covered: singles and doubles, 1080p and 720p, modern and
 2018-era production, broadcast multi-camera grammar vs a single amateur fixed
 camera, a zero-cut control, and a non-badminton negative.
 
-No `rallyActive` intervals are claimed in this pass. The source playback was
-not reviewable, so the previous inferred timestamps were removed rather than
-presented as independent human ground truth. `negative-basketball` keeps an
-empty `rallyActive` array as the inactive negative; all other timelines remain
-unmarked until direct playback can be reviewed.
+The `rallyActive` intervals are provisional review targets only. They are not
+independent human ground truth: the source playback was unavailable in this
+capture, so every start and end is linked in `rally-review.json` for direct
+captain verification. The tests validate those links and provisional status,
+but no evaluation gate scores these intervals. `negative-basketball` and the
+fixed-camera control keep empty arrays rather than inventing active play.
 
 `negative-basketball` is different in kind and the schema says so:
 `sceneChangesComplete: false` and `verifiedCandidatesOnly: true`. Its usable
@@ -97,7 +98,7 @@ derived evaluation fixture `test/fixtures/scene-change-evidence.json`, which
 embeds a canonical manifest checksum, the canonical URLs/windows, and the sha256
 of each committed canonical `timelines/<key>.json` and
 `verified/<key>.json`. The committed timeline checksums cover the inherited
-court-view and scene-change records. **If you change a
+records and provisional review fields. **If you change a
 canonical corpus file, regenerate that fixture;
 for a noncanonical addition or change, update its manifest `sourceChecksums`** -
 otherwise the recorded provenance no longer describes the corpus.
@@ -111,9 +112,10 @@ otherwise the recorded provenance no longer describes the corpus.
 - One 300 s window per broadcast, chosen for play density rather than sampled
   at random. Per-event recall and per-second-of-court-view rates are the
   comparable numbers; the transition rate is not unbiased across a whole match.
-- No `rallyActive` ground truth is claimed because direct playback was not
-  reviewable in this pass. `shuttleTrackable` remains absent because no
-  shuttle-visibility labels were collected.
+- `rallyActive` is provisional and pending human verification through the
+  timestamp links in `rally-review.json`; it is not evaluation ground truth.
+  `shuttleTrackable` remains absent because no shuttle-visibility labels were
+  collected.
 - The fixed-camera control remains intentionally unmarked for rally activity
   rather than treating its uninterrupted framing as continuous play.
 
@@ -121,10 +123,10 @@ otherwise the recorded provenance no longer describes the corpus.
 
 The broadcast manifest, court-view intervals, scene-change intervals, and
 verification records were inherited from the Phase-0 probe
-(`data/badminton-court-view-probe/artifacts/corpus/`). This pass does not claim
-Phase-1 `rallyActive` ground truth because the source playback was not
-reviewable; `SCHEMA.md` documents the optional field without asserting it is
-present here. The `markedFrom` and `method` strings refer to the
+(`data/badminton-court-view-probe/artifacts/corpus/`). This pass adds
+provisional `rallyActive` review targets and the linked boundary manifest but
+does not claim human ground truth before direct verification. The `markedFrom`
+and `method` strings refer to the
 probe's `probe/` scratch workspace, which is intentionally not committed
 because it holds debug imagery - they record how the marks were made, not
 repository paths.

@@ -12,6 +12,8 @@
   "renderedResolution": "1920x1080",
   "courtViewDefinition": "same badminton court-view definition as the other broadcasts. This is a basketball broadcast: no frame in the window is a badminton court view, so courtView is empty by construction and every positive prediction on this broadcast is a false positive.",
   "courtView": [],
+  "rallyActiveStatus": "provisional-pending-human-verification",
+  "rallyActiveDefinition": "No provisional active interval; the non-badminton negative remains inactive pending review.",
   "rallyActive": [],
   "sceneChanges": [],
   "sceneChangesComplete": false,

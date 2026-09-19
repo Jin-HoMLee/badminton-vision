@@ -1,0 +1,73 @@
+{
+  "schema": "bv-rally-review.v1",
+  "status": "provisional-pending-human-verification",
+  "sourcePlaybackStatus": "unavailable-in-capture",
+  "note": "Every boundary is a provisional review target, not verified ground truth. Confirm each linked start and end against direct playback before using rallyActive for evaluation.",
+  "broadcasts": [
+    {
+      "broadcast": "bwf-ws-2026",
+      "url": "https://www.youtube.com/watch?v=99riPBazzfk",
+      "reviewStatus": "pending-human-verification",
+      "boundaries": [
+        { "start": 1057, "end": 1104, "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1057s", "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1104s" },
+        { "start": 1117, "end": 1126, "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1117s", "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1126s" },
+        { "start": 1156, "end": 1165.5, "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1156s", "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1165.5s" },
+        { "start": 1177, "end": 1184, "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1177s", "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1184s" },
+        { "start": 1191, "end": 1207.5, "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1191s", "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1207.5s" },
+        { "start": 1237, "end": 1249.5, "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1237s", "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1249.5s" },
+        { "start": 1259, "end": 1262.5, "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1259s", "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1262.5s" },
+        { "start": 1267.5, "end": 1273.5, "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1267.5s", "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1273.5s" },
+        { "start": 1302, "end": 1315, "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1302s", "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1315s" },
+        { "start": 1339.5, "end": 1347.5, "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1339.5s", "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1347.5s" }
+      ]
+    },
+    {
+      "broadcast": "bwf-md-2026",
+      "url": "https://www.youtube.com/watch?v=OyTqFMdLb_U",
+      "reviewStatus": "pending-human-verification",
+      "boundaries": [
+        { "start": 1230, "end": 1243.5, "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1230s", "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1243.5s" },
+        { "start": 1258, "end": 1273.5, "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1258s", "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1273.5s" },
+        { "start": 1295, "end": 1303.5, "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1295s", "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1303.5s" },
+        { "start": 1310, "end": 1313.5, "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1310s", "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1313.5s" },
+        { "start": 1318, "end": 1324.5, "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1318s", "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1324.5s" },
+        { "start": 1332, "end": 1340, "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1332s", "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1340s" },
+        { "start": 1356.5, "end": 1367, "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1356.5s", "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1367s" },
+        { "start": 1375, "end": 1377.5, "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1375s", "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1377.5s" },
+        { "start": 1384.5, "end": 1393, "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1384.5s", "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1393s" },
+        { "start": 1498, "end": 1500.5, "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1498s", "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1500.5s" }
+      ]
+    },
+    {
+      "broadcast": "bwf-md-2018",
+      "url": "https://www.youtube.com/watch?v=GESh9Dg8oJE",
+      "reviewStatus": "pending-human-verification",
+      "boundaries": [
+        { "start": 1228, "end": 1236, "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1228s", "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1236s" },
+        { "start": 1252.5, "end": 1262, "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1252.5s", "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1262s" },
+        { "start": 1283, "end": 1300, "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1283s", "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1300s" },
+        { "start": 1324, "end": 1326.5, "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1324s", "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1326.5s" },
+        { "start": 1332, "end": 1335, "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1332s", "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1335s" },
+        { "start": 1347, "end": 1348.5, "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1347s", "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1348.5s" },
+        { "start": 1352, "end": 1357, "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1352s", "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1357s" },
+        { "start": 1364, "end": 1367.5, "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1364s", "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1367.5s" },
+        { "start": 1394.5, "end": 1395.5, "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1394.5s", "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1395.5s" },
+        { "start": 1413, "end": 1415, "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1413s", "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1415s" },
+        { "start": 1419, "end": 1425.5, "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1419s", "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1425.5s" },
+        { "start": 1442, "end": 1469.5, "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1442s", "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1469.5s" }
+      ]
+    },
+    {
+      "broadcast": "club-fixed-cam",
+      "url": "https://www.youtube.com/watch?v=PlKyci2aGKs",
+      "reviewStatus": "pending-human-verification",
+      "boundaries": []
+    },
+    {
+      "broadcast": "negative-basketball",
+      "url": "https://www.youtube.com/watch?v=PDmqTrdr-vs",
+      "reviewStatus": "pending-human-verification",
+      "boundaries": []
+    }
+  ]
+}
