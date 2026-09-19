@@ -1,0 +1,23 @@
+{
+  "schema": "bv-timeline-corpus/timeline.v1",
+  "broadcast": "club-fixed-cam",
+  "url": "https://www.youtube.com/watch?v=PlKyci2aGKs",
+  "window": {
+    "start": 902.3,
+    "end": 1203.6
+  },
+  "provenance": "hand-marked",
+  "markedFrom": "2 Hz contact sheets rendered from the live player (probe/debug/club-fixed-cam/sheetsA); sheets 0, 200, 300 and 600 inspected frame by frame, the remainder covered by the same single unbroken shot",
+  "markResolutionSeconds": 0.5,
+  "renderedResolution": "1920x1080",
+  "courtViewDefinition": "same as bwf-ws-2026: the whole playing court with all four court corners inside the frame. This amateur camera is a single low-elevation oblique wide shot from the side of the hall; the full court including both baselines is inside the frame for the entire window, so the whole window is court view.",
+  "courtView": [
+    {
+      "start": 902.3,
+      "end": 1203.6
+    }
+  ],
+  "sceneChanges": [],
+  "notes": "One fixed camera, one unbroken shot, no replays, no score graphics, no cuts across the whole 301 s window. This is the zero-true-cut control for E2: every scene-change event a detector raises here is a false positive by construction. Doubles (four players), dim indoor hall, low-contrast wood floor.",
+  "sceneChangesComplete": true
+}

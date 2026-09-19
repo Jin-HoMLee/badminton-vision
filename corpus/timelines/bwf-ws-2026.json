@@ -1,0 +1,372 @@
+{
+  "schema": "bv-timeline-corpus/timeline.v1",
+  "broadcast": "bwf-ws-2026",
+  "url": "https://www.youtube.com/watch?v=99riPBazzfk",
+  "window": {
+    "start": 1050.5,
+    "end": 1351.7
+  },
+  "provenance": "hand-marked",
+  "markedFrom": "2 Hz contact sheets rendered from the live player (probe/debug/bwf-ws-2026/sheetsA)",
+  "markResolutionSeconds": 0.5,
+  "renderedResolution": "1920x1080",
+  "courtViewDefinition": "the world feed shows the whole playing court from the elevated behind-baseline or high-oblique camera, with all four court corners inside the frame; low sideline / net-level / close-up / replay-from-the-side coverage is NOT court view even when court lines are visible",
+  "courtView": [
+    {
+      "start": 1055.25,
+      "end": 1105.05
+    },
+    {
+      "start": 1115.15,
+      "end": 1126.85
+    },
+    {
+      "start": 1154.95,
+      "end": 1166.65
+    },
+    {
+      "start": 1175.25,
+      "end": 1185.45
+    },
+    {
+      "start": 1190.55,
+      "end": 1195.55
+    },
+    {
+      "start": 1198.15,
+      "end": 1208.25
+    },
+    {
+      "start": 1236.25,
+      "end": 1250.45
+    },
+    {
+      "start": 1258.05,
+      "end": 1263.15
+    },
+    {
+      "start": 1266.65,
+      "end": 1273.75
+    },
+    {
+      "start": 1301.15,
+      "end": 1315.85
+    },
+    {
+      "start": 1338.65,
+      "end": 1348.35
+    }
+  ],
+  "sceneChanges": [
+    {
+      "start": 1054.5,
+      "end": 1055.5,
+      "kind": "dissolve",
+      "from": "crowd",
+      "to": "court"
+    },
+    {
+      "start": 1104.8,
+      "end": 1105.3,
+      "kind": "cut",
+      "from": "court",
+      "to": "crowd"
+    },
+    {
+      "start": 1107.3,
+      "end": 1107.8,
+      "kind": "cut",
+      "from": "crowd",
+      "to": "close-up"
+    },
+    {
+      "start": 1111.4,
+      "end": 1111.9,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "low-sideline"
+    },
+    {
+      "start": 1114.9,
+      "end": 1115.4,
+      "kind": "cut",
+      "from": "low-sideline",
+      "to": "court"
+    },
+    {
+      "start": 1126.6,
+      "end": 1128.2,
+      "kind": "wipe",
+      "from": "court",
+      "to": "bench"
+    },
+    {
+      "start": 1151.6,
+      "end": 1152.1,
+      "kind": "cut",
+      "from": "bench",
+      "to": "net-level"
+    },
+    {
+      "start": 1154.6,
+      "end": 1155.2,
+      "kind": "cut",
+      "from": "net-level",
+      "to": "court"
+    },
+    {
+      "start": 1166.4,
+      "end": 1166.9,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1170.4,
+      "end": 1170.9,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "close-up"
+    },
+    {
+      "start": 1173.9,
+      "end": 1174.5,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "close-up"
+    },
+    {
+      "start": 1175.0,
+      "end": 1175.5,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1185.2,
+      "end": 1185.7,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1187.7,
+      "end": 1188.2,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "close-up"
+    },
+    {
+      "start": 1190.2,
+      "end": 1190.8,
+      "kind": "wipe",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1195.3,
+      "end": 1196.8,
+      "kind": "wipe",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1197.8,
+      "end": 1198.4,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1208.0,
+      "end": 1208.5,
+      "kind": "cut",
+      "from": "court",
+      "to": "coaches"
+    },
+    {
+      "start": 1213.6,
+      "end": 1214.1,
+      "kind": "wipe",
+      "from": "coaches",
+      "to": "low-sideline"
+    },
+    {
+      "start": 1224.8,
+      "end": 1225.3,
+      "kind": "wipe",
+      "from": "low-sideline",
+      "to": "close-up"
+    },
+    {
+      "start": 1236.0,
+      "end": 1236.5,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1250.2,
+      "end": 1250.7,
+      "kind": "cut",
+      "from": "court",
+      "to": "crowd"
+    },
+    {
+      "start": 1251.7,
+      "end": 1252.2,
+      "kind": "cut",
+      "from": "crowd",
+      "to": "close-up"
+    },
+    {
+      "start": 1254.8,
+      "end": 1255.3,
+      "kind": "cut",
+      "from": "net-level",
+      "to": "close-up"
+    },
+    {
+      "start": 1257.3,
+      "end": 1258.3,
+      "kind": "wipe",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1262.9,
+      "end": 1263.4,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1266.4,
+      "end": 1266.9,
+      "kind": "wipe",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1273.5,
+      "end": 1274.0,
+      "kind": "cut",
+      "from": "court",
+      "to": "coaches"
+    },
+    {
+      "start": 1275.1,
+      "end": 1275.6,
+      "kind": "cut",
+      "from": "coaches",
+      "to": "close-up"
+    },
+    {
+      "start": 1277.6,
+      "end": 1278.1,
+      "kind": "wipe",
+      "from": "close-up",
+      "to": "low-sideline"
+    },
+    {
+      "start": 1288.7,
+      "end": 1289.2,
+      "kind": "cut",
+      "from": "low-sideline",
+      "to": "net-level"
+    },
+    {
+      "start": 1292.3,
+      "end": 1292.8,
+      "kind": "wipe",
+      "from": "net-level",
+      "to": "close-up"
+    },
+    {
+      "start": 1297.4,
+      "end": 1297.9,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "net-level"
+    },
+    {
+      "start": 1300.9,
+      "end": 1301.4,
+      "kind": "cut",
+      "from": "net-level",
+      "to": "court"
+    },
+    {
+      "start": 1315.6,
+      "end": 1316.1,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1319.2,
+      "end": 1319.7,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "coaches"
+    },
+    {
+      "start": 1320.7,
+      "end": 1321.2,
+      "kind": "cut",
+      "from": "coaches",
+      "to": "close-up"
+    },
+    {
+      "start": 1322.7,
+      "end": 1323.2,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "close-up"
+    },
+    {
+      "start": 1325.7,
+      "end": 1326.2,
+      "kind": "wipe",
+      "from": "close-up",
+      "to": "low-sideline"
+    },
+    {
+      "start": 1331.8,
+      "end": 1332.3,
+      "kind": "cut",
+      "from": "low-sideline",
+      "to": "coaches"
+    },
+    {
+      "start": 1335.9,
+      "end": 1336.4,
+      "kind": "cut",
+      "from": "coaches",
+      "to": "close-up"
+    },
+    {
+      "start": 1338.4,
+      "end": 1338.9,
+      "kind": "wipe",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1348.1,
+      "end": 1348.6,
+      "kind": "cut",
+      "from": "court",
+      "to": "net-level"
+    },
+    {
+      "start": 1350.1,
+      "end": 1350.7,
+      "kind": "cut",
+      "from": "net-level",
+      "to": "crowd"
+    }
+  ],
+  "notes": "Cuts between two visually similar non-court shots (close-up to close-up, inside the 23 s bench sequence 1128-1152, and inside multi-camera side coverage) are under-marked at the 2 Hz marking rate; see the candidate-verification pass in probe/debug/*/verify for the cuts recovered there.",
+  "sceneChangesComplete": true
+}

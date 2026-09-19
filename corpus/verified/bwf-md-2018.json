@@ -1,0 +1,499 @@
+{
+ "schema": "bv-timeline-corpus/verified-candidates.v1",
+ "broadcast": "bwf-md-2018",
+ "candidateThreshold": 0.15,
+ "method": "every pass-A sample at or above the candidate threshold was seeked to at t-0.6 / t / t+0.6 and judged by eye from probe/debug/bwf-md-2018/verify/",
+ "verdicts": [
+  {
+   "i": 0,
+   "t": 1201.479,
+   "hd": 0.30409,
+   "verdict": "real",
+   "note": "NEW: cut net-level->court at the window start, missed by 2 Hz marking"
+  },
+  {
+   "i": 1,
+   "t": 1203.211,
+   "hd": 0.5443,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 2,
+   "t": 1204.809,
+   "hd": 0.16257,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 3,
+   "t": 1208.277,
+   "hd": 0.3951,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 4,
+   "t": 1209.074,
+   "hd": 0.22936,
+   "verdict": "real",
+   "note": "NEW: camera change inside the net-level replay"
+  },
+  {
+   "i": 5,
+   "t": 1211.743,
+   "hd": 0.24533,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 6,
+   "t": 1213.609,
+   "hd": 0.44729,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 7,
+   "t": 1219.211,
+   "hd": 0.6116,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 8,
+   "t": 1223.741,
+   "hd": 0.64735,
+   "verdict": "real",
+   "note": "cut Danish close-up->Indonesian close-up; the hand mark at 1225.0 was misplaced, this is the true time"
+  },
+  {
+   "i": 9,
+   "t": 1227.072,
+   "hd": 0.62454,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 10,
+   "t": 1236.811,
+   "hd": 0.49536,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 11,
+   "t": 1242.277,
+   "hd": 0.50646,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 12,
+   "t": 1250.009,
+   "hd": 0.2682,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 13,
+   "t": 1252.008,
+   "hd": 0.52561,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 14,
+   "t": 1263.609,
+   "hd": 0.46851,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 15,
+   "t": 1265.073,
+   "hd": 0.58238,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 16,
+   "t": 1267.874,
+   "hd": 0.60802,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 17,
+   "t": 1272.007,
+   "hd": 0.42353,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 18,
+   "t": 1278.54,
+   "hd": 0.18384,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 19,
+   "t": 1281.875,
+   "hd": 0.49962,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 20,
+   "t": 1301.209,
+   "hd": 0.51959,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 21,
+   "t": 1304.008,
+   "hd": 0.19615,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 22,
+   "t": 1310.938,
+   "hd": 0.61469,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 23,
+   "t": 1316.14,
+   "hd": 0.79392,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 24,
+   "t": 1318.67,
+   "hd": 0.23918,
+   "verdict": "real",
+   "note": "NEW: cut close-up->bench close-up"
+  },
+  {
+   "i": 25,
+   "t": 1323.471,
+   "hd": 0.4384,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 26,
+   "t": 1327.338,
+   "hd": 0.69244,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 27,
+   "t": 1331.247,
+   "hd": 0.66469,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 28,
+   "t": 1335.913,
+   "hd": 0.48625,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 29,
+   "t": 1337.784,
+   "hd": 0.6371,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 30,
+   "t": 1339.783,
+   "hd": 0.63159,
+   "verdict": "real",
+   "note": "NEW: cut coach->close-up"
+  },
+  {
+   "i": 31,
+   "t": 1344.447,
+   "hd": 0.42689,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 32,
+   "t": 1351.134,
+   "hd": 0.45123,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 33,
+   "t": 1358.194,
+   "hd": 0.6674,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 34,
+   "t": 1362.86,
+   "hd": 0.56399,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 35,
+   "t": 1368.464,
+   "hd": 0.58049,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 36,
+   "t": 1369.666,
+   "hd": 0.19895,
+   "verdict": "real",
+   "note": "NEW: cut close-up pair->close-up single"
+  },
+  {
+   "i": 37,
+   "t": 1370.593,
+   "hd": 0.69767,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 38,
+   "t": 1372.864,
+   "hd": 0.69862,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 39,
+   "t": 1377.53,
+   "hd": 0.1511,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 40,
+   "t": 1380.864,
+   "hd": 0.45931,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 41,
+   "t": 1393.797,
+   "hd": 0.23977,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 42,
+   "t": 1396.195,
+   "hd": 0.50711,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 43,
+   "t": 1396.862,
+   "hd": 0.17122,
+   "verdict": "real",
+   "note": "NEW: cut close-up->close-up"
+  },
+  {
+   "i": 44,
+   "t": 1397.528,
+   "hd": 0.6974,
+   "verdict": "real",
+   "note": "NEW: cut close-up->coach"
+  },
+  {
+   "i": 45,
+   "t": 1398.998,
+   "hd": 0.65115,
+   "verdict": "real",
+   "note": "NEW: cut coach->close-up"
+  },
+  {
+   "i": 46,
+   "t": 1402.33,
+   "hd": 0.54376,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 47,
+   "t": 1408.466,
+   "hd": 0.45353,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 48,
+   "t": 1410.864,
+   "hd": 0.20432,
+   "verdict": "real",
+   "note": "branded card appears - onset of the 1411 wipe"
+  },
+  {
+   "i": 49,
+   "t": 1411.663,
+   "hd": 0.49349,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 50,
+   "t": 1415.663,
+   "hd": 0.27441,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 51,
+   "t": 1422.863,
+   "hd": 0.26476,
+   "verdict": "real",
+   "note": "NEW: cut net-level->court"
+  },
+  {
+   "i": 52,
+   "t": 1426.597,
+   "hd": 0.55781,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 53,
+   "t": 1427.925,
+   "hd": 0.61787,
+   "verdict": "real",
+   "note": "NEW: cut close-up->close-up"
+  },
+  {
+   "i": 54,
+   "t": 1431.263,
+   "hd": 0.47936,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 55,
+   "t": 1432.996,
+   "hd": 0.19781,
+   "verdict": "real",
+   "note": "NEW: camera change inside the net replay"
+  },
+  {
+   "i": 56,
+   "t": 1435.26,
+   "hd": 0.18509,
+   "verdict": "real",
+   "note": "NEW: camera change inside the net replay"
+  },
+  {
+   "i": 57,
+   "t": 1438.196,
+   "hd": 0.4984,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 58,
+   "t": 1442.459,
+   "hd": 0.49783,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 59,
+   "t": 1451.929,
+   "hd": 0.23256,
+   "verdict": "real",
+   "note": "cut wide court -> short low-angle action insert (confirmed by the 0.25 s dense re-check; my first triple-based call of 'false positive' was WRONG)"
+  },
+  {
+   "i": 60,
+   "t": 1452.592,
+   "hd": 0.24902,
+   "verdict": "real",
+   "note": "cut low-angle insert -> wide court (confirmed by the 0.25 s dense re-check)"
+  },
+  {
+   "i": 61,
+   "t": 1456.328,
+   "hd": 0.23598,
+   "verdict": "real",
+   "note": "cut wide court -> second low-angle action insert (confirmed by the 0.25 s dense re-check)"
+  },
+  {
+   "i": 62,
+   "t": 1457.127,
+   "hd": 0.20627,
+   "verdict": "real",
+   "note": "cut low-angle insert -> wide court (confirmed by the 0.25 s dense re-check)"
+  },
+  {
+   "i": 63,
+   "t": 1469.262,
+   "hd": 0.4544,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 64,
+   "t": 1470.728,
+   "hd": 0.46959,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 65,
+   "t": 1472.477,
+   "hd": 0.59033,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 66,
+   "t": 1475.946,
+   "hd": 0.28109,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 67,
+   "t": 1481.144,
+   "hd": 0.36906,
+   "verdict": "real",
+   "note": "NEW: camera change inside the side-camera coverage"
+  },
+  {
+   "i": 68,
+   "t": 1488.476,
+   "hd": 0.40492,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  },
+  {
+   "i": 69,
+   "t": 1495.407,
+   "hd": 0.23947,
+   "verdict": "real",
+   "note": "confirmed shot change (matches a hand-marked transition)"
+  }
+ ],
+ "correction": "Candidates 59-62 were first judged false positives from the t-0.6/t/t+0.6 triples; a 0.25 s dense re-check of 1449-1459 s showed two ~0.7 s low-angle action inserts and reclassified all four as real cuts. No false positive survives on this broadcast."
+}

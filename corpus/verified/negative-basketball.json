@@ -1,0 +1,302 @@
+{
+ "schema": "bv-timeline-corpus/verified-candidates.v1",
+ "broadcast": "negative-basketball",
+ "candidateThreshold": 0.15,
+ "method": "every pass-A sample at or above the candidate threshold was seeked to at t-0.6 / t / t+0.6 and judged by eye from probe/debug/negative-basketball/verify/",
+ "verdicts": [
+  {
+   "i": 0,
+   "t": 202.223,
+   "hd": 0.40701,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 1,
+   "t": 205.288,
+   "hd": 0.22304,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 2,
+   "t": 207.686,
+   "hd": 0.52593,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 3,
+   "t": 215.29,
+   "hd": 0.15221,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 4,
+   "t": 217.287,
+   "hd": 0.37527,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 5,
+   "t": 234.483,
+   "hd": 0.45028,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 6,
+   "t": 236.089,
+   "hd": 0.86163,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 7,
+   "t": 238.22,
+   "hd": 0.19822,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 8,
+   "t": 240.752,
+   "hd": 0.54327,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 9,
+   "t": 252.487,
+   "hd": 0.45242,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 10,
+   "t": 253.151,
+   "hd": 0.39792,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 11,
+   "t": 263.151,
+   "hd": 0.53668,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 12,
+   "t": 273.422,
+   "hd": 0.51156,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 13,
+   "t": 275.687,
+   "hd": 0.65443,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 14,
+   "t": 277.95,
+   "hd": 0.45747,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 15,
+   "t": 293.818,
+   "hd": 0.55328,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 16,
+   "t": 295.416,
+   "hd": 0.2082,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 17,
+   "t": 297.819,
+   "hd": 0.45543,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 18,
+   "t": 309.951,
+   "hd": 0.55868,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 19,
+   "t": 311.951,
+   "hd": 0.42532,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 20,
+   "t": 314.753,
+   "hd": 0.477,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 21,
+   "t": 335.559,
+   "hd": 0.43671,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 22,
+   "t": 336.898,
+   "hd": 0.50659,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 23,
+   "t": 346.634,
+   "hd": 0.51321,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 24,
+   "t": 349.165,
+   "hd": 0.67391,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 25,
+   "t": 361.566,
+   "hd": 0.15199,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 26,
+   "t": 375.032,
+   "hd": 0.24935,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 27,
+   "t": 404.763,
+   "hd": 0.53564,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 28,
+   "t": 405.563,
+   "hd": 0.49411,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 29,
+   "t": 415.565,
+   "hd": 0.18766,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 30,
+   "t": 424.63,
+   "hd": 0.20565,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 31,
+   "t": 435.427,
+   "hd": 0.56133,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 32,
+   "t": 438.23,
+   "hd": 0.86103,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 33,
+   "t": 439.693,
+   "hd": 0.51313,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 34,
+   "t": 450.358,
+   "hd": 0.78217,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 35,
+   "t": 451.698,
+   "hd": 0.75659,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 36,
+   "t": 459.297,
+   "hd": 0.53982,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 37,
+   "t": 470.381,
+   "hd": 0.47285,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 38,
+   "t": 472.114,
+   "hd": 0.36713,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 39,
+   "t": 473.982,
+   "hd": 0.42166,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 40,
+   "t": 488.913,
+   "hd": 0.47925,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  },
+  {
+   "i": 41,
+   "t": 491.578,
+   "hd": 0.47928,
+   "verdict": "real",
+   "note": "confirmed shot change (wide court / close-up / crowd / branded UAAP sting)"
+  }
+ ]
+}

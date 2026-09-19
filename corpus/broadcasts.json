@@ -1,0 +1,66 @@
+{
+  "schema": "bv-timeline-corpus/broadcasts.v1",
+  "note": "URLs and media-time windows only. No video is stored or redistributed.",
+  "broadcasts": [
+    {
+      "key": "bwf-ws-2026",
+      "url": "https://www.youtube.com/watch?v=99riPBazzfk",
+      "videoId": "99riPBazzfk",
+      "title": "BWF World Championships 2026 | An Se Young (KOR) [1] vs Akane Yamaguchi (JPN) [2] | F",
+      "channel": "BWF TV",
+      "discipline": "women's singles",
+      "production": "BWF TV 2026 world feed",
+      "quality": "hd1080",
+      "window": { "start": 1050, "seconds": 300 },
+      "why": "captain's acceptance match; modern BWF grammar, frequent replays/close-ups, 1080p"
+    },
+    {
+      "key": "bwf-md-2026",
+      "url": "https://www.youtube.com/watch?v=OyTqFMdLb_U",
+      "videoId": "OyTqFMdLb_U",
+      "title": "BWF World Championships 2026 | Chia/Soh (MAS) [4] vs Liang/Wang (CHN) [3] | F",
+      "channel": "BWF TV",
+      "discipline": "men's doubles",
+      "production": "BWF TV 2026 world feed",
+      "quality": "hd1080",
+      "window": { "start": 1200, "seconds": 300 },
+      "why": "doubles at the same production house: isolates four-player occlusion from camera grammar"
+    },
+    {
+      "key": "bwf-md-2018",
+      "url": "https://www.youtube.com/watch?v=GESh9Dg8oJE",
+      "videoId": "GESh9Dg8oJE",
+      "title": "MD | GIDEON/SUKAMULJO (INA) [1] vs BOE/MOGENSEN (DEN) [2] | BWF 2018 All England",
+      "channel": "BWF TV",
+      "discipline": "men's doubles",
+      "production": "All England 2018 world feed (older era)",
+      "quality": "hd720",
+      "window": { "start": 1200, "seconds": 300 },
+      "why": "eight-year-older production, different hall lighting/graphics, lower source resolution"
+    },
+    {
+      "key": "club-fixed-cam",
+      "url": "https://www.youtube.com/watch?v=PlKyci2aGKs",
+      "videoId": "PlKyci2aGKs",
+      "title": "(( CAM 1 )) FULL GAME : MERANTI SMASH BC (1) vs BOROI BC (6)",
+      "channel": "Boroi Badminton Club",
+      "discipline": "club match",
+      "production": "single fixed amateur camera, no replays, no graphics",
+      "quality": "hd1080",
+      "window": { "start": 900, "seconds": 300 },
+      "why": "materially different camera grammar: one static wide shot, dim hall, no cuts - the zero-true-cut control for E2"
+    },
+    {
+      "key": "negative-basketball",
+      "url": "https://www.youtube.com/watch?v=PDmqTrdr-vs",
+      "videoId": "PDmqTrdr-vs",
+      "title": "UP vs UST | EXTENDED HIGHLIGHTS | UAAP SEASON 89 MEN'S BASKETBALL",
+      "channel": "One Sports",
+      "discipline": "basketball (negative)",
+      "production": "broadcast highlights, heavy cutting",
+      "quality": "hd1080",
+      "window": { "start": 200, "seconds": 300 },
+      "why": "hardest negative: an indoor court sport with strong painted straight lines; the acceptance record's negative-test sport"
+    }
+  ]
+}
