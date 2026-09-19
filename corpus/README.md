@@ -87,8 +87,8 @@ and no committed file contains an absolute filesystem path.
 
 It also pins the provenance chain for the five canonical broadcasts into the
 derived evaluation fixture `test/fixtures/scene-change-evidence.json`, which
-embeds the sha256 of `broadcasts.json`, each canonical `timelines/<key>.json`,
-and each canonical `verified/<key>.json` as produced by the Phase-0 probe. The
+embeds the canonical URLs/windows plus the sha256 of each canonical
+`timelines/<key>.json` and `verified/<key>.json` as produced by the Phase-0 probe. The
 corpus JSON is committed byte-identical, so those recorded checksums stay
 verifiable. **If you change a canonical corpus file, regenerate that fixture;
 for a noncanonical addition or change, update its manifest `sourceChecksums`** -

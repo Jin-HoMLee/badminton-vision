@@ -2,7 +2,6 @@
   "schema": "bv-scene-change-evidence.v1",
   "sourceBundle": "Phase-0 court-view probe, checksum-verified staged input",
   "sourceChecksumsFile": "artifacts/SHA256SUMS",
-  "broadcastManifestChecksum": "7525a1a2e9ea0f0c64aef1bd536c81a78237e5681c8ae486d6913df5095a09d6",
   "candidateThreshold": 0.15,
   "debounceSeconds": 0.6,
   "matchToleranceSeconds": 0.75,

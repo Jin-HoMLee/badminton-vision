@@ -316,11 +316,6 @@ test("committed corpus checksums still match the derived scene-change evidence f
   const fixture = await readJson(fixturePath);
   assert.equal(fixture.schema, "bv-scene-change-evidence.v1");
   assert.equal(fixture.candidateThreshold, CANDIDATE_THRESHOLD);
-  assert.equal(
-    await sha256(join(corpusDir, "broadcasts.json")),
-    fixture.broadcastManifestChecksum,
-    "corpus/broadcasts.json no longer matches broadcastManifestChecksum; regenerate the derived fixture if the corpus changed"
-  );
 
   const files = await corpusFiles();
   const manifest = await readJson(join(corpusDir, "broadcasts.json"));
@@ -333,6 +328,10 @@ test("committed corpus checksums still match the derived scene-change evidence f
   );
 
   for (const broadcast of fixture.broadcasts) {
+    const manifestBroadcast = manifestByKey.get(broadcast.id);
+    assert.ok(manifestBroadcast, `${broadcast.id} must remain declared in the manifest`);
+    assert.equal(manifestBroadcast.url, broadcast.url, `${broadcast.id} manifest URL drifted from the fixture`);
+    assert.deepEqual(manifestBroadcast.window, broadcast.window, `${broadcast.id} manifest window drifted from the fixture`);
     const timelinePath = join(corpusDir, "timelines", `${broadcast.id}.json`);
     assert.equal(
       await sha256(timelinePath),
