@@ -20,7 +20,7 @@
       "verifiedSource": "artifacts/corpus/verified/bwf-ws-2026.json",
       "sourceChecksums": {
         "passA": "62b3371ba0d1e1446904b695a8e9ae244540d4a7c5374060db84048478a5bed0",
-        "timeline": "af68faee1afbef146f84eb800896c647854fc9a77917c069f077dab6053b8cab",
+        "timeline": "2203e2edddb60aa4d06bcd16cabed2c026b5d15af28e6257b2de5ade87189fee",
         "verified": "508b6a164c40779b5abc9bdaf4ed8eb6e714121df421e795e1c9840ab78e6601"
       },
       "courtView": [
@@ -1129,7 +1129,7 @@
       "verifiedSource": "artifacts/corpus/verified/bwf-md-2026.json",
       "sourceChecksums": {
         "passA": "5a464fc49d97e7e8cd4c4bc51aa129707769ec0d8b9b46f6d3123c385b956e48",
-        "timeline": "a8b69fda686ab7461bdcc9a03f5ab76dcc0ff3b9eeadedca78991a00606c7e72",
+        "timeline": "d0b598f78e5f7102081131adb0da95667989eed657a818a3153622e4c38fc7d8",
         "verified": "6ae3f540f2cf8a349a6758aefcdfe988cdf57bd9849282782d51eff9bccd354a"
       },
       "courtView": [
@@ -2083,7 +2083,7 @@
       "verifiedSource": "artifacts/corpus/verified/bwf-md-2018.json",
       "sourceChecksums": {
         "passA": "834d2dbae500f272b5473995e8f33f29e27e775952880dd8748f44ee11dccafc",
-        "timeline": "a2d4410cc1a392a01ba3a0a4303d861393e6c39aa56f145555206690cb506398",
+        "timeline": "06f64f15b5efe18d32e726fdf6486317dd4208eeb537ed989bdcf3a9d2bc6f0f",
         "verified": "d499f7da0c0eaa52b776124fc5d180fe52138e7d2155d97d1d97810ad45e1397"
       },
       "courtView": [
@@ -3590,7 +3590,7 @@
       "verifiedSource": null,
       "sourceChecksums": {
         "passA": "ffca3eeba857f0fc7ae09469f7c2de4ffe329632f0e1304f5d0974c2fcca9226",
-        "timeline": "3bd4db21496ec04d969136d8f0f93255d1a62ba813ad561b694d266cbe884aba",
+        "timeline": "f4871c506c26de191234e9aa42732915b6329ca5fc32464ffecd0f29a507ea55",
         "verified": null
       },
       "courtView": [

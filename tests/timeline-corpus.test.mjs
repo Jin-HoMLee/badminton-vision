@@ -27,6 +27,7 @@ const REQUIRED_KEYS = [
   "club-fixed-cam",
   "negative-basketball"
 ];
+const RALLY_LABEL_KEYS = ["bwf-ws-2026", "bwf-md-2026", "bwf-md-2018"];
 // Verification files exist only where the probe adjudicated detector candidates.
 const REQUIRED_VERIFIED_KEYS = ["bwf-ws-2026", "bwf-md-2026", "bwf-md-2018", "negative-basketball"];
 const CLUB_DIR = "club-fixed-cam";
@@ -138,8 +139,9 @@ test("every timeline references a declared broadcast with a consistent url, wind
     );
     assert.equal(typeof timeline.sceneChangesComplete, "boolean", `${file} sceneChangesComplete`);
     if ("rallyActive" in timeline) assert.ok(Array.isArray(timeline.rallyActive), `${file} rallyActive`);
-    if (REQUIRED_KEYS.includes(key)) {
+    if (RALLY_LABEL_KEYS.includes(key)) {
       assert.ok(Array.isArray(timeline.rallyActive), `${file} canonical rallyActive labels`);
+      assert.equal(typeof timeline.rallyActiveDefinition, "string", `${file} rallyActiveDefinition`);
       assert.equal(Object.hasOwn(timeline, "shuttleTrackable"), false, `${file} must not fabricate shuttleTrackable labels`);
     }
 
@@ -158,6 +160,21 @@ test("every timeline references a declared broadcast with a consistent url, wind
     assert.ok(Array.isArray(timeline.courtView), `${file} courtView`);
     assert.ok(Array.isArray(timeline.sceneChanges), `${file} sceneChanges`);
   }
+});
+
+test("rally labels remain independent from camera framing", async () => {
+  for (const key of RALLY_LABEL_KEYS) {
+    const timeline = await readJson(join(corpusDir, "timelines", `${key}.json`));
+    assert.notDeepEqual(timeline.rallyActive, timeline.courtView, `${key} rally labels must not copy court framing`);
+  }
+
+  const olderDoubles = await readJson(join(corpusDir, "timelines/bwf-md-2018.json"));
+  assert.ok(
+    olderDoubles.rallyActive.some((interval) => interval.start <= 1451.9 && interval.end >= 1457.1),
+    "the known mid-rally camera inserts must remain inside one active-rally interval"
+  );
+  const fixedCamera = await readJson(join(corpusDir, "timelines/club-fixed-cam.json"));
+  assert.equal(Object.hasOwn(fixedCamera, "rallyActive"), false, "the fixed-camera control must not infer live play from framing");
 });
 
 test("court-view and scene-change marks are ordered intervals inside the measured window", async () => {
@@ -285,7 +302,7 @@ test("committed corpus is text-only with no absolute filesystem paths", async ()
   ];
   const absolutePath = /(^|[\s"'(=`])(?:\/(?:Users|home|private|tmp|var|opt|Volumes|mnt)\/|[A-Za-z]:\\|file:\/\/)/;
 
-  assert.equal(paths.length, 12, "corpus must contain the manifest, schema, readme, timelines and verification files");
+  assert.equal(paths.length, 3 + files.timelines.length + files.verified.length, "corpus file inventory must match discovered entries");
   for (const path of paths) {
     const label = relative(projectRoot, path);
     assert.match(label, /\.(json|md)$/, `${label} must be JSON or Markdown`);
@@ -306,9 +323,13 @@ test("committed corpus checksums still match the derived scene-change evidence f
   );
 
   const files = await corpusFiles();
+  const manifest = await readJson(join(corpusDir, "broadcasts.json"));
+  const manifestByKey = new Map(manifest.broadcasts.map((broadcast) => [broadcast.key, broadcast]));
+  const canonicalKeys = new Set(REQUIRED_KEYS);
   assert.deepEqual(
     fixture.broadcasts.map((broadcast) => broadcast.id).sort(),
-    files.timelines.map((file) => file.replace(/\.json$/, "")).sort()
+    REQUIRED_KEYS.slice().sort(),
+    "the Phase-0 fixture must cover the canonical subset"
   );
 
   for (const broadcast of fixture.broadcasts) {
@@ -350,6 +371,27 @@ test("committed corpus checksums still match the derived scene-change evidence f
         files.verified.includes(`${broadcast.id}.json`),
         false,
         `${broadcast.id} has no recorded verification checksum but a verification file is committed`
+      );
+    }
+  }
+
+  for (const file of files.timelines) {
+    const key = file.replace(/\.json$/, "");
+    if (canonicalKeys.has(key)) continue;
+    const broadcast = manifestByKey.get(key);
+    assert.ok(broadcast?.sourceChecksums?.timeline, `${key} needs a manifest timeline checksum`);
+    assert.equal(
+      await sha256(join(corpusDir, "timelines", file)),
+      broadcast.sourceChecksums.timeline,
+      `${key} timeline checksum must match its manifest provenance`
+    );
+    const verifiedFile = `${key}.json`;
+    if (files.verified.includes(verifiedFile)) {
+      assert.ok(broadcast.sourceChecksums.verified, `${key} needs a manifest verification checksum`);
+      assert.equal(
+        await sha256(join(corpusDir, "verified", verifiedFile)),
+        broadcast.sourceChecksums.verified,
+        `${key} verification checksum must match its manifest provenance`
       );
     }
   }

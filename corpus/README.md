@@ -21,8 +21,9 @@ Five canonical broadcasts, each with a 300 s window. `courtView` is the marked
 wide-court interval list; `rallyActive` is the human-marked live-play window
 list; `transitions` is the hand-marked `sceneChanges` count; `verified` is the
 per-candidate adjudication count. The inventory is extensible: added broadcasts
-must add their manifest and timeline records, and any changed source checksums
-must be regenerated in the derived fixture.
+must add their manifest and timeline records plus their own manifest checksums;
+the fixed Phase-0 fixture remains responsible only for the five canonical
+records.
 
 | key | discipline | render | window (s) | court-view | transitions | verified |
 |---|---|---|---|---|---|---|
@@ -47,14 +48,17 @@ file because it raises no candidates (it is the zero-true-cut control).
 
 1. Add one entry to `corpus/broadcasts.json` with a stable `key`, the public
    `url`/`videoId`, `discipline`, `production`, `quality`, and the 300 s
-   `window` (`start` + `seconds`).
+   `window` (`start` + `seconds`). For a noncanonical addition, also add
+   `sourceChecksums.timeline` and, when applicable,
+   `sourceChecksums.verified` to that manifest entry.
 2. Add `corpus/timelines/<key>.json` following `SCHEMA.md`. `broadcast`, the
    filename, and the `url` must all agree with the manifest entry.
 3. Mark from contact sheets rendered from the live player at the
    `markResolutionSeconds` quantum (this corpus uses 2 Hz sheets, 0.5 s).
-   Record the exact court-view and live-play definitions you applied in
-   `courtViewDefinition` and `rallyActive`; a missing optional field means "not
-   marked", never "false". Do not infer `shuttleTrackable` from either label.
+   Record the exact court-view definition in `courtViewDefinition` and add
+   `rallyActive` only from a separate live-play adjudication; a missing optional
+   field means "not marked", never "false". Do not infer `shuttleTrackable`
+   from either label.
 4. If you adjudicated detector candidates, add `corpus/verified/<key>.json`.
    Record verdict reversals in `correction`; never overwrite the original.
 5. If a broadcast is only partially marked, set `sceneChangesComplete: false`
@@ -72,20 +76,22 @@ npm test                                     # full repository behavior suite
 ```
 
 The focused test is offline and checks that: every file parses against its
-`bv-timeline-corpus/*` schema string; the inventory is exactly the expected
-five broadcasts; every timeline and verification file references a declared
-broadcast and URL; `courtView` and `sceneChanges` are ordered, non-overlapping,
+`bv-timeline-corpus/*` schema string; the five canonical broadcasts remain
+present while additional declared broadcasts are discovered automatically;
+every timeline and verification file references a declared broadcast and URL;
+`courtView`, `rallyActive`, and `sceneChanges` are ordered, non-overlapping,
 finite intervals inside the measured window (within the marking quantum);
 `sceneChangesComplete`/`provenance` semantics hold; verification files retain
 their threshold, method, per-candidate verdicts, and the recorded correction;
 and no committed file contains an absolute filesystem path.
 
-It also pins the provenance chain into the derived evaluation fixture
-`test/fixtures/scene-change-evidence.json`, which embeds the sha256 of
-`broadcasts.json`, each `timelines/<key>.json`, and each `verified/<key>.json`
-as produced by the Phase-0 probe. The corpus JSON is committed byte-identical,
-so those recorded checksums stay verifiable. **If you change a corpus file,
-regenerate that fixture and update its `sourceChecksums` in the same pass** -
+It also pins the provenance chain for the five canonical broadcasts into the
+derived evaluation fixture `test/fixtures/scene-change-evidence.json`, which
+embeds the sha256 of `broadcasts.json`, each canonical `timelines/<key>.json`,
+and each canonical `verified/<key>.json` as produced by the Phase-0 probe. The
+corpus JSON is committed byte-identical, so those recorded checksums stay
+verifiable. **If you change a canonical corpus file, regenerate that fixture;
+for a noncanonical addition or change, update its manifest `sourceChecksums`** -
 otherwise the recorded provenance no longer describes the corpus.
 
 ## Honest limits (carried with the data)
@@ -100,6 +106,9 @@ otherwise the recorded provenance no longer describes the corpus.
 - `rallyActive` is a coarse human-marked live-play window, not an assertion that
   every frame contains a trackable shuttle. `shuttleTrackable` remains absent
   because no shuttle-visibility labels were collected in this pass.
+- The three BWF broadcast timelines carry the separate live-play adjudication;
+  the fixed-camera control remains intentionally unmarked for rally activity
+  rather than treating its uninterrupted framing as continuous play.
 
 ## Provenance of the files themselves
 

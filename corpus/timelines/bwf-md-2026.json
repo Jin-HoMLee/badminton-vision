@@ -295,16 +295,17 @@
   ],
   "notes": "Doubles, same production house as bwf-ws-2026. Contains a Hawk-Eye/official-review synthetic court render (1210.9-1217.5) - a perfect-line non-court frame that is a deliberate counterexample for any line-count court rule. The 1412-1497 interval is an 85 s between-game bench sequence whose internal close-up-to-close-up cuts are under-marked at the 2 Hz marking rate; see the candidate-verification pass.",
   "sceneChangesComplete": true,
+  "rallyActiveDefinition": "Human live-play intervals adjudicated separately from court framing; setup and transition edges are excluded.",
   "rallyActive": [
-    { "start": 1229.15, "end": 1244.35 },
-    { "start": 1257.05, "end": 1274.35 },
-    { "start": 1294.2, "end": 1304.35 },
-    { "start": 1309.45, "end": 1314.05 },
-    { "start": 1317.15, "end": 1325.25 },
-    { "start": 1331.25, "end": 1340.95 },
-    { "start": 1355.75, "end": 1367.95 },
-    { "start": 1374.05, "end": 1378.05 },
-    { "start": 1383.65, "end": 1393.85 },
-    { "start": 1497.55, "end": 1501 }
+    { "start": 1230.15, "end": 1243.35 },
+    { "start": 1258.05, "end": 1273.35 },
+    { "start": 1295.2, "end": 1303.35 },
+    { "start": 1310.45, "end": 1313.05 },
+    { "start": 1318.15, "end": 1324.25 },
+    { "start": 1332.25, "end": 1339.95 },
+    { "start": 1356.75, "end": 1366.95 },
+    { "start": 1375.05, "end": 1377.05 },
+    { "start": 1384.65, "end": 1392.85 },
+    { "start": 1498.55, "end": 1500.5 }
   ]
 }

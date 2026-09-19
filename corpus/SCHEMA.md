@@ -32,7 +32,11 @@ intervals.
     "production": "BWF TV 2026 world feed",
     "quality":    "hd1080",                // quality requested from the player when marking
     "window":     { "start": 1050, "seconds": 300 },   // media seconds
-    "why":        "what axis of variation this broadcast covers"
+    "why":        "what axis of variation this broadcast covers",
+    "sourceChecksums": {                         // required for noncanonical additions
+      "timeline": "<sha256>",
+      "verified": "<sha256, when present>"
+    }
   }]
 }
 ```
@@ -54,11 +58,13 @@ names a broadcast not listed here is invalid.
   "markResolutionSeconds": 0.5,            // the quantum these marks are trustworthy to
   "renderedResolution": "1920x1080",
   "courtViewDefinition": "<the exact rule the marker applied, in prose>",
+  "rallyActiveDefinition": "<separate human live-play adjudication, if marked>",
 
   // The world feed is showing the wide playing-court view. Complement = non-court.
   "courtView":    [{ "start": 1055.25, "end": 1105.05 }],
 
-  // Coarse human-marked live-play windows; this does not claim shuttle visibility.
+  // Human live-play windows, independently adjudicated from court framing;
+  // camera inserts inside a continuing rally stay inside the same interval.
   "rallyActive":  [{ "start": 1055.25, "end": 1105.05 }],
 
   // Hard visual discontinuities (shot changes), as intervals at the marking
