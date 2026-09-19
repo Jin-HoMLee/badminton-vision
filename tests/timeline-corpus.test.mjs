@@ -28,7 +28,6 @@ const REQUIRED_KEYS = [
   "club-fixed-cam",
   "negative-basketball"
 ];
-const RALLY_LABEL_KEYS = REQUIRED_KEYS;
 // Verification files exist only where the probe adjudicated detector candidates.
 const REQUIRED_VERIFIED_KEYS = ["bwf-ws-2026", "bwf-md-2026", "bwf-md-2018", "negative-basketball"];
 const CLUB_DIR = "club-fixed-cam";
@@ -159,11 +158,6 @@ test("every timeline references a declared broadcast with a consistent url, wind
     );
     assert.equal(typeof timeline.sceneChangesComplete, "boolean", `${file} sceneChangesComplete`);
     if ("rallyActive" in timeline) assert.ok(Array.isArray(timeline.rallyActive), `${file} rallyActive`);
-    if (RALLY_LABEL_KEYS.includes(key)) {
-      assert.equal(timeline.rallyActiveStatus, "provisional-pending-human-verification", `${file} rally labels must remain provisional`);
-      assert.equal(typeof timeline.rallyActiveDefinition, "string", `${file} rallyActiveDefinition`);
-      assert.equal(Object.hasOwn(timeline, "shuttleTrackable"), false, `${file} must not fabricate shuttleTrackable labels`);
-    }
 
     const { start, end } = timeline.window;
     assert.ok(Number.isFinite(start) && Number.isFinite(end) && start < end, `${file} window must be ordered`);
@@ -187,24 +181,33 @@ test("provisional rally boundaries remain linked and unverified", async () => {
   assert.equal(review.schema, "bv-rally-review.v1");
   assert.equal(review.status, "provisional-pending-human-verification");
   assert.equal(review.sourcePlaybackStatus, "unavailable-in-capture");
-  assert.equal(review.broadcasts.length, REQUIRED_KEYS.length);
+  const files = await corpusFiles();
+  const timelineKeys = files.timelines.map((file) => file.replace(/\.json$/, ""));
+  assert.equal(review.broadcasts.length, timelineKeys.length);
   const byKey = new Map(review.broadcasts.map((broadcast) => [broadcast.broadcast, broadcast]));
-  assert.deepEqual([...byKey.keys()].sort(), REQUIRED_KEYS.slice().sort());
+  assert.deepEqual([...byKey.keys()].sort(), timelineKeys.slice().sort());
+  for (const key of REQUIRED_KEYS) assert.ok(byKey.has(key), `${key} needs a canonical rally review entry`);
 
-  for (const key of RALLY_LABEL_KEYS) {
+  for (const key of timelineKeys) {
     const timeline = await readJson(join(corpusDir, "timelines", `${key}.json`));
     const entry = byKey.get(key);
     assert.equal(entry.url, timeline.url, `${key} review URL must match the timeline`);
     assert.equal(entry.reviewStatus, "pending-human-verification", `${key} rally review must remain pending`);
+    assert.equal(timeline.rallyActiveStatus, "provisional-pending-human-verification", `${key} rally labels must remain provisional`);
+    assert.equal(typeof timeline.rallyActiveDefinition, "string", `${key} rallyActiveDefinition`);
+    assert.equal(Object.hasOwn(timeline, "shuttleTrackable"), false, `${key} must not fabricate shuttleTrackable labels`);
     assert.deepEqual(
       entry.boundaries.map(({ start, end }) => ({ start, end })),
       timeline.rallyActive,
       `${key} review boundaries must match provisional intervals`
     );
-    const videoId = new URL(timeline.url).searchParams.get("v");
+    const sourceUrl = new URL(timeline.url);
+    const videoId = sourceUrl.searchParams.get("v");
     for (const boundary of entry.boundaries) {
       for (const [edge, link] of [["start", boundary.startUrl], ["end", boundary.endUrl]]) {
         const parsed = new URL(link);
+        assert.equal(parsed.origin, sourceUrl.origin, `${key} ${edge} link must use the source origin`);
+        assert.equal(parsed.pathname, sourceUrl.pathname, `${key} ${edge} link must use the source path`);
         assert.equal(parsed.searchParams.get("v"), videoId, `${key} ${edge} link must target the source video`);
         assert.equal(parsed.searchParams.get("t"), `${boundary[edge]}s`, `${key} ${edge} link must target its boundary`);
       }
