@@ -412,6 +412,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-overlay-root > [data-bso-panel="manual"] { right: var(--overlay-gutter); top: var(--overlay-gutter); width: min(380px, calc(100% - 32px)); max-height: calc(100% - var(--overlay-gutter) - var(--overlay-controls-reserve)); }
 .bv-overlay-root > [data-bso-panel="controls"] { right: var(--overlay-gutter); bottom: var(--overlay-controls-reserve); width: auto; min-width: 180px; }
 .bv-overlay-root > [data-bso-panel="settings"] { right: var(--overlay-gutter); top: 58px; width: var(--overlay-panel-width); }
+.bv-overlay-root > [data-bso-panel="rallyLabeler"] { left: var(--overlay-gutter); top: var(--overlay-gutter); width: min(960px, calc(100% - 24px)); height: min(680px, calc(100% - var(--overlay-controls-reserve) - 24px)); }
 /* Settings panel About block (Area 4 Phase 1): the first body section holds
    read-only version/note/link rows; Phase 2 display/inference sections follow
    below in the same flow. */
@@ -423,6 +424,9 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-settings-links { display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-4); margin: 0; padding: 0; list-style: none; }
 .bv-settings-links a { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--lime-400); font: var(--type-ui-sm); font-size: var(--fs-12); text-decoration: none; }
 .bv-settings-links a:hover, .bv-settings-links a:focus-visible { text-decoration: underline; }
+.bv-settings-developer { margin-top: var(--sp-5); border-top: 1px solid var(--border-hairline); padding-top: var(--sp-4); }
+.bv-settings-developer summary { color: var(--text-faint); font: var(--type-label); letter-spacing: var(--ls-caps); text-transform: uppercase; cursor: pointer; }
+.bv-settings-developer-body { display: flex; flex-direction: column; gap: var(--sp-3); margin-top: var(--sp-4); }
 /* One quiet access point keeps the default video layer to detection evidence.
    Its menu is hidden until requested and sits at the top edge, away from the
    native player control strip. */
@@ -442,10 +446,69 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-panel { pointer-events: none; }
 .bv-panel-header, .bv-panel-footer, .bv-panel-resize-handle { pointer-events: auto; }
 .bv-panel-body { pointer-events: none; }
-.bv-panel-body button, .bv-panel-body [role="button"], .bv-panel-body input, .bv-panel-body a,
+.bv-panel-body button, .bv-panel-body [role="button"], .bv-panel-body input, .bv-panel-body textarea,
+.bv-panel-body select, .bv-panel-body details, .bv-panel-body summary, .bv-panel-body a,
 .bv-panel-body .bv-feed, .bv-panel-body .bv-suggestion, .bv-panel-body .bv-review-undo,
 .bv-panel-body .bv-status-chip { pointer-events: auto; }
 .bv-label-panel .bv-panel-body { pointer-events: auto; }
+.bv-rally-labeler-panel .bv-panel-body { pointer-events: auto; }
+/* Developer-only rally boundary editor. The timeline has exactly one visual
+   interval bar per active record. Its transparent in-bar edge hit zones are
+   the start/end affordances; no separate boundary marker is painted. */
+.bv-rally-labeler-panel { display: flex; flex-direction: column; }
+.bv-rally-labeler-panel .bv-panel-body { display: flex; flex-direction: column; gap: var(--sp-4); overflow: auto; }
+.bv-rally-labeler-panel .bv-callout { flex: 0 0 auto; }
+.bv-rally-empty { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-5); border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); }
+.bv-rally-empty p { margin: 0; color: var(--text-muted); font: var(--type-body-sm); }
+.bv-rally-source, .bv-rally-control-heading, .bv-rally-editor-heading, .bv-rally-completion { display: flex; align-items: center; gap: var(--sp-4); }
+.bv-rally-source { justify-content: space-between; }
+.bv-rally-source > div { min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.bv-rally-source strong, .bv-rally-control-heading strong, .bv-rally-editor-heading strong, .bv-rally-completion strong { color: var(--text-primary); font: var(--type-ui); }
+.bv-rally-source .bv-mono { overflow: hidden; color: var(--text-faint); font-size: var(--fs-10); text-overflow: ellipsis; white-space: nowrap; }
+.bv-rally-toolbar, .bv-rally-editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.bv-rally-toolbar > .bv-mono { min-width: 38px; color: var(--lime-400); text-align: center; font-size: var(--fs-11); }
+.bv-rally-timeline-scroll { position: relative; flex: 0 0 auto; width: 100%; max-width: 100%; overflow-x: scroll; overflow-y: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--ink-800); scrollbar-gutter: stable; }
+.bv-rally-timeline-scroll:focus-visible { box-shadow: var(--focus-ring); }
+.bv-rally-timeline-track { position: relative; min-width: 100%; background: repeating-linear-gradient(to right, transparent 0, transparent calc(12.5% - 1px), rgba(255,255,255,.05) calc(12.5% - 1px), rgba(255,255,255,.05) 12.5%); }
+.bv-rally-ruler { position: absolute; inset: 0 0 auto; height: 30px; border-bottom: 1px solid var(--border-hairline); }
+.bv-rally-ruler > span { position: absolute; top: 7px; transform: translateX(-50%); color: var(--text-faint); font: var(--type-mono); font-size: var(--fs-10); white-space: nowrap; }
+.bv-rally-ruler > span:first-child { transform: none; }
+.bv-rally-ruler > span:last-child { transform: translateX(-100%); }
+.bv-rally-playhead { position: absolute; z-index: 4; top: 30px; bottom: 0; width: 1px; background: var(--signal-info); pointer-events: none; }
+.bv-rally-playhead::before { content: ""; position: absolute; left: -3px; top: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid var(--signal-info); }
+.bv-rally-timeline-row { position: absolute; left: 0; right: 0; height: 30px; border-bottom: 1px solid rgba(255,255,255,.025); }
+.bv-rally-timeline-row.selected { background: rgba(98,182,255,.06); }
+.bv-rally-interval { position: absolute; top: 4px; box-sizing: border-box; min-width: 3px; height: 22px; overflow: hidden; border: 1px solid var(--lime-500); border-radius: var(--radius-xs); background: rgba(200,240,74,.18); color: var(--text-primary); cursor: grab; touch-action: none; user-select: none; }
+.bv-rally-interval.correction { border-color: var(--signal-info); background: var(--signal-info-tint); }
+.bv-rally-interval.addition { border-color: var(--signal-in); background: var(--signal-in-tint); }
+.bv-rally-interval.unresolved { border-style: dashed; border-color: var(--signal-warn); background: var(--signal-warn-tint); }
+.bv-rally-interval:focus-visible { box-shadow: inset 0 0 0 2px var(--ink-900), var(--focus-ring); }
+.bv-rally-interval-label { position: absolute; inset: 2px 11px; overflow: hidden; font: var(--type-mono); font-size: var(--fs-10); line-height: 16px; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
+.bv-rally-edge { position: absolute; z-index: 2; top: 0; bottom: 0; width: 10px; padding: 0; border: 0; background: transparent; touch-action: none; cursor: ew-resize; }
+.bv-rally-edge.start { left: 0; }
+.bv-rally-edge.end { right: 0; }
+.bv-rally-edge:focus-visible { outline: none; box-shadow: inset 2px 0 var(--text-primary); }
+.bv-rally-edge.end:focus-visible { box-shadow: inset -2px 0 var(--text-primary); }
+.bv-rally-tombstone { position: sticky; left: var(--sp-3); top: 4px; max-width: 260px; height: 22px; overflow: hidden; padding: 0 var(--sp-3); border: 1px dashed var(--signal-out); border-radius: var(--radius-xs); background: var(--signal-out-tint); color: var(--signal-out); font: var(--type-mono); font-size: var(--fs-10); text-overflow: ellipsis; white-space: nowrap; }
+.bv-rally-editor, .bv-rally-control { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); background: rgba(255,255,255,.02); }
+.bv-rally-editor-heading .bv-mono { margin-left: auto; color: var(--lime-400); font-size: var(--fs-11); }
+.bv-rally-editor > .bv-helper { margin: 0; }
+.bv-rally-edge-inputs, .bv-rally-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.bv-rally-metadata .bv-rally-field:first-child { grid-column: 1 / -1; }
+.bv-rally-field { min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.bv-rally-field input, .bv-rally-field textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: var(--sp-3) var(--sp-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--ink-700); color: var(--text-primary); font: var(--type-mono); font-size: var(--fs-11); }
+.bv-rally-field textarea { resize: vertical; font-family: var(--font-sans); }
+.bv-rally-field input:focus-visible, .bv-rally-field textarea:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.bv-rally-controls { display: flex; flex-direction: column; gap: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--border-hairline); }
+.bv-rally-control-heading > .bv-helper { margin: 0; }
+.bv-rally-completion { justify-content: space-between; padding-top: var(--sp-4); border-top: 1px solid var(--border-hairline); }
+.bv-rally-completion > div:first-child { min-width: 0; }
+.bv-rally-completion .bv-helper { margin: var(--sp-1) 0 0; }
+@media (max-width: 720px) {
+  .bv-rally-edge-inputs, .bv-rally-metadata { grid-template-columns: 1fr; }
+  .bv-rally-metadata .bv-rally-field:first-child { grid-column: auto; }
+  .bv-rally-completion { align-items: flex-start; flex-direction: column; }
+}
 .bv-controls-panel .bv-panel-body { display: flex; flex-wrap: wrap; align-items: center; }
 .bv-overlay-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .bv-overlay-root > .bv-overlay-canvas { pointer-events: none; }

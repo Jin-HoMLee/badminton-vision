@@ -31,7 +31,7 @@
     // Histogram distance is invariant to where court/player pixels move, so
     // fast motion does not look like a camera cut. Keep this threshold
     // explicit: it is a score threshold, not a tunable luminance fraction.
-    sceneChangeThreshold: 0.60,
+    sceneChangeThreshold: 0.15,
     minCandidateConfidence: 0.46,
     minTrackedConfidence: 0.52,
     maxContinuityDistance: 0.24,
@@ -45,6 +45,8 @@
     maxTrajectoryPoints: 32
   });
 
+  const SCENE_CHANGE_DEBOUNCE_SECONDS = 0.6;
+
   const SOURCE = Object.freeze({ id: 'captured-frame', version: 1, kind: 'mv3-offscreen-frame' });
 
   function isObject(value) {
@@ -53,6 +55,25 @@
 
   function finite(value) {
     return typeof value === 'number' && Number.isFinite(value);
+  }
+
+  function sceneChangeTriggered(score, threshold = DEFAULTS.sceneChangeThreshold) {
+    return finite(score) && score >= threshold;
+  }
+
+  function detectSceneChangeEvents(samples, threshold = DEFAULTS.sceneChangeThreshold) {
+    const events = [];
+    let last = -Infinity;
+    for (const sample of Array.isArray(samples) ? samples : []) {
+      if (!isObject(sample) || !finite(sample.t) || !sceneChangeTriggered(sample.hd, threshold)) continue;
+      if (sample.t - last > SCENE_CHANGE_DEBOUNCE_SECONDS) {
+        events.push({ t: sample.t, hd: sample.hd });
+      } else if (events.length && sample.hd > events[events.length - 1].hd) {
+        events[events.length - 1] = { t: sample.t, hd: sample.hd };
+      }
+      last = sample.t;
+    }
+    return events;
   }
 
   function positiveInteger(value) {
@@ -408,7 +429,7 @@
     }
     const stats = frameStatistics(current, previous, settings);
     const sceneChange = rounded(stats.sceneChange);
-    const cameraCut = stats.sceneChange >= settings.sceneChangeThreshold;
+    const cameraCut = sceneChangeTriggered(stats.sceneChange, settings.sceneChangeThreshold);
     if (cameraCut) {
       return {
         candidates: [],
@@ -884,9 +905,11 @@
   return Object.freeze({
     MODEL,
     DEFAULTS,
+    SCENE_CHANGE_DEBOUNCE_SECONDS,
     SOURCE,
     readFramePixels,
     detectCandidates,
+    detectSceneChangeEvents,
     LocalShuttleTrajectoryAdapter,
     ShuttleTrajectoryAdapter: LocalShuttleTrajectoryAdapter,
     ShuttleTrackingAdapter: LocalShuttleTrajectoryAdapter,

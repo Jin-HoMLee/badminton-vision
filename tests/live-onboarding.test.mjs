@@ -20,6 +20,7 @@ const contentBundleSources = [
   "src/seed-card.js",
   "src/fixtures.js",
   "src/review.js",
+  "src/rally-labeler.js",
   "src/state.js",
   "src/ui.js",
   "src/hough-guidance.js",
@@ -234,7 +235,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
   context.removeEventListener = (name, listener) => { windowListeners[name] = (windowListeners[name] || []).filter((item) => item !== listener); };
   const files = bundle
     ? []
-    : ["src/state.js", "analysis/index.js", "src/calibration.js", "src/panel-layout.js", "src/seed-card.js", "src/fixtures.js", "src/review.js", "src/analysis.js", "src/ui.js", "src/hough-guidance.js", "src/content.js"];
+    : ["src/rally-labeler.js", "src/state.js", "analysis/index.js", "src/calibration.js", "src/panel-layout.js", "src/seed-card.js", "src/fixtures.js", "src/review.js", "src/analysis.js", "src/ui.js", "src/hough-guidance.js", "src/content.js"];
   if (!bundle) {
     context.BVRuntime = {
       startIntegratedRuntime: (options = {}) => {
@@ -273,7 +274,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
     get runtimeStops() { return runtimeStops; },
     runtimeUpdate(view) { runtimeChange?.(view); },
     publishRuntimeView(view) { assert.equal(typeof runtimeOnChange, "function"); runtimeOnChange(view); },
-    emitWindow(name) { (windowListeners[name] || []).slice().forEach((listener) => listener({ type: name })); },
+    emitWindow(name, event = {}) { (windowListeners[name] || []).slice().forEach((listener) => listener(Object.assign({ type: name }, event))); },
     emitMutations(records) { mutationObserverCallback?.(records); },
     emitKey(key, { target = null } = {}) {
       let prevented = false;
@@ -2216,6 +2217,167 @@ test("the settings panel mounts without inference and renders version, note, and
   close.dispatchEvent({ type: "click" });
   assert.equal(session.overlayRoot().querySelector('[data-bso-panel="settings"]'), null, "closing removes the panel");
   assert.equal(session.storageWrites.at(-1).bvState.panelsByVideo["youtube:real-match"].settings, false, "the hide is stored for this video");
+});
+
+test("developer rally widget edits, zooms, scrolls, adds, removes, and persists without touching playback", async () => {
+  const review = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: {
+      id: "declared-bwf-source",
+      label: "Declared BWF match",
+      videoKey: "youtube:real-match",
+      videoUrl: "https://www.youtube.com/watch?v=real-match",
+      reviewWindow: { startSec: 0, endSec: 60 }
+    },
+    intervals: [{
+      id: "declared-bwf-source:rally-001",
+      sourceId: "declared-bwf-source",
+      original: { startSec: 10, endSec: 20 },
+      corrected: null,
+      action: "unresolved",
+      comment: "",
+      verifier: "",
+      verifiedAt: ""
+    }],
+    controls: []
+  };
+  const stored = {
+    videoKey: "youtube:real-match",
+    settings: { rallyLabelerEnabled: true },
+    rallyReviewsByVideo: { "youtube:real-match": review }
+  };
+  const session = await createSession({ storedState: stored });
+  session.flushStorage();
+  let root = session.overlayRoot();
+  let panel = root.querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.ok(panel, "the developer opt-in mounts the widget without inference");
+  assert.equal(session.runtimeStarts, 0);
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "one proposed rally renders as one interval bar");
+  assert.equal(panel.querySelectorAll(".bv-rally-edge").length, 2, "the bar's contained left/right edge zones are the only boundary affordances");
+  assert.equal(panel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "false");
+
+  // Native media time drives the read-only playhead; no extension action
+  // changes the player's playback fields.
+  session.video.currentTime = 18.25;
+  session.video.dispatchEvent({ type: "timeupdate", target: session.video });
+  let playhead = panel.querySelector("[data-bso-rally-playhead]");
+  assert.equal(playhead.getAttribute("data-bso-media-seconds"), "18.25");
+  assert.equal(panel.querySelector("[data-bso-rally-clock]").textContent, "0:18.250");
+  const playback = { paused: session.video.paused, muted: session.video.muted, rate: session.video.playbackRate };
+
+  buttonWithText(panel, "Zoom in").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelector(".bv-rally-timeline-track").style.width, "200%");
+  const scroller = panel.querySelector("[data-bso-rally-scroll]");
+  buttonWithText(panel, "Scroll right").dispatchEvent({ type: "click" });
+  assert.ok(scroller.scrollLeft > 0, "the explicit scroll action advances the horizontal viewport");
+
+  // Drag the whole bar, pointer-resize the left edge, then use the keyboard on
+  // the right edge and exact numeric editing. All paths share one model.
+  let bar = panel.querySelector("[data-bso-rally-interval]");
+  bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 8, clientX: 100 });
+  session.emitWindow("pointermove", { pointerId: 8, clientX: 120 });
+  session.emitWindow("pointerup", { pointerId: 8, clientX: 120 });
+  let afterMove = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals[0].corrected;
+  assert.ok(afterMove.startSec > 10);
+  assert.ok(Math.abs((afterMove.endSec - afterMove.startSec) - 10) < 1e-9, "bar drag preserves interval duration");
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  let startEdge = panel.querySelectorAll(".bv-rally-edge").find((edge) => edge.className.includes("start"));
+  startEdge.dispatchEvent({ type: "pointerdown", target: startEdge, pointerId: 9, clientX: 100 });
+  session.emitWindow("pointermove", { pointerId: 9, clientX: 140 });
+  session.emitWindow("pointerup", { pointerId: 9, clientX: 140 });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  let endEdge = panel.querySelectorAll(".bv-rally-edge").find((edge) => edge.className.includes("end"));
+  endEdge.dispatchEvent({ type: "keydown", target: endEdge, key: "ArrowRight", shiftKey: false });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  const startInput = panel.querySelector("[data-bso-rally-start-input]");
+  startInput.value = "12.345";
+  startInput.dispatchEvent({ type: "change", target: startInput });
+  let savedReview = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.equal(savedReview.intervals[0].original.startSec, 10, "the original proposed edge is immutable");
+  assert.equal(savedReview.intervals[0].corrected.startSec, 12.345);
+  assert.ok(savedReview.intervals[0].corrected.startSec < savedReview.intervals[0].corrected.endSec);
+
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  let editor = panel.querySelector("[data-bso-rally-editor]");
+  editor.querySelector("[data-bso-rally-comment]").value = "The visible serve begins after the provisional edge.";
+  editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
+  editor.querySelector("[data-bso-rally-date]").value = "2026-09-20";
+  buttonWithText(editor, "Save correction").dispatchEvent({ type: "click" });
+
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  buttonWithText(panel, "Add missing rally").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 2, "Add missing rally creates a real bar");
+  editor = panel.querySelector("[data-bso-rally-editor]");
+  editor.querySelector("[data-bso-rally-comment]").value = "A second rally is visible at this media time.";
+  editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
+  editor.querySelector("[data-bso-rally-date]").value = "2026-09-20";
+  buttonWithText(editor, "Save addition").dispatchEvent({ type: "click" });
+
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  editor = panel.querySelector("[data-bso-rally-editor]");
+  editor.querySelector("[data-bso-rally-comment]").value = "Added in error; remove this false positive.";
+  editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
+  editor.querySelector("[data-bso-rally-date]").value = "2026-09-20";
+  buttonWithText(editor, "Remove false positive").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "removing an added interval removes its bar");
+  assert.ok(panel.querySelector(".bv-rally-tombstone"), "the durable removal remains inspectable and restorable");
+
+  buttonWithText(panel, "Add empty-set control").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  const control = panel.querySelector("[data-bso-rally-control]");
+  control.querySelector("[data-bso-rally-comment]").value = "Rallies are present, so this empty-set control is explicitly false.";
+  control.querySelector("[data-bso-rally-verifier]").value = "worker-test";
+  control.querySelector("[data-bso-rally-date]").value = "2026-09-20";
+  buttonWithText(control, "Not true").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "true", "all interval/control evidence opens the completion gate");
+  assert.equal(session.video.paused, playback.paused);
+  assert.equal(session.video.muted, playback.muted);
+  assert.equal(session.video.playbackRate, playback.rate);
+
+  const persisted = JSON.parse(JSON.stringify(session.storageWrites.at(-1).bvState));
+  const restored = await createSession({ storedState: persisted });
+  restored.flushStorage();
+  const restoredPanel = restored.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.ok(restoredPanel);
+  assert.equal(restoredPanel.querySelectorAll(".bv-rally-interval").length, 1);
+  assert.ok(restoredPanel.querySelector(".bv-rally-tombstone"), "the added/removal action survives refresh");
+  assert.equal(restoredPanel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "true");
+});
+
+test("rally JSON export/import round-trips canonical review evidence without media files", async () => {
+  const canonical = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: { id: "round-trip", label: "Round trip", videoKey: "youtube:real-match", videoUrl: "https://www.youtube.com/watch?v=real-match", reviewWindow: { startSec: 0, endSec: 30 } },
+    intervals: [{ id: "round-trip:rally-001", sourceId: "round-trip", original: { startSec: 4, endSec: 8 }, corrected: { startSec: 4.125, endSec: 8.25 }, action: "correction", comment: "Frame transition checked.", verifier: "worker-test", verifiedAt: "2026-09-20" }],
+    controls: []
+  };
+  const source = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true }, rallyReviewsByVideo: { "youtube:real-match": canonical } } });
+  source.flushStorage();
+  let panel = source.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  buttonWithText(panel, "Export verified JSON").dispatchEvent({ type: "click" });
+  const exported = source.context.__BV_CONTENT_SINGLETON_V1__.lastRallyExportJson;
+  assert.ok(exported);
+  assert.equal(JSON.parse(exported).intervals[0].original.startSec, 4);
+  assert.equal(JSON.parse(exported).intervals[0].corrected.startSec, 4.125);
+  assert.doesNotMatch(exported, /data:|video\/(?:mp4|webm)|audio\//i);
+
+  const target = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true } } });
+  target.flushStorage();
+  panel = target.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  buttonWithText(panel, "Import review JSON").dispatchEvent({ type: "click" });
+  const input = target.documentRef.querySelector("[data-bso-rally-import-input]");
+  input.files = [{ name: "round-trip.rally-review.json", text: async () => exported }];
+  input.dispatchEvent({ type: "change", target: input });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const imported = target.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.equal(target.context.BVRallyLabeler.serialize(imported), exported, "documented canonical normalization is byte-stable");
+  assert.equal(target.overlayRoot().querySelectorAll(".bv-rally-interval").length, 1);
 });
 
 test("the settings panel stays available during setup and withholds only for a camera-cut reseed", async () => {

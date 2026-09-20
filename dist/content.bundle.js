@@ -6320,6 +6320,556 @@
     });
   })(typeof globalThis !== "undefined" ? globalThis : window);
 
+/* src/rally-labeler.js */
+  /*
+   * Pure developer rally-review model. The content widget consumes this module,
+   * but it deliberately owns no DOM, storage, player, or media APIs.
+   */
+  (function (root, factory) {
+    var api = factory();
+    if (typeof module === "object" && module.exports) module.exports = api;
+    root.BVRallyLabeler = api;
+  })(typeof globalThis !== "undefined" ? globalThis : this, function () {
+    "use strict";
+
+    var SCHEMA = "badminton-vision.rally-review";
+    var VERSION = 1;
+    var MIN_INTERVAL_SECONDS = 0.001;
+    var ACTIONS = ["unresolved", "approve", "correction", "addition", "removal"];
+    var CONTROL_STATES = ["unresolved", "confirmed", "rejected"];
+    var CONTROL_KINDS = ["empty-set", "inactive"];
+    var MAX_ZOOM = 32;
+
+    function clone(value) {
+      if (value == null || typeof value !== "object") return value;
+      if (Array.isArray(value)) return value.map(clone);
+      var result = {};
+      Object.keys(value).forEach(function (key) { result[key] = clone(value[key]); });
+      return result;
+    }
+
+    function roundSeconds(value) {
+      var number = Number(value);
+      if (!Number.isFinite(number)) return null;
+      var rounded = Math.round(number * 1000) / 1000;
+      return Math.abs(rounded) < .0005 ? 0 : rounded;
+    }
+
+    function parseSeconds(value) {
+      if (typeof value === "number") return roundSeconds(value);
+      if (typeof value !== "string" || !value.trim()) return null;
+      var text = value.trim();
+      if (/^-?\d+(?:\.\d+)?$/.test(text)) return roundSeconds(Number(text));
+      var parts = text.split(":");
+      if (parts.length < 2 || parts.length > 3 || parts.some(function (part) { return !/^\d+(?:\.\d+)?$/.test(part); })) return null;
+      var seconds = Number(parts.pop());
+      var minutes = Number(parts.pop());
+      var hours = parts.length ? Number(parts.pop()) : 0;
+      if (minutes >= 60 || seconds >= 60) return null;
+      return roundSeconds(hours * 3600 + minutes * 60 + seconds);
+    }
+
+    function formatSeconds(value) {
+      var seconds = roundSeconds(value);
+      if (seconds == null) return "";
+      var hours = Math.floor(seconds / 3600);
+      var minutes = Math.floor((seconds - hours * 3600) / 60);
+      var remainder = seconds - hours * 3600 - minutes * 60;
+      var body = String(minutes).padStart(hours ? 2 : 1, "0") + ":" + remainder.toFixed(3).padStart(6, "0");
+      return hours ? String(hours) + ":" + body : body;
+    }
+
+    function requiredText(value, field) {
+      var result = String(value == null ? "" : value).trim();
+      if (!result) throw new TypeError(field + " is required");
+      return result;
+    }
+
+    function optionalText(value) { return String(value == null ? "" : value).trim(); }
+
+    function normalizedDate(value) {
+      var text = optionalText(value);
+      if (!text) return "";
+      if (!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)?$/.test(text) || !Number.isFinite(Date.parse(text))) {
+        throw new TypeError("verifiedAt must be an ISO date or UTC timestamp");
+      }
+      return text;
+    }
+
+    function normalizeBounds(startValue, endValue, field) {
+      var startSec = parseSeconds(startValue);
+      var endSec = parseSeconds(endValue);
+      if (startSec == null || endSec == null) throw new TypeError(field + " needs finite start/end seconds");
+      if (startSec < 0) throw new RangeError(field + " start must be non-negative");
+      if (endSec - startSec < MIN_INTERVAL_SECONDS - 1e-12) throw new RangeError(field + " must satisfy start < end");
+      return { startSec: startSec, endSec: endSec };
+    }
+
+    function nestedBounds(raw, prefix) {
+      var nested = raw && raw[prefix];
+      if (nested && typeof nested === "object") {
+        var nestedStart = nested.startSec != null ? nested.startSec : nested.start;
+        var nestedEnd = nested.endSec != null ? nested.endSec : nested.end;
+        if (nestedStart != null || nestedEnd != null) return normalizeBounds(nestedStart, nestedEnd, prefix);
+      }
+      var capitalized = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+      var start = raw && (raw[prefix + "StartSec"] != null ? raw[prefix + "StartSec"] : raw[prefix + "Start"]);
+      var end = raw && (raw[prefix + "EndSec"] != null ? raw[prefix + "EndSec"] : raw[prefix + "End"]);
+      if (start == null && raw && prefix === "original") start = raw.startSec != null ? raw.startSec : raw.start;
+      if (end == null && raw && prefix === "original") end = raw.endSec != null ? raw.endSec : raw.end;
+      if (start == null && raw) start = raw[capitalized + "StartSec"];
+      if (end == null && raw) end = raw[capitalized + "EndSec"];
+      if (start == null && end == null) return null;
+      return normalizeBounds(start, end, prefix);
+    }
+
+    function normalizeAction(value, original) {
+      var action = optionalText(value || "unresolved").toLowerCase();
+      var aliases = { approved: "approve", corrected: "correction", add: "addition", added: "addition", remove: "removal", removed: "removal" };
+      action = aliases[action] || action;
+      if (ACTIONS.indexOf(action) < 0) throw new TypeError("unknown interval action: " + action);
+      if (!original && action === "unresolved") return "addition";
+      return action;
+    }
+
+    function normalizeInterval(raw, index, sourceId) {
+      raw = raw || {};
+      var id = optionalText(raw.id != null ? raw.id : raw.intervalId != null ? raw.intervalId : raw.rallyId);
+      if (!id) id = sourceId + ":rally-" + String(index + 1).padStart(3, "0");
+      var original = nestedBounds(raw, "original");
+      var provisionalAction = raw.action != null ? raw.action : raw.status;
+      if (!original && provisionalAction == null && (raw.start != null || raw.startSec != null)) {
+        original = normalizeBounds(raw.startSec != null ? raw.startSec : raw.start, raw.endSec != null ? raw.endSec : raw.end, "original");
+      }
+      var action = normalizeAction(provisionalAction, original);
+      var corrected = nestedBounds(raw, "corrected");
+      if (!corrected && action === "addition") {
+        var additionStart = raw.startSec != null ? raw.startSec : raw.start;
+        var additionEnd = raw.endSec != null ? raw.endSec : raw.end;
+        if (additionStart != null || additionEnd != null) corrected = normalizeBounds(additionStart, additionEnd, "corrected");
+      }
+      if (!corrected && action === "approve" && original) corrected = clone(original);
+      if (!corrected && (action === "correction" || action === "removal")) corrected = original ? clone(original) : null;
+      if (!original && !corrected) throw new TypeError("interval " + id + " has no original or corrected seconds");
+      if (action === "addition" && original) throw new TypeError("addition " + id + " must not have original proposed seconds");
+      if (!original && action !== "addition" && action !== "removal") throw new TypeError("interval " + id + " needs original proposed seconds");
+      if (action !== "removal" && !corrected && action !== "unresolved") throw new TypeError("interval " + id + " needs corrected seconds");
+      return {
+        id: id,
+        sourceId: sourceId,
+        original: original,
+        corrected: corrected,
+        action: action,
+        comment: optionalText(raw.comment != null ? raw.comment : raw.reason),
+        verifier: optionalText(raw.verifier),
+        verifiedAt: normalizedDate(raw.verifiedAt != null ? raw.verifiedAt : raw.date)
+      };
+    }
+
+    function normalizeControl(raw, index, sourceId) {
+      raw = raw || {};
+      var kind = optionalText(raw.kind || raw.type).toLowerCase();
+      var kindAliases = { empty: "empty-set", "empty_set": "empty-set", "rally-inactive": "inactive" };
+      kind = kindAliases[kind] || kind;
+      if (CONTROL_KINDS.indexOf(kind) < 0) throw new TypeError("unknown control kind: " + kind);
+      var id = optionalText(raw.id) || sourceId + ":control-" + kind + "-" + (index + 1);
+      var state = optionalText(raw.state || "unresolved").toLowerCase();
+      var stateAliases = { yes: "confirmed", no: "rejected", true: "confirmed", false: "rejected", "not-applicable": "rejected" };
+      state = stateAliases[state] || state;
+      if (CONTROL_STATES.indexOf(state) < 0) throw new TypeError("unknown control state: " + state);
+      return {
+        id: id,
+        sourceId: sourceId,
+        kind: kind,
+        label: optionalText(raw.label) || (kind === "empty-set" ? "No rallies in the review window" : "Rally state stays inactive"),
+        state: state,
+        comment: optionalText(raw.comment != null ? raw.comment : raw.reason),
+        verifier: optionalText(raw.verifier),
+        verifiedAt: normalizedDate(raw.verifiedAt != null ? raw.verifiedAt : raw.date)
+      };
+    }
+
+    function intervalTime(interval) {
+      var bounds = interval && (interval.corrected || interval.original);
+      return bounds ? bounds.startSec : Infinity;
+    }
+
+    function sourceFromInput(input) {
+      var raw = input && input.source;
+      if (typeof raw === "string") raw = { id: raw };
+      raw = raw && typeof raw === "object" ? raw : {};
+      var id = requiredText(raw.id != null ? raw.id : input && input.sourceId, "source.id");
+      var videoKey = optionalText(raw.videoKey != null ? raw.videoKey : input && input.videoKey);
+      var videoUrl = optionalText(raw.videoUrl != null ? raw.videoUrl : raw.url != null ? raw.url : input && (input.videoUrl || input.url));
+      return {
+        id: id,
+        label: optionalText(raw.label != null ? raw.label : raw.name) || id,
+        videoKey: videoKey,
+        videoUrl: videoUrl,
+        rawWindow: raw.reviewWindow || input && (input.reviewWindow || input.window)
+      };
+    }
+
+    function inferredWindow(rawWindow, intervals, fallbackEnd) {
+      rawWindow = rawWindow || {};
+      var start = parseSeconds(rawWindow.startSec != null ? rawWindow.startSec : rawWindow.start);
+      var end = parseSeconds(rawWindow.endSec != null ? rawWindow.endSec : rawWindow.end);
+      var bounds = intervals.map(function (interval) { return interval.corrected || interval.original; }).filter(Boolean);
+      if (start == null) start = bounds.length ? Math.min.apply(Math, bounds.map(function (value) { return value.startSec; })) : 0;
+      if (end == null) end = bounds.length ? Math.max.apply(Math, bounds.map(function (value) { return value.endSec; })) : parseSeconds(fallbackEnd);
+      if (end == null || end <= start) end = roundSeconds(start + 60);
+      return normalizeBounds(start, end, "source.reviewWindow");
+    }
+
+    function normalizeDocument(input, options) {
+      options = options || {};
+      if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("rally review must be a JSON object");
+      if (input.schema != null && input.schema !== SCHEMA) throw new TypeError("unsupported rally review schema");
+      if (input.version != null && Number(input.version) !== VERSION) throw new TypeError("unsupported rally review version");
+      var source = sourceFromInput(input);
+      var rows = Array.isArray(input.intervals) ? input.intervals : Array.isArray(input.rallies) ? input.rallies : [];
+      var intervals = rows.map(function (row, index) { return normalizeInterval(row, index, source.id); });
+      var seen = Object.create(null);
+      intervals.forEach(function (interval) {
+        if (seen[interval.id]) throw new TypeError("duplicate interval id: " + interval.id);
+        seen[interval.id] = true;
+      });
+      intervals.sort(function (a, b) { return intervalTime(a) - intervalTime(b) || a.id.localeCompare(b.id); });
+      var controls = (Array.isArray(input.controls) ? input.controls : []).map(function (control, index) { return normalizeControl(control, index, source.id); });
+      controls.forEach(function (control) {
+        if (seen[control.id]) throw new TypeError("duplicate item id: " + control.id);
+        seen[control.id] = true;
+      });
+      controls.sort(function (a, b) { return a.id.localeCompare(b.id); });
+      var reviewWindow = inferredWindow(source.rawWindow, intervals, options.fallbackEndSec);
+      intervals.forEach(function (interval) {
+        [interval.original, interval.corrected].filter(Boolean).forEach(function (bounds) {
+          if (bounds.startSec < reviewWindow.startSec || bounds.endSec > reviewWindow.endSec) {
+            throw new RangeError("interval " + interval.id + " falls outside the review window");
+          }
+        });
+      });
+      var expectedVideoKey = optionalText(options.videoKey);
+      if (expectedVideoKey && source.videoKey && source.videoKey !== expectedVideoKey) throw new TypeError("import source belongs to a different video");
+      if (!source.videoKey && expectedVideoKey) source.videoKey = expectedVideoKey;
+      if (!source.videoUrl && options.videoUrl) source.videoUrl = optionalText(options.videoUrl);
+      return {
+        schema: SCHEMA,
+        version: VERSION,
+        source: {
+          id: source.id,
+          label: source.label,
+          videoKey: source.videoKey,
+          videoUrl: source.videoUrl,
+          reviewWindow: reviewWindow
+        },
+        intervals: intervals,
+        controls: controls
+      };
+    }
+
+    function createDocument(options) {
+      options = options || {};
+      var sourceId = requiredText(options.sourceId || options.videoKey, "sourceId");
+      var windowStart = parseSeconds(options.startSec);
+      var windowEnd = parseSeconds(options.endSec);
+      if (windowStart == null) windowStart = 0;
+      if (windowEnd == null || windowEnd <= windowStart) windowEnd = roundSeconds(windowStart + 60);
+      return normalizeDocument({
+        source: {
+          id: sourceId,
+          label: options.label || sourceId,
+          videoKey: options.videoKey || "",
+          videoUrl: options.videoUrl || "",
+          reviewWindow: { startSec: windowStart, endSec: windowEnd }
+        },
+        intervals: [],
+        controls: options.controls || []
+      });
+    }
+
+    function effectiveBounds(interval) {
+      if (!interval || interval.action === "removal") return null;
+      return clone(interval.corrected || interval.original);
+    }
+
+    function replaceInterval(document, id, mutate) {
+      var next = clone(document);
+      var index = next.intervals.findIndex(function (interval) { return interval.id === String(id); });
+      if (index < 0) throw new TypeError("unknown interval id: " + id);
+      var changed = mutate(clone(next.intervals[index]));
+      next.intervals[index] = changed;
+      return normalizeDocument(next);
+    }
+
+    function setBounds(document, id, bounds, action) {
+      var windowBounds = document.source.reviewWindow;
+      var normalized = normalizeBounds(bounds.startSec, bounds.endSec, "interval");
+      if (normalized.startSec < windowBounds.startSec || normalized.endSec > windowBounds.endSec) throw new RangeError("interval falls outside the review window");
+      return replaceInterval(document, id, function (interval) {
+        var previous = interval.corrected || interval.original;
+        var nextAction = action || (interval.original ? "correction" : "addition");
+        var changed = !previous || previous.startSec !== normalized.startSec || previous.endSec !== normalized.endSec || interval.action !== nextAction;
+        interval.corrected = normalized;
+        interval.action = nextAction;
+        // A prior approval/addition comment is not evidence for newly changed
+        // seconds. Editing either edge reopens the evidence fields explicitly.
+        if (changed) {
+          interval.comment = "";
+          interval.verifier = "";
+          interval.verifiedAt = "";
+        }
+        return interval;
+      });
+    }
+
+    function clamp(value, minimum, maximum) { return Math.min(maximum, Math.max(minimum, value)); }
+
+    function resizeInterval(document, id, edge, nextSeconds) {
+      var interval = document.intervals.find(function (item) { return item.id === String(id); });
+      if (!interval) throw new TypeError("unknown interval id: " + id);
+      var current = effectiveBounds(interval) || interval.corrected || interval.original;
+      var windowBounds = document.source.reviewWindow;
+      var value = roundSeconds(nextSeconds);
+      if (value == null) throw new TypeError("edge seconds must be finite");
+      var next = clone(current);
+      if (edge === "start") next.startSec = roundSeconds(clamp(value, windowBounds.startSec, next.endSec - MIN_INTERVAL_SECONDS));
+      else if (edge === "end") next.endSec = roundSeconds(clamp(value, next.startSec + MIN_INTERVAL_SECONDS, windowBounds.endSec));
+      else throw new TypeError("edge must be start or end");
+      return setBounds(document, id, next, interval.original ? "correction" : "addition");
+    }
+
+    function moveInterval(document, id, deltaSeconds) {
+      var interval = document.intervals.find(function (item) { return item.id === String(id); });
+      if (!interval) throw new TypeError("unknown interval id: " + id);
+      var current = effectiveBounds(interval) || interval.corrected || interval.original;
+      var windowBounds = document.source.reviewWindow;
+      var duration = current.endSec - current.startSec;
+      var start = clamp(roundSeconds(current.startSec + Number(deltaSeconds || 0)), windowBounds.startSec, windowBounds.endSec - duration);
+      return setBounds(document, id, { startSec: start, endSec: roundSeconds(start + duration) }, interval.original ? "correction" : "addition");
+    }
+
+    function nextAdditionId(document) {
+      var prefix = document.source.id + ":addition-";
+      var used = Object.create(null);
+      document.intervals.forEach(function (interval) { used[interval.id] = true; });
+      var index = 1;
+      while (used[prefix + String(index).padStart(3, "0")]) index += 1;
+      return prefix + String(index).padStart(3, "0");
+    }
+
+    function addInterval(document, startValue, endValue, fields) {
+      fields = fields || {};
+      var bounds = normalizeBounds(startValue, endValue, "addition");
+      var windowBounds = document.source.reviewWindow;
+      if (bounds.startSec < windowBounds.startSec || bounds.endSec > windowBounds.endSec) throw new RangeError("addition falls outside the review window");
+      var next = clone(document);
+      next.intervals.push({
+        id: optionalText(fields.id) || nextAdditionId(next),
+        sourceId: next.source.id,
+        original: null,
+        corrected: bounds,
+        action: "addition",
+        comment: optionalText(fields.comment),
+        verifier: optionalText(fields.verifier),
+        verifiedAt: normalizedDate(fields.verifiedAt)
+      });
+      return normalizeDocument(next);
+    }
+
+    function removeInterval(document, id, fields) {
+      fields = fields || {};
+      return replaceInterval(document, id, function (interval) {
+        interval.corrected = interval.corrected || interval.original;
+        interval.action = "removal";
+        if (fields.comment != null) interval.comment = optionalText(fields.comment);
+        if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
+        if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
+        return interval;
+      });
+    }
+
+    function restoreInterval(document, id) {
+      return replaceInterval(document, id, function (interval) {
+        interval.action = interval.original ? "unresolved" : "addition";
+        return interval;
+      });
+    }
+
+    function reviewInterval(document, id, fields) {
+      fields = fields || {};
+      return replaceInterval(document, id, function (interval) {
+        var action = normalizeAction(fields.action || interval.action, interval.original);
+        if (action === "approve") {
+          if (!interval.original) throw new TypeError("an added interval cannot be approved as an original proposal");
+          interval.corrected = clone(interval.original);
+        } else if (action === "correction") {
+          if (!interval.original) throw new TypeError("an added interval uses the addition action");
+          interval.corrected = interval.corrected || clone(interval.original);
+        } else if (action === "addition") {
+          if (interval.original) throw new TypeError("a proposed interval cannot use the addition action");
+        } else if (action === "removal") {
+          interval.corrected = interval.corrected || interval.original;
+        }
+        interval.action = action;
+        if (fields.comment != null) interval.comment = optionalText(fields.comment);
+        if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
+        if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
+        return interval;
+      });
+    }
+
+    function addControl(document, kind, fields) {
+      fields = fields || {};
+      var next = clone(document);
+      var base = next.source.id + ":control-" + kind;
+      var id = optionalText(fields.id) || base;
+      var suffix = 2;
+      while (next.controls.some(function (control) { return control.id === id; })) id = base + "-" + suffix++;
+      next.controls.push({ id: id, kind: kind, label: fields.label, state: "unresolved" });
+      return normalizeDocument(next);
+    }
+
+    function reviewControl(document, id, fields) {
+      fields = fields || {};
+      var next = clone(document);
+      var index = next.controls.findIndex(function (control) { return control.id === String(id); });
+      if (index < 0) throw new TypeError("unknown control id: " + id);
+      var control = next.controls[index];
+      if (fields.state != null) control.state = fields.state;
+      if (fields.comment != null) control.comment = fields.comment;
+      if (fields.verifier != null) control.verifier = fields.verifier;
+      if (fields.verifiedAt != null) control.verifiedAt = fields.verifiedAt;
+      return normalizeDocument(next);
+    }
+
+    function completeMetadata(item) {
+      return Boolean(optionalText(item.comment) && optionalText(item.verifier) && optionalText(item.verifiedAt));
+    }
+
+    function completion(document) {
+      var unresolved = [];
+      var contradictions = [];
+      document.intervals.forEach(function (interval) {
+        if (interval.action === "unresolved") unresolved.push(interval.id + ":action");
+        else if (!completeMetadata(interval)) unresolved.push(interval.id + ":evidence");
+      });
+      var activeCount = document.intervals.filter(function (interval) { return Boolean(effectiveBounds(interval)); }).length;
+      document.controls.forEach(function (control) {
+        if (control.state === "unresolved") unresolved.push(control.id + ":state");
+        else if (!completeMetadata(control)) unresolved.push(control.id + ":evidence");
+        if (control.state === "confirmed" && activeCount > 0 && (control.kind === "empty-set" || control.kind === "inactive")) {
+          contradictions.push(control.id + ":active-intervals");
+        }
+      });
+      return {
+        complete: unresolved.length === 0 && contradictions.length === 0,
+        unresolved: unresolved,
+        contradictions: contradictions,
+        intervalCount: document.intervals.length,
+        activeIntervalCount: activeCount,
+        controlCount: document.controls.length
+      };
+    }
+
+    function serialize(document) {
+      return JSON.stringify(normalizeDocument(document), null, 2) + "\n";
+    }
+
+    function parse(text, options) {
+      try {
+        var value = typeof text === "string" ? JSON.parse(text) : text;
+        return { ok: true, document: normalizeDocument(value, options) };
+      } catch (error) {
+        return { ok: false, error: error && error.message ? error.message : String(error) };
+      }
+    }
+
+    function createTimelineView(document, viewportWidth, zoom, scrollLeft) {
+      var windowBounds = document.source.reviewWindow;
+      var width = Math.max(1, Number(viewportWidth) || 1);
+      var scale = clamp(Number(zoom) || 1, 1, MAX_ZOOM);
+      var contentWidth = Math.max(width, width * scale);
+      var maxScroll = Math.max(0, contentWidth - width);
+      return {
+        startSec: windowBounds.startSec,
+        endSec: windowBounds.endSec,
+        durationSec: windowBounds.endSec - windowBounds.startSec,
+        viewportWidth: width,
+        zoom: scale,
+        contentWidth: contentWidth,
+        scrollLeft: clamp(Number(scrollLeft) || 0, 0, maxScroll),
+        maxScroll: maxScroll,
+        pixelsPerSecond: contentWidth / (windowBounds.endSec - windowBounds.startSec)
+      };
+    }
+
+    function secondsToPixels(view, seconds) {
+      return (Number(seconds) - view.startSec) * view.pixelsPerSecond;
+    }
+
+    function pixelsToSeconds(view, pixels) {
+      return roundSeconds(view.startSec + Number(pixels) / view.pixelsPerSecond);
+    }
+
+    function zoomTimeline(document, view, nextZoom, anchorX) {
+      var anchor = clamp(Number(anchorX) || 0, 0, view.viewportWidth);
+      var ratio = (view.scrollLeft + anchor) / view.contentWidth;
+      var next = createTimelineView(document, view.viewportWidth, nextZoom, 0);
+      next.scrollLeft = clamp(ratio * next.contentWidth - anchor, 0, next.maxScroll);
+      return next;
+    }
+
+    function scrollTimeline(document, view, deltaPixels) {
+      return createTimelineView(document, view.viewportWidth, view.zoom, view.scrollLeft + Number(deltaPixels || 0));
+    }
+
+    function pointerEdit(document, id, mode, deltaPixels, view) {
+      var deltaSeconds = Number(deltaPixels || 0) / view.pixelsPerSecond;
+      var interval = document.intervals.find(function (item) { return item.id === String(id); });
+      if (!interval) throw new TypeError("unknown interval id: " + id);
+      var bounds = effectiveBounds(interval) || interval.corrected || interval.original;
+      if (mode === "move") return moveInterval(document, id, deltaSeconds);
+      if (mode === "start") return resizeInterval(document, id, "start", bounds.startSec + deltaSeconds);
+      if (mode === "end") return resizeInterval(document, id, "end", bounds.endSec + deltaSeconds);
+      throw new TypeError("pointer edit mode must be move, start, or end");
+    }
+
+    return {
+      SCHEMA: SCHEMA,
+      VERSION: VERSION,
+      MIN_INTERVAL_SECONDS: MIN_INTERVAL_SECONDS,
+      ACTIONS: ACTIONS.slice(),
+      CONTROL_STATES: CONTROL_STATES.slice(),
+      CONTROL_KINDS: CONTROL_KINDS.slice(),
+      MAX_ZOOM: MAX_ZOOM,
+      clone: clone,
+      parseSeconds: parseSeconds,
+      roundSeconds: roundSeconds,
+      formatSeconds: formatSeconds,
+      normalizeDocument: normalizeDocument,
+      createDocument: createDocument,
+      effectiveBounds: effectiveBounds,
+      resizeInterval: resizeInterval,
+      moveInterval: moveInterval,
+      addInterval: addInterval,
+      removeInterval: removeInterval,
+      restoreInterval: restoreInterval,
+      reviewInterval: reviewInterval,
+      addControl: addControl,
+      reviewControl: reviewControl,
+      completion: completion,
+      serialize: serialize,
+      parse: parse,
+      createTimelineView: createTimelineView,
+      secondsToPixels: secondsToPixels,
+      pixelsToSeconds: pixelsToSeconds,
+      zoomTimeline: zoomTimeline,
+      scrollTimeline: scrollTimeline,
+      pointerEdit: pointerEdit
+    };
+  });
+
 /* src/state.js */
   /* UI state is serialisable so storage and runtime messages share one contract. */
   (function (root) {
@@ -6343,6 +6893,9 @@
       labelUndoByVideo: {},
       manualLabelsVersion: LABEL_STORE_VERSION,
       lastEdit: null,
+      // Developer-only rally-boundary reviews are separate from shot labels.
+      // Each canonical JSON document is owned by its stable video key.
+      rallyReviewsByVideo: {},
       // Evidence visibility is independent from analyzer execution. These
       // preferences survive every live result rerender; unavailable groups keep
       // their remembered value without implying that evidence exists.
@@ -6380,7 +6933,7 @@
       // pattern. Settings are global preferences; the settings panel's open
       // state, collapse, and geometry stay video-local through the panels,
       // collapse, and layout maps below.
-      settings: {},
+      settings: { rallyLabelerEnabled: false },
       // Explicit panel choices override density presets while the preference
       // still gives Balanced/Full a useful default presentation. Both the
       // effective values and overrides are scoped to the active video.
@@ -6552,7 +7105,7 @@
       return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
     }
 
-    var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls", "settings"];
+    var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls", "settings", "rallyLabeler"];
 
     function copyPanelLayout(layout) {
       if (!layout || typeof layout !== "object") return null;
@@ -6596,7 +7149,7 @@
 
     // Panels that are overlay furniture (not the transient court-setup card)
     // get a header collapse/expand affordance; state mirrors layout persistence.
-    var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls", "settings"];
+    var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls", "settings", "rallyLabeler"];
 
     function copyPanelCollapseState(collapsed) {
       var result = {};
@@ -6634,6 +7187,27 @@
 
     function copyRecords(records) {
       return Array.isArray(records) ? records.map(clone) : [];
+    }
+
+    function copyRallyReviewMap(raw) {
+      var result = {};
+      if (!raw || typeof raw !== "object") return result;
+      Object.keys(raw).forEach(function (key) {
+        if (raw[key] && typeof raw[key] === "object" && !Array.isArray(raw[key])) result[String(key)] = clone(raw[key]);
+      });
+      return result;
+    }
+
+    function rallyReviewForVideo(stateOrMap, videoKey) {
+      var map = stateOrMap && stateOrMap.rallyReviewsByVideo ? stateOrMap.rallyReviewsByVideo : stateOrMap;
+      if (!map || videoKey == null || !map[String(videoKey)]) return null;
+      return clone(map[String(videoKey)]);
+    }
+
+    function copySettings(settings) {
+      var result = settings && typeof settings === "object" && !Array.isArray(settings) ? clone(settings) : {};
+      result.rallyLabelerEnabled = Boolean(result.rallyLabelerEnabled);
+      return result;
     }
 
     function copyEdit(edit) { return edit && typeof edit === "object" ? clone(edit) : null; }
@@ -6932,6 +7506,8 @@
       var raw = overrides || {};
       var value = Object.assign({}, defaults, raw);
       value.panels = Object.assign({}, defaults.panels, copyPanelVisibility(raw.panels));
+      value.settings = Object.assign({}, defaults.settings, copySettings(raw.settings));
+      value.rallyReviewsByVideo = copyRallyReviewMap(raw.rallyReviewsByVideo);
       value.panelOverrides = copyPanelOverrides(raw.panelOverrides);
       value.panelsByVideo = copyPanelVisibilityMap(raw.panelsByVideo);
       value.panelOverridesByVideo = copyPanelOverridesMap(raw.panelOverridesByVideo);
@@ -7139,6 +7715,18 @@
           return initialExtensionState(Object.assign({}, current, { videoKey: linesKey || current.videoKey, courtLinesByVideo: nextLines }));
         }
         case "TOGGLE_PANEL_CONTROLS_EXPANDED": return Object.assign(current, { panelControlsExpanded: Boolean(action.value) });
+        case "SET_SETTING": {
+          if (action.key !== "rallyLabelerEnabled") return current;
+          return initialExtensionState(Object.assign({}, current, { settings: Object.assign({}, current.settings, { rallyLabelerEnabled: Boolean(action.value) }) }));
+        }
+        case "SET_RALLY_REVIEW": {
+          var rallyKey = action.videoKey != null ? String(action.videoKey) : current.videoKey;
+          if (!rallyKey) return current;
+          var rallyReviews = copyRallyReviewMap(current.rallyReviewsByVideo);
+          if (action.document && typeof action.document === "object") rallyReviews[rallyKey] = clone(action.document);
+          else delete rallyReviews[rallyKey];
+          return initialExtensionState(Object.assign({}, current, { rallyReviewsByVideo: rallyReviews }));
+        }
         case "SET_PANELS": {
           var nextPanels = Object.assign({}, current.panels);
           var nextOverrides = Object.assign({}, current.panelOverrides);
@@ -7228,6 +7816,7 @@
       normalizeLabelStore: function (input, videoKey, options) { return stateForVideo(input, videoKey, options); },
       stateForVideo: stateForVideo,
       labelsForVideo: labelsForVideo,
+      rallyReviewForVideo: rallyReviewForVideo,
       PANEL_LAYOUT_KEYS: PANEL_LAYOUT_KEYS.slice(),
       PANEL_COLLAPSE_KEYS: PANEL_COLLAPSE_KEYS.slice(),
       panelLayoutsForVideo: panelLayoutsForVideo,
@@ -7735,6 +8324,7 @@
     // The packed MV3 bundle loads this pure helper before the content entrypoint.
     // Keep direct-source recovery/tests tolerant of an older partial bundle.
     var panelLayoutApi = window.BVPanelLayout || null;
+    var rallyApi = window.BVRallyLabeler || null;
     var state = window.BVState.initialExtensionState();
     // Popup actions can arrive while the initial storage read is still pending.
     // Hold them until the stored video-local state is applied so hydration cannot
@@ -7752,6 +8342,15 @@
     var draft = newDraft();
     var importResult = null;
     var csvInput = null;
+    // The boundary editor is an opt-in developer tool. Its canonical document
+    // is persisted by video key; transient selection/zoom/gesture state is not.
+    var rallyDocument = null;
+    var rallySelectedId = null;
+    var rallyTimelineZoom = 1;
+    var rallyTimelineScroll = 0;
+    var rallyImportInput = null;
+    var rallyNotice = null;
+    var rallyGesture = null;
 
     function currentMediaTimestamp() {
       // Prefer live video.currentTime to avoid stale cached mediaTime from prior playback events
@@ -8589,6 +9188,12 @@
       suggestion = null;
       draft = newDraft();
       importResult = null;
+      rallyDocument = rallyApi && window.BVState.rallyReviewForVideo ? window.BVState.rallyReviewForVideo(state, activeVideoKey) : null;
+      rallySelectedId = null;
+      rallyTimelineZoom = 1;
+      rallyTimelineScroll = 0;
+      rallyNotice = null;
+      rallyGesture = null;
       persist();
       render();
     }
@@ -8626,6 +9231,7 @@
       else {
         activeVideoKey = key;
         state = window.BVState.stateForVideo(state, key);
+        rallyDocument = rallyApi && window.BVState.rallyReviewForVideo ? window.BVState.rallyReviewForVideo(state, key) : null;
         restoreReviewState();
         restoreCalibrationState();
       }
@@ -8770,6 +9376,7 @@
             mediaTime = nextTime;
             if (!state.stale) state.time = formatMediaTime(nextTime);
             if (state.labeling) refreshLabelingClock();
+            refreshRallyPlayhead();
           }
           // Duration becomes known once metadata loads; publish only on change.
           publishVideoInfo();
@@ -8817,6 +9424,7 @@
             if (Number.isFinite(currentMediaTime)) {
               mediaTime = currentMediaTime;
               if (!state.stale && Math.abs(mediaTime) > .001) state.time = formatMediaTime(mediaTime);
+              refreshRallyPlayhead();
             }
           }
         });
@@ -8870,7 +9478,8 @@
       feed: { minWidth: 280, minHeight: 128, maxWidth: 560, maxHeight: 520, bottomReserve: PLAYER_CONTROLS_RESERVE },
       manual: { minWidth: 320, minHeight: 300, maxWidth: 620, maxHeight: 690, bottomReserve: PLAYER_CONTROLS_RESERVE },
       controls: { minWidth: 180, minHeight: 84, maxWidth: 360, maxHeight: 220, bottomReserve: PLAYER_CONTROLS_RESERVE },
-      settings: { minWidth: 240, minHeight: 96, maxWidth: 420, maxHeight: 480, bottomReserve: PLAYER_CONTROLS_RESERVE }
+      settings: { minWidth: 240, minHeight: 96, maxWidth: 420, maxHeight: 480, bottomReserve: PLAYER_CONTROLS_RESERVE },
+      rallyLabeler: { minWidth: 360, minHeight: 260, maxWidth: 1100, maxHeight: 760, bottomReserve: PLAYER_CONTROLS_RESERVE }
     };
     function panelConstraints(panelId) { return PANEL_LAYOUT_CONSTRAINTS[panelId] || {}; }
     function panelMetrics(container, panel) {
@@ -9625,6 +10234,453 @@
         return version == null ? null : String(version);
       } catch (_) { return null; }
     }
+    function rallyLabelerEnabled() {
+      return Boolean(rallyApi && state.settings && state.settings.rallyLabelerEnabled);
+    }
+    function rallyToday() { return new Date().toISOString().slice(0, 10); }
+    function rallyInput(type, value, attrs) {
+      var input = ui.el("input", Object.assign({ type: type, value: value == null ? "" : String(value) }, attrs || {}));
+      input.value = value == null ? "" : String(value);
+      return input;
+    }
+    function rallyTextarea(value, attrs) {
+      var textarea = ui.el("textarea", Object.assign({ rows: "2" }, attrs || {}), [value || ""]);
+      textarea.value = value || "";
+      return textarea;
+    }
+    function rallyField(label, control) {
+      return ui.el("label", { className: "bv-rally-field" }, [ui.el("span", { className: "bv-label" }, [label]), control]);
+    }
+    function rallyReadValue(container, attribute) {
+      var field = container && container.querySelector && container.querySelector("[" + attribute + "]");
+      if (!field) return "";
+      return String(field.value != null ? field.value : field.getAttribute("value") || "").trim();
+    }
+    function rallyEvidence(container) {
+      return {
+        comment: rallyReadValue(container, "data-bso-rally-comment"),
+        verifier: rallyReadValue(container, "data-bso-rally-verifier"),
+        verifiedAt: rallyReadValue(container, "data-bso-rally-date")
+      };
+    }
+    function setRallyDocument(documentValue, options) {
+      options = options || {};
+      if (!rallyApi || !documentValue) return false;
+      try {
+        var normalized = rallyApi.normalizeDocument(documentValue, {
+          videoKey: activeVideoKey || currentVideoKey(),
+          videoUrl: window.location && window.location.href,
+          fallbackEndSec: video && video.duration
+        });
+        rallyDocument = normalized;
+        state = window.BVState.reduceExtensionState(state, { type: "SET_RALLY_REVIEW", videoKey: activeVideoKey || currentVideoKey(), document: normalized });
+        if (options.notice) rallyNotice = { ok: true, message: options.notice };
+        persist();
+        return true;
+      } catch (error) {
+        rallyNotice = { ok: false, message: error && error.message ? error.message : String(error) };
+        return false;
+      }
+    }
+    function createRallyDocument() {
+      if (!rallyApi) return;
+      var duration = video && Number.isFinite(Number(video.duration)) && Number(video.duration) > 0
+        ? Number(video.duration)
+        : Math.max(60, (currentMediaTimestamp() || 0) + 60);
+      var info = currentVideoInfo();
+      var created = rallyApi.createDocument({
+        sourceId: activeVideoKey || currentVideoKey(),
+        label: info && info.title || activeVideoKey || currentVideoKey(),
+        videoKey: activeVideoKey || currentVideoKey(),
+        videoUrl: window.location && window.location.href,
+        startSec: 0,
+        endSec: duration
+      });
+      rallySelectedId = null;
+      if (setRallyDocument(created, { notice: "Created a video-local review window." })) render();
+    }
+    function rallyIntervalById(id) {
+      return rallyDocument && rallyDocument.intervals.find(function (interval) { return interval.id === String(id); });
+    }
+    function rallyControlById(id) {
+      return rallyDocument && rallyDocument.controls.find(function (control) { return control.id === String(id); });
+    }
+    function selectRallyInterval(id) {
+      rallySelectedId = String(id);
+      render();
+    }
+    function updateRallyEdge(id, edge, value) {
+      if (!rallyDocument) return;
+      var seconds = rallyApi.parseSeconds(value);
+      if (seconds == null) {
+        rallyNotice = { ok: false, message: "Enter seconds as a number or mm:ss.sss." };
+        render();
+        return;
+      }
+      var next = rallyApi.resizeInterval(rallyDocument, id, edge, seconds);
+      if (setRallyDocument(next)) render();
+      else render();
+    }
+    function addMissingRally() {
+      if (!rallyDocument) return;
+      var windowBounds = rallyDocument.source.reviewWindow;
+      var start = rallyApi.roundSeconds(currentMediaTimestamp());
+      if (start == null) start = windowBounds.startSec;
+      start = Math.max(windowBounds.startSec, Math.min(start, windowBounds.endSec - rallyApi.MIN_INTERVAL_SECONDS));
+      var end = Math.min(windowBounds.endSec, rallyApi.roundSeconds(start + 3));
+      if (end - start < rallyApi.MIN_INTERVAL_SECONDS) start = Math.max(windowBounds.startSec, rallyApi.roundSeconds(end - 3));
+      var next = rallyApi.addInterval(rallyDocument, start, end);
+      var added = next.intervals.find(function (interval) {
+        return !rallyDocument.intervals.some(function (previous) { return previous.id === interval.id; });
+      });
+      rallySelectedId = added && added.id;
+      if (setRallyDocument(next, { notice: "Added a missing rally at the observed media time." })) render();
+    }
+    function commitRallyReview(id, action, container) {
+      if (!rallyDocument) return;
+      var fields = rallyEvidence(container);
+      fields.action = action;
+      var next = rallyApi.reviewInterval(rallyDocument, id, fields);
+      if (setRallyDocument(next, { notice: "Saved " + action + " evidence for " + id + "." })) render();
+    }
+    function restoreRallyInterval(id) {
+      if (setRallyDocument(rallyApi.restoreInterval(rallyDocument, id), { notice: "Restored " + id + " for review." })) render();
+    }
+    function addRallyControl(kind) {
+      if (setRallyDocument(rallyApi.addControl(rallyDocument, kind), { notice: "Added an explicit " + kind + " confirmation." })) render();
+    }
+    function commitRallyControl(id, controlState, container) {
+      var fields = rallyEvidence(container);
+      fields.state = controlState;
+      if (setRallyDocument(rallyApi.reviewControl(rallyDocument, id, fields), { notice: "Saved control confirmation for " + id + "." })) render();
+    }
+    function exportRallyJson(verifiedOnly) {
+      if (!rallyDocument) return;
+      var gate = rallyApi.completion(rallyDocument);
+      if (verifiedOnly && !gate.complete) {
+        rallyNotice = { ok: false, message: "Verified export is blocked until every interval and control is resolved without contradiction." };
+        render();
+        return;
+      }
+      var text = rallyApi.serialize(rallyDocument);
+      if (singleton) singleton.lastRallyExportJson = text;
+      var link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+      link.download = rallyDocument.source.id + (verifiedOnly ? "-verified" : "-draft") + ".rally-review.json";
+      link.click();
+      setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
+    }
+    function importRallyJsonText(text) {
+      var parsed = rallyApi.parse(String(text || ""), { videoKey: activeVideoKey || currentVideoKey(), videoUrl: window.location && window.location.href, fallbackEndSec: video && video.duration });
+      if (!parsed.ok) {
+        rallyNotice = { ok: false, message: "Import failed: " + parsed.error };
+        render();
+        return;
+      }
+      rallySelectedId = parsed.document.intervals.length ? parsed.document.intervals[0].id : null;
+      rallyTimelineZoom = 1;
+      rallyTimelineScroll = 0;
+      if (setRallyDocument(parsed.document, { notice: "Imported " + parsed.document.intervals.length + " intervals and " + parsed.document.controls.length + " controls." })) render();
+    }
+    function readRallyJsonFile(file) {
+      function handle(text) { importRallyJsonText(text); }
+      if (file && typeof file.text === "function") {
+        var reading = file.text();
+        if (reading && typeof reading.then === "function") reading.then(handle, function () { rallyNotice = { ok: false, message: "Could not read the selected JSON file." }; render(); });
+        else handle(reading);
+      } else if (file && typeof FileReader !== "undefined") {
+        var reader = new FileReader();
+        reader.onload = function () { handle(reader.result); };
+        reader.onerror = function () { rallyNotice = { ok: false, message: "Could not read the selected JSON file." }; render(); };
+        reader.readAsText(file);
+      } else {
+        rallyNotice = { ok: false, message: "This browser cannot read the selected JSON file." };
+        render();
+      }
+    }
+    function importRallyJson() {
+      if (!rallyImportInput) {
+        rallyImportInput = document.createElement("input");
+        rallyImportInput.type = "file";
+        rallyImportInput.accept = ".json,application/json";
+        rallyImportInput.setAttribute("data-bso-rally-import-input", "true");
+        rallyImportInput.style.display = "none";
+        (document.body || document.documentElement || document).appendChild(rallyImportInput);
+        rallyImportInput.addEventListener("change", function () {
+          var file = rallyImportInput.files && rallyImportInput.files[0];
+          rallyImportInput.value = "";
+          if (file) readRallyJsonFile(file);
+        });
+      }
+      rallyImportInput.click();
+    }
+    function currentRallyView(viewportWidth) {
+      return rallyApi.createTimelineView(rallyDocument, viewportWidth || 640, rallyTimelineZoom, rallyTimelineScroll);
+    }
+    function updateRallyTimelineGeometry() {
+      if (!root || !rallyDocument) return;
+      var bars = root.querySelectorAll("[data-bso-rally-interval]");
+      Array.prototype.forEach.call(bars, function (bar) {
+        var interval = rallyIntervalById(bar.getAttribute("data-bso-rally-interval"));
+        var bounds = interval && rallyApi.effectiveBounds(interval);
+        if (!bounds) return;
+        var windowBounds = rallyDocument.source.reviewWindow;
+        var duration = windowBounds.endSec - windowBounds.startSec;
+        bar.style.left = ((bounds.startSec - windowBounds.startSec) / duration * 100) + "%";
+        bar.style.width = (Math.max(.001, bounds.endSec - bounds.startSec) / duration * 100) + "%";
+        bar.setAttribute("aria-label", interval.id + " from " + rallyApi.formatSeconds(bounds.startSec) + " to " + rallyApi.formatSeconds(bounds.endSec));
+      });
+      var selected = rallyIntervalById(rallySelectedId);
+      var selectedBounds = selected && (rallyApi.effectiveBounds(selected) || selected.corrected || selected.original);
+      if (selectedBounds) {
+        var startInput = root.querySelector("[data-bso-rally-start-input]");
+        var endInput = root.querySelector("[data-bso-rally-end-input]");
+        if (startInput) startInput.value = selectedBounds.startSec.toFixed(3);
+        if (endInput) endInput.value = selectedBounds.endSec.toFixed(3);
+        var exact = root.querySelector("[data-bso-rally-exact]");
+        if (exact) exact.textContent = rallyApi.formatSeconds(selectedBounds.startSec) + " → " + rallyApi.formatSeconds(selectedBounds.endSec);
+      }
+      refreshRallyPlayhead();
+    }
+    function refreshRallyPlayhead() {
+      if (!root || !rallyDocument || !rallyApi) return false;
+      var playhead = root.querySelector("[data-bso-rally-playhead]");
+      var clock = root.querySelector("[data-bso-rally-clock]");
+      var seconds = currentMediaTimestamp();
+      if (clock) clock.textContent = seconds == null ? "—" : rallyApi.formatSeconds(seconds);
+      if (!playhead || seconds == null) return false;
+      var windowBounds = rallyDocument.source.reviewWindow;
+      var within = seconds >= windowBounds.startSec && seconds <= windowBounds.endSec;
+      playhead.style.display = within ? "block" : "none";
+      if (within) playhead.style.left = ((seconds - windowBounds.startSec) / (windowBounds.endSec - windowBounds.startSec) * 100) + "%";
+      playhead.setAttribute("data-bso-media-seconds", String(rallyApi.roundSeconds(seconds)));
+      return true;
+    }
+    function startRallyGesture(event, id, mode, scroller) {
+      if (!rallyDocument || !event) return;
+      if (event.preventDefault) event.preventDefault();
+      if (event.stopPropagation) event.stopPropagation();
+      var viewportWidth = Number(scroller && scroller.clientWidth) || 640;
+      var scrollLeft = Number(scroller && scroller.scrollLeft) || rallyTimelineScroll;
+      var view = rallyApi.createTimelineView(rallyDocument, viewportWidth, rallyTimelineZoom, scrollLeft);
+      rallyGesture = { id: String(id), mode: mode, pointerId: event.pointerId, startX: Number(event.clientX) || 0, base: rallyDocument, view: view, target: event.currentTarget || event.target };
+      rallySelectedId = String(id);
+      if (rallyGesture.target && rallyGesture.pointerId != null && typeof rallyGesture.target.setPointerCapture === "function") {
+        try { rallyGesture.target.setPointerCapture(rallyGesture.pointerId); } catch (_) {}
+      }
+    }
+    function rallyPointerMove(event) {
+      if (!rallyGesture || event && event.pointerId != null && rallyGesture.pointerId != null && event.pointerId !== rallyGesture.pointerId) return;
+      try {
+        rallyDocument = rallyApi.pointerEdit(rallyGesture.base, rallyGesture.id, rallyGesture.mode, (Number(event && event.clientX) || 0) - rallyGesture.startX, rallyGesture.view);
+        updateRallyTimelineGeometry();
+      } catch (error) {
+        rallyNotice = { ok: false, message: error && error.message ? error.message : String(error) };
+      }
+    }
+    function finishRallyGesture(event, cancelled) {
+      if (!rallyGesture || event && event.pointerId != null && rallyGesture.pointerId != null && event.pointerId !== rallyGesture.pointerId) return;
+      var gesture = rallyGesture;
+      rallyGesture = null;
+      if (gesture.target && gesture.pointerId != null && typeof gesture.target.releasePointerCapture === "function") {
+        try { if (!gesture.target.hasPointerCapture || gesture.target.hasPointerCapture(gesture.pointerId)) gesture.target.releasePointerCapture(gesture.pointerId); } catch (_) {}
+      }
+      if (cancelled) rallyDocument = gesture.base;
+      else setRallyDocument(rallyDocument, { notice: "Updated " + gesture.id + " from the interval bar." });
+      render();
+    }
+    function nudgeRallyEdge(event, id, edge) {
+      var key = event && event.key;
+      if (key !== "ArrowLeft" && key !== "ArrowRight") return;
+      if (event.preventDefault) event.preventDefault();
+      if (event.stopPropagation) event.stopPropagation();
+      var interval = rallyIntervalById(id);
+      var bounds = interval && (rallyApi.effectiveBounds(interval) || interval.corrected || interval.original);
+      if (!bounds) return;
+      var amount = event.shiftKey ? 1 : .1;
+      var nextValue = bounds[edge + "Sec"] + (key === "ArrowRight" ? amount : -amount);
+      var next = rallyApi.resizeInterval(rallyDocument, id, edge, nextValue);
+      if (setRallyDocument(next)) render();
+    }
+    function zoomRallyTimeline(factor) {
+      if (!rallyDocument) return;
+      var scroller = root && root.querySelector("[data-bso-rally-scroll]");
+      var width = Number(scroller && scroller.clientWidth) || 640;
+      var current = rallyApi.createTimelineView(rallyDocument, width, rallyTimelineZoom, Number(scroller && scroller.scrollLeft) || rallyTimelineScroll);
+      var next = rallyApi.zoomTimeline(rallyDocument, current, rallyTimelineZoom * factor, width / 2);
+      rallyTimelineZoom = next.zoom;
+      rallyTimelineScroll = next.scrollLeft;
+      render();
+    }
+    function scrollRallyTimeline(direction) {
+      var scroller = root && root.querySelector("[data-bso-rally-scroll]");
+      var width = Number(scroller && scroller.clientWidth) || 640;
+      var current = rallyApi.createTimelineView(rallyDocument, width, rallyTimelineZoom, Number(scroller && scroller.scrollLeft) || rallyTimelineScroll);
+      var next = rallyApi.scrollTimeline(rallyDocument, current, direction * width * .75);
+      rallyTimelineScroll = next.scrollLeft;
+      if (scroller) scroller.scrollLeft = rallyTimelineScroll;
+    }
+    function rallyMetadataFields(item) {
+      return ui.el("div", { className: "bv-rally-metadata" }, [
+        rallyField("Comment / reason", rallyTextarea(item.comment, { "data-bso-rally-comment": "true", placeholder: "Why this approval or change is correct" })),
+        rallyField("Verifier", rallyInput("text", item.verifier, { "data-bso-rally-verifier": "true", placeholder: "Name or handle" })),
+        rallyField("Review date", rallyInput("date", item.verifiedAt || rallyToday(), { "data-bso-rally-date": "true" }))
+      ]);
+    }
+    function rallySelectedEditor(interval) {
+      if (!interval) return ui.el("p", { className: "bv-helper" }, ["Select an interval bar to inspect exact seconds and adjudicate it."]);
+      var bounds = rallyApi.effectiveBounds(interval) || interval.corrected || interval.original;
+      var editor = ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
+        ui.el("div", { className: "bv-rally-editor-heading" }, [
+          ui.el("strong", {}, [interval.id]),
+          ui.badge(interval.action, interval.action === "removal" ? "out" : interval.action === "unresolved" ? "warn" : "info", false),
+          ui.el("span", { className: "bv-mono", "data-bso-rally-exact": "true" }, [rallyApi.formatSeconds(bounds.startSec) + " → " + rallyApi.formatSeconds(bounds.endSec)])
+        ]),
+        ui.el("p", { className: "bv-helper" }, ["Original proposal: " + (interval.original ? rallyApi.formatSeconds(interval.original.startSec) + " → " + rallyApi.formatSeconds(interval.original.endSec) : "none (manual addition)")]),
+        ui.el("div", { className: "bv-rally-edge-inputs" }, [
+          rallyField("Start seconds", rallyInput("number", bounds.startSec.toFixed(3), { min: rallyDocument.source.reviewWindow.startSec, max: bounds.endSec - rallyApi.MIN_INTERVAL_SECONDS, step: ".001", "data-bso-rally-start-input": "true", onChange: function (event) { updateRallyEdge(interval.id, "start", event.target.value); } })),
+          rallyField("End seconds", rallyInput("number", bounds.endSec.toFixed(3), { min: bounds.startSec + rallyApi.MIN_INTERVAL_SECONDS, max: rallyDocument.source.reviewWindow.endSec, step: ".001", "data-bso-rally-end-input": "true", onChange: function (event) { updateRallyEdge(interval.id, "end", event.target.value); } }))
+        ]),
+        rallyMetadataFields(interval)
+      ]);
+      var actions = ui.el("div", { className: "bv-rally-editor-actions" });
+      if (interval.action === "removal") {
+        actions.appendChild(ui.button("Restore", { variant: "secondary", size: "sm", onClick: function () { restoreRallyInterval(interval.id); } }));
+      } else {
+        if (interval.original) actions.appendChild(ui.button("Approve proposal", { variant: "secondary", size: "sm", onClick: function () { commitRallyReview(interval.id, "approve", editor); } }));
+        actions.appendChild(ui.button(interval.original ? "Save correction" : "Save addition", { variant: "primary", size: "sm", onClick: function () { commitRallyReview(interval.id, interval.original ? "correction" : "addition", editor); } }));
+        actions.appendChild(ui.button("Remove false positive", { variant: "danger", size: "sm", onClick: function () { commitRallyReview(interval.id, "removal", editor); } }));
+      }
+      editor.appendChild(actions);
+      return editor;
+    }
+    function rallyControlCard(control) {
+      var card = ui.el("section", { className: "bv-rally-control", "data-bso-rally-control": control.id }, [
+        ui.el("div", { className: "bv-rally-control-heading" }, [ui.el("strong", {}, [control.label]), ui.badge(control.kind, "neutral", false), ui.badge(control.state, control.state === "unresolved" ? "warn" : control.state === "confirmed" ? "in" : "neutral", false)]),
+        rallyMetadataFields(control)
+      ]);
+      card.appendChild(ui.el("div", { className: "bv-rally-editor-actions" }, [
+        ui.button("Confirm", { variant: "primary", size: "sm", onClick: function () { commitRallyControl(control.id, "confirmed", card); } }),
+        ui.button("Not true", { variant: "secondary", size: "sm", onClick: function () { commitRallyControl(control.id, "rejected", card); } })
+      ]));
+      return card;
+    }
+    function rallyTimeline() {
+      var windowBounds = rallyDocument.source.reviewWindow;
+      var duration = windowBounds.endSec - windowBounds.startSec;
+      var scroll = ui.el("div", { className: "bv-rally-timeline-scroll", tabindex: "0", role: "region", "aria-label": "Horizontally scrollable rally timeline", "data-bso-rally-scroll": "true" });
+      var track = ui.el("div", { className: "bv-rally-timeline-track", style: { width: (rallyTimelineZoom * 100) + "%", height: Math.max(96, 42 + rallyDocument.intervals.length * 34) + "px" } });
+      var ruler = ui.el("div", { className: "bv-rally-ruler" });
+      for (var tickIndex = 0; tickIndex <= 8; tickIndex += 1) {
+        var tickSeconds = windowBounds.startSec + duration * tickIndex / 8;
+        ruler.appendChild(ui.el("span", { style: { left: (tickIndex / 8 * 100) + "%" } }, [rallyApi.formatSeconds(tickSeconds)]));
+      }
+      track.appendChild(ruler);
+      track.appendChild(ui.el("i", { className: "bv-rally-playhead", "data-bso-rally-playhead": "true", "aria-hidden": "true" }));
+      rallyDocument.intervals.forEach(function (interval, index) {
+        var row = ui.el("div", { className: "bv-rally-timeline-row" + (interval.id === rallySelectedId ? " selected" : "") + (interval.action === "removal" ? " removed" : ""), style: { top: (34 + index * 34) + "px" } });
+        var bounds = rallyApi.effectiveBounds(interval);
+        if (!bounds) {
+          row.appendChild(ui.el("button", { className: "bv-rally-tombstone", type: "button", onClick: function () { selectRallyInterval(interval.id); } }, [interval.id + " · removed"]));
+        } else {
+          var left = (bounds.startSec - windowBounds.startSec) / duration * 100;
+          var width = (bounds.endSec - bounds.startSec) / duration * 100;
+          var bar = ui.el("div", {
+            className: "bv-rally-interval " + interval.action,
+            role: "group",
+            tabindex: "0",
+            "data-bso-rally-interval": interval.id,
+            "aria-label": interval.id + " from " + rallyApi.formatSeconds(bounds.startSec) + " to " + rallyApi.formatSeconds(bounds.endSec),
+            style: { left: left + "%", width: Math.max(.001, width) + "%" },
+            onClick: function () { selectRallyInterval(interval.id); },
+            onPointerdown: function (event) { startRallyGesture(event, interval.id, "move", scroll); }
+          }, [ui.el("span", { className: "bv-rally-interval-label" }, [interval.id])]);
+          var startEdge = ui.el("button", {
+            className: "bv-rally-edge start", type: "button", role: "slider", "aria-label": "Resize start of " + interval.id,
+            "aria-valuemin": windowBounds.startSec, "aria-valuemax": bounds.endSec - rallyApi.MIN_INTERVAL_SECONDS, "aria-valuenow": bounds.startSec, "aria-valuetext": rallyApi.formatSeconds(bounds.startSec),
+            onPointerdown: function (event) { startRallyGesture(event, interval.id, "start", scroll); },
+            onKeydown: function (event) { nudgeRallyEdge(event, interval.id, "start"); }
+          });
+          var endEdge = ui.el("button", {
+            className: "bv-rally-edge end", type: "button", role: "slider", "aria-label": "Resize end of " + interval.id,
+            "aria-valuemin": bounds.startSec + rallyApi.MIN_INTERVAL_SECONDS, "aria-valuemax": windowBounds.endSec, "aria-valuenow": bounds.endSec, "aria-valuetext": rallyApi.formatSeconds(bounds.endSec),
+            onPointerdown: function (event) { startRallyGesture(event, interval.id, "end", scroll); },
+            onKeydown: function (event) { nudgeRallyEdge(event, interval.id, "end"); }
+          });
+          bar.appendChild(startEdge);
+          bar.appendChild(endEdge);
+          row.appendChild(bar);
+        }
+        track.appendChild(row);
+      });
+      scroll.appendChild(track);
+      scroll.addEventListener("scroll", function () { rallyTimelineScroll = Number(scroll.scrollLeft) || 0; });
+      setTimeout(function () { if (scroll.isConnected) scroll.scrollLeft = rallyTimelineScroll; refreshRallyPlayhead(); }, 0);
+      return scroll;
+    }
+    function rallyLabelerPanel() {
+      var close = ui.iconButton("x", "Disable developer rally labeler", { size: "sm", onClick: function () {
+        state = window.BVState.reduceExtensionState(state, { type: "SET_SETTING", key: "rallyLabelerEnabled", value: false });
+        persist(); render();
+      } });
+      var panel = ui.panel("Rally boundary review · developer", {
+        layoutId: "rallyLabeler",
+        icon: "table",
+        className: "bv-rally-labeler-panel",
+        collapsed: panelCollapsed("rallyLabeler"),
+        onToggleCollapse: function (value) { togglePanelCollapsed("rallyLabeler", value); },
+        actions: [ui.el("span", { className: "bv-panel-time", "data-bso-rally-clock": "true" }, [rallyApi.formatSeconds(currentMediaTimestamp()) || "—"]), close]
+      }, []);
+      var body = panel.querySelector(".bv-panel-body");
+      if (!body) return panel;
+      body.appendChild(ui.callout("info", "Read-only playback boundary", "Use the native YouTube player to play, pause, or seek. This developer widget only observes currentTime and never changes playback, media, or player styles."));
+      var importButton = ui.button("Import review JSON", { variant: "secondary", size: "sm", icon: "upload", onClick: importRallyJson });
+      if (!rallyDocument) {
+        body.appendChild(ui.el("div", { className: "bv-rally-empty" }, [
+          ui.el("p", {}, ["No rally review exists for this video key. Start an empty full-duration review or import corpus-compatible JSON."]),
+          ui.el("div", { className: "bv-rally-toolbar" }, [ui.button("Start review for this video", { variant: "primary", size: "sm", onClick: createRallyDocument }), importButton])
+        ]));
+        if (rallyNotice) body.appendChild(ui.el("p", { className: "bv-helper", role: "status" }, [rallyNotice.message]));
+        return panel;
+      }
+      var gate = rallyApi.completion(rallyDocument);
+      body.appendChild(ui.el("div", { className: "bv-rally-source" }, [
+        ui.el("div", {}, [ui.el("strong", {}, [rallyDocument.source.label]), ui.el("span", { className: "bv-mono" }, [rallyDocument.source.id + " · " + rallyDocument.source.videoKey])]),
+        ui.badge(gate.complete ? "complete" : gate.unresolved.length + " unresolved", gate.complete ? "in" : "warn", false)
+      ]));
+      body.appendChild(ui.el("div", { className: "bv-rally-toolbar" }, [
+        ui.button("Add missing rally", { variant: "primary", size: "sm", onClick: addMissingRally }),
+        ui.button("Zoom out", { variant: "ghost", size: "sm", disabled: rallyTimelineZoom <= 1, onClick: function () { zoomRallyTimeline(.5); } }),
+        ui.el("span", { className: "bv-mono" }, [rallyTimelineZoom.toFixed(1) + "×"]),
+        ui.button("Zoom in", { variant: "ghost", size: "sm", disabled: rallyTimelineZoom >= rallyApi.MAX_ZOOM, onClick: function () { zoomRallyTimeline(2); } }),
+        ui.button("Scroll left", { variant: "ghost", size: "sm", onClick: function () { scrollRallyTimeline(-1); } }),
+        ui.button("Scroll right", { variant: "ghost", size: "sm", onClick: function () { scrollRallyTimeline(1); } })
+      ]));
+      body.appendChild(rallyTimeline());
+      body.appendChild(rallySelectedEditor(rallyIntervalById(rallySelectedId)));
+      var controls = ui.el("section", { className: "bv-rally-controls", "aria-label": "Control confirmations" }, [
+        ui.el("div", { className: "bv-rally-control-heading" }, [ui.el("strong", {}, ["Control confirmations"]), ui.el("span", { className: "bv-helper" }, ["Explicitly resolve empty or inactive source controls when present."])]),
+        ui.el("div", { className: "bv-rally-toolbar" }, [
+          ui.button("Add empty-set control", { variant: "ghost", size: "sm", disabled: rallyDocument.controls.some(function (control) { return control.kind === "empty-set"; }), onClick: function () { addRallyControl("empty-set"); } }),
+          ui.button("Add inactive control", { variant: "ghost", size: "sm", disabled: rallyDocument.controls.some(function (control) { return control.kind === "inactive"; }), onClick: function () { addRallyControl("inactive"); } })
+        ])
+      ]);
+      rallyDocument.controls.forEach(function (control) { controls.appendChild(rallyControlCard(control)); });
+      body.appendChild(controls);
+      if (rallyNotice) body.appendChild(ui.el("p", { className: "bv-helper" + (rallyNotice.ok ? "" : " error"), role: "status", "data-bso-rally-notice": "true" }, [rallyNotice.message]));
+      body.appendChild(ui.el("div", { className: "bv-rally-completion", "data-bso-rally-complete": String(gate.complete) }, [
+        ui.el("div", {}, [
+          ui.el("strong", {}, [gate.complete ? "Review complete" : "Completion blocked"]),
+          ui.el("p", { className: "bv-helper" }, [gate.complete ? "All intervals and controls have action, reason, verifier, and date evidence." : gate.unresolved.length + " unresolved evidence item(s)" + (gate.contradictions.length ? " · " + gate.contradictions.length + " contradiction(s)" : "") + "."])
+        ]),
+        ui.el("div", { className: "bv-rally-toolbar" }, [
+          importButton,
+          ui.button("Export draft JSON", { variant: "secondary", size: "sm", icon: "download", onClick: function () { exportRallyJson(false); } }),
+          ui.button("Export verified JSON", { variant: "primary", size: "sm", icon: "download", disabled: !gate.complete, onClick: function () { exportRallyJson(true); } })
+        ])
+      ]));
+      return panel;
+    }
     function settingsPanel() {
       var version = extensionVersion();
       var about = ui.el("section", { className: "bv-settings-about", "aria-label": "About", "data-bso-settings-about": "true" }, [
@@ -9637,6 +10693,20 @@
           return ui.el("li", {}, [ui.el("a", { href: link.href, target: "_blank", rel: "noreferrer", title: link.description || link.label }, [link.label, ui.icon("external", 12)])]);
         }))
       ]);
+      var developerToggle = ui.toggle("Rally boundary review", "Developer-only interval editor; off by default and playback read-only", rallyLabelerEnabled(), function (next) {
+        state = window.BVState.reduceExtensionState(state, { type: "SET_SETTING", key: "rallyLabelerEnabled", value: next });
+        if (next) {
+          activeVideoKey = activeVideoKey || currentVideoKey();
+          rallyDocument = window.BVState.rallyReviewForVideo(state, activeVideoKey);
+        }
+        persist();
+        render();
+      }, { id: "developer-rally-labeler" });
+      developerToggle.setAttribute("data-bso-developer-rally-toggle", "true");
+      var developer = ui.el("details", { className: "bv-settings-developer", "data-bso-developer-tools": "true" }, [
+        ui.el("summary", {}, ["Developer tools"]),
+        ui.el("div", { className: "bv-settings-developer-body" }, [developerToggle, ui.el("p", { className: "bv-helper" }, ["Rally reviews store only canonical JSON seconds and review evidence. No video, audio, or frames are saved."])])
+      ]);
       return ui.panel("Settings", {
         layoutId: "settings",
         icon: "settings",
@@ -9648,7 +10718,7 @@
           persist();
           render();
         } })]
-      }, [about]);
+      }, [about, developer]);
     }
     function liveOverlay() {
       var overlay = ui.el("div", {
@@ -10119,10 +11189,15 @@
       // mounts without inference so About content stays reachable before the
       // overlay is enabled, and withholds only during a camera-cut reseed where
       // every other stale layer is hidden too.
-      if (state.panels && state.panels.settings && !state.enabled && !state.seeding && !state.labeling) {
+      if (state.panels && state.panels.settings && !state.enabled && !state.seeding && !state.labeling && !rallyLabelerEnabled()) {
         root.appendChild(settingsPanel());
       } else {
-        if (!state.enabled && !state.seeding && !state.labeling) return;
+        // Keep the playback-neutral manual/offline guard explicit: on-demand
+        // developer furniture is the only intentional exception to this path.
+        // The exact guard also remains a source-level contract for direct-source
+        // recovery tests and future content-script entrypoints.
+        // if (!state.enabled && !state.seeding && !state.labeling) return;
+        if (!state.enabled && !state.seeding && !state.labeling && !(state.panels && state.panels.settings) && !rallyLabelerEnabled()) return;
         // Court setup is an optional mapping flow layered over the same live
         // inference surface. Never replace raw pose/shuttle/racket evidence with
         // the setup card just because calibration is missing or being changed.
@@ -10132,6 +11207,7 @@
         if (state.seeding) root.appendChild(seedFlow());
         if (state.labeling && !state.seeding) root.appendChild(manualPanel());
         if (state.panels && state.panels.settings && !(state.seeding && state.cameraCut)) root.appendChild(settingsPanel());
+        if (rallyLabelerEnabled()) root.appendChild(rallyLabelerPanel());
       }
       // Append houghCanvas at root level for proper z-index layering (above seed-layer background but below seed-points/card)
       if (houghCanvas) root.appendChild(houghCanvas);
@@ -10165,6 +11241,8 @@
         restoreReviewState();
       }
       activeVideoKey = key;
+      rallyDocument = rallyApi && window.BVState.rallyReviewForVideo ? window.BVState.rallyReviewForVideo(state, key) : null;
+      rallySelectedId = rallyDocument && rallyDocument.intervals.length ? rallyDocument.intervals[0].id : null;
       if (video && Number.isFinite(video.currentTime) && !state.stale) state.time = formatMediaTime(video.currentTime);
       // A restored open panel starts a new draft at the actual media clock. Do
       // not carry the module's pre-video 00:00 draft into a reloaded page, while
@@ -10300,8 +11378,9 @@
       // Pointer capture covers normal browsers; the window listeners keep a
       // gesture alive in embedded/recovery DOMs that do not implement capture.
       window.addEventListener("pointermove", panelPointerMove);
-      window.addEventListener("pointerup", function (event) { finishPanelGesture(event, false); });
-      window.addEventListener("pointercancel", function (event) { finishPanelGesture(event, true); });
+      window.addEventListener("pointermove", rallyPointerMove);
+      window.addEventListener("pointerup", function (event) { finishPanelGesture(event, false); finishRallyGesture(event, false); });
+      window.addEventListener("pointercancel", function (event) { finishPanelGesture(event, true); finishRallyGesture(event, true); });
       ["yt-navigate-start", "yt-navigate-finish", "popstate", "hashchange"].forEach(function (name) {
         var listener = handleNavigation;
         window.addEventListener(name, listener);

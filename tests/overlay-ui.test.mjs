@@ -285,6 +285,7 @@ async function createContentSession() {
     "src/seed-card.js",
     "src/fixtures.js",
     "src/review.js",
+    "src/rally-labeler.js",
     "src/state.js",
     "src/ui.js",
     "src/hough-guidance.js",
