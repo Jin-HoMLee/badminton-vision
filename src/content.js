@@ -2090,7 +2090,10 @@
   function importRallyJsonText(text, importIdentity) {
     importIdentity = importIdentity || { videoKey: activeVideoKey || currentVideoKey(), videoUrl: window.location && window.location.href };
     var currentIdentity = { videoKey: activeVideoKey || currentVideoKey(), videoUrl: window.location && window.location.href };
-    if (currentIdentity.videoKey !== importIdentity.videoKey || currentIdentity.videoUrl !== importIdentity.videoUrl) {
+    var sameVideo = importIdentity.videoKey && currentIdentity.videoKey
+      ? importIdentity.videoKey === currentIdentity.videoKey
+      : importIdentity.videoUrl === currentIdentity.videoUrl;
+    if (!sameVideo) {
       rallyNotice = { ok: false, message: "Import canceled because the video changed." };
       render();
       return;

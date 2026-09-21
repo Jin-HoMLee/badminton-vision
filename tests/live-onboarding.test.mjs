@@ -2528,6 +2528,32 @@ test("rally import discards delayed identity-free files after navigation", async
   assert.match(textOf(panel), /video changed/);
 });
 
+test("rally import accepts same-video URL changes during a delayed read", async () => {
+  const session = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true } } });
+  session.flushStorage();
+  let panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  buttonWithText(panel, "Import review JSON").dispatchEvent({ type: "click" });
+  const input = session.documentRef.querySelector("[data-bso-rally-import-input]");
+  let resolveText;
+  input.files = [{ text: () => new Promise((resolve) => { resolveText = resolve; }) }];
+  input.dispatchEvent({ type: "change", target: input });
+
+  session.context.location.href = "https://www.youtube.com/watch?v=real-match&list=playlist&t=123";
+  session.emitWindow("yt-navigate-start");
+  const writesAfterNavigation = session.storageWrites.length;
+  resolveText(JSON.stringify({
+    source: { id: "same-video-source", label: "Same video source", reviewWindow: { startSec: 0, endSec: 10 } },
+    intervals: [{ id: "same-video-source:rally-001", start: 2, end: 4 }],
+    controls: []
+  }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.ok(session.storageWrites.length > writesAfterNavigation, "a same-video URL change does not discard the import");
+  assert.equal(session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals.length, 1);
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1);
+});
+
 test("invalid rally evidence stays editable and shows a validation notice", async () => {
   const review = {
     schema: "badminton-vision.rally-review",
