@@ -2003,9 +2003,11 @@
   }
   function createRallyDocument() {
     if (!rallyApi) return;
-    var duration = video && Number.isFinite(Number(video.duration)) && Number(video.duration) > 0
-      ? Number(video.duration)
-      : Math.max(60, (currentMediaTimestamp() || 0) + 60);
+    var duration = video && Number(video.duration);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      showRallyValidationError(new Error("Video duration is unavailable. Wait for metadata and try again."));
+      return;
+    }
     var info = currentVideoInfo();
     var created = rallyApi.createDocument({
       sourceId: activeVideoKey || currentVideoKey(),
