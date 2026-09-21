@@ -8944,7 +8944,7 @@
       overlay.setAttribute("data-bso-density", state.density);
       var displayTime = state.time;
       if (!displayTime && Number.isFinite(runtimeView.currentMediaTime)) displayTime = formatMediaTime(runtimeView.currentMediaTime);
-      overlay.querySelectorAll(".bv-panel-time").forEach(function (node) {
+      overlay.querySelectorAll(".bv-panel-time:not([data-bso-rally-clock])").forEach(function (node) {
         var suffix = runtimeIsStale() ? " · stale" : "";
         node.textContent = (displayTime || "") + suffix;
         var classes = String(node.className || "").split(/\s+/).filter(Boolean).filter(function (name) { return name !== "stale"; });
@@ -9237,6 +9237,7 @@
       calibration = null;
       seedPoints = [];
       clearPanelGesture();
+      clearRallyGesture(true);
       overlayMenuOpen = false;
       editingEventId = null;
       strokes = [];
@@ -9248,7 +9249,6 @@
       rallyTimelineZoom = 1;
       rallyTimelineScroll = 0;
       rallyNotice = null;
-      rallyGesture = null;
       persist();
       render();
     }
@@ -10518,6 +10518,19 @@
         try { rallyGesture.target.setPointerCapture(rallyGesture.pointerId); } catch (_) {}
       }
     }
+    function releaseRallyGesture(restoreBase) {
+      var gesture = rallyGesture;
+      if (!gesture) return null;
+      rallyGesture = null;
+      if (restoreBase) rallyDocument = gesture.base;
+      if (gesture.target && gesture.pointerId != null && typeof gesture.target.releasePointerCapture === "function") {
+        try { if (!gesture.target.hasPointerCapture || gesture.target.hasPointerCapture(gesture.pointerId)) gesture.target.releasePointerCapture(gesture.pointerId); } catch (_) {}
+      }
+      return gesture;
+    }
+    function clearRallyGesture(restoreBase) {
+      releaseRallyGesture(Boolean(restoreBase));
+    }
     function rallyPointerMove(event) {
       if (!rallyGesture || event && event.pointerId != null && rallyGesture.pointerId != null && event.pointerId !== rallyGesture.pointerId) return;
       try {
@@ -10529,13 +10542,9 @@
     }
     function finishRallyGesture(event, cancelled) {
       if (!rallyGesture || event && event.pointerId != null && rallyGesture.pointerId != null && event.pointerId !== rallyGesture.pointerId) return;
-      var gesture = rallyGesture;
-      rallyGesture = null;
-      if (gesture.target && gesture.pointerId != null && typeof gesture.target.releasePointerCapture === "function") {
-        try { if (!gesture.target.hasPointerCapture || gesture.target.hasPointerCapture(gesture.pointerId)) gesture.target.releasePointerCapture(gesture.pointerId); } catch (_) {}
-      }
-      if (cancelled) rallyDocument = gesture.base;
-      else setRallyDocument(rallyDocument, { notice: "Updated " + gesture.id + " from the interval bar." });
+      var gesture = releaseRallyGesture(cancelled);
+      if (!gesture) return;
+      if (!cancelled) setRallyDocument(rallyDocument, { notice: "Updated " + gesture.id + " from the interval bar." });
       render();
     }
     function nudgeRallyEdge(event, id, edge) {
@@ -11240,6 +11249,7 @@
       // Structural state updates replace the panel DOM. Never leave a pointer
       // gesture attached to a retired node or let it write stale geometry.
       clearPanelGesture();
+      clearRallyGesture(false);
       updateDiagnosticsMarkers();
       root.replaceChildren();
       // The settings panel is on-demand furniture like manual labeling: it

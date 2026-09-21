@@ -2278,6 +2278,16 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   // Drag the whole bar, pointer-resize the left edge, then use the keyboard on
   // the right edge and exact numeric editing. All paths share one model.
   let bar = panel.querySelector("[data-bso-rally-interval]");
+  bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 7, clientX: 100 });
+  assert.equal(bar.capturedPointerId, 7, "the rally bar captures its active pointer");
+  session.onMessage({ type: "SET_PANELS", panels: { settings: true }, requestId: "rally-structural-rerender" });
+  assert.equal(bar.releasedPointerId, 7, "a structural rerender releases the retired rally pointer capture");
+  const writesAfterRerender = session.storageWrites.length;
+  session.emitWindow("pointermove", { pointerId: 7, clientX: 140 });
+  session.emitWindow("pointerup", { pointerId: 7, clientX: 140 });
+  assert.equal(session.storageWrites.length, writesAfterRerender, "a retired rally gesture cannot persist a stale edit");
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  bar = panel.querySelector("[data-bso-rally-interval]");
   bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 8, clientX: 100 });
   session.emitWindow("pointermove", { pointerId: 8, clientX: 120 });
   session.emitWindow("pointerup", { pointerId: 8, clientX: 120 });
@@ -2363,6 +2373,74 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   assert.equal(restoredPanel.querySelectorAll(".bv-rally-interval").length, 1);
   assert.ok(restoredPanel.querySelector(".bv-rally-tombstone"), "the added/removal action survives refresh");
   assert.equal(restoredPanel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "true");
+});
+
+test("runtime presentation leaves the rally clock owned by media time", async () => {
+  const review = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: {
+      id: "clock-source",
+      label: "Clock source",
+      videoKey: "youtube:real-match",
+      videoUrl: "https://www.youtube.com/watch?v=real-match",
+      reviewWindow: { startSec: 0, endSec: 60 }
+    },
+    intervals: [],
+    controls: []
+  };
+  const session = await createSession({ storedState: {
+    videoKey: "youtube:real-match",
+    enabled: true,
+    seeded: false,
+    settings: { rallyLabelerEnabled: true },
+    rallyReviewsByVideo: { "youtube:real-match": review }
+  } });
+  session.flushStorage();
+  session.video.dispatchEvent({ type: "timeupdate", target: session.video });
+  const panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelector("[data-bso-rally-clock]").textContent, "0:12.000");
+  session.publishRuntimeView(resultView(Object.assign(evidenceResult(), { mediaTime: 44 })));
+  assert.equal(session.overlayRoot().querySelector("[data-bso-rally-clock]").textContent, "0:12.000");
+});
+
+test("video teardown releases an active rally pointer capture", async () => {
+  const review = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: {
+      id: "teardown-source",
+      label: "Teardown source",
+      videoKey: "youtube:real-match",
+      videoUrl: "https://www.youtube.com/watch?v=real-match",
+      reviewWindow: { startSec: 0, endSec: 60 }
+    },
+    intervals: [{
+      id: "teardown-source:rally-001",
+      sourceId: "teardown-source",
+      original: { startSec: 10, endSec: 20 },
+      corrected: null,
+      action: "unresolved",
+      comment: "",
+      verifier: "",
+      verifiedAt: ""
+    }],
+    controls: []
+  };
+  const session = await createSession({ storedState: {
+    videoKey: "youtube:real-match",
+    settings: { rallyLabelerEnabled: true },
+    rallyReviewsByVideo: { "youtube:real-match": review }
+  } });
+  session.flushStorage();
+  const bar = session.overlayRoot().querySelector("[data-bso-rally-interval]");
+  bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 13, clientX: 100 });
+  session.emitWindow("yt-navigate-start");
+  assert.equal(bar.releasedPointerId, 13);
+  const writesAfterTeardown = session.storageWrites.length;
+  session.emitWindow("pointermove", { pointerId: 13, clientX: 160 });
+  session.emitWindow("pointerup", { pointerId: 13, clientX: 160 });
+  assert.equal(session.storageWrites.length, writesAfterTeardown);
 });
 
 test("rally JSON export/import round-trips canonical review evidence without media files", async () => {
