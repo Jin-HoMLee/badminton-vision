@@ -2289,6 +2289,12 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   await new Promise((resolve) => setTimeout(resolve, 0));
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   assert.ok(panel.querySelector("[data-bso-rally-playback-help]"), "playback help can be restored without losing the widget");
+  const timelineToolbar = panel.querySelector(".bv-rally-timeline-toolbar");
+  assert.ok(timelineToolbar, "timeline actions share one compact toolbar directly above the timeline");
+  assert.ok(timelineToolbar.querySelector("[data-bso-rally-undo]") && timelineToolbar.querySelector("[data-bso-rally-redo]"));
+  assert.ok(timelineToolbar.querySelector("[data-bso-rally-set-start]") && timelineToolbar.querySelector("[data-bso-rally-set-end]"));
+  assert.equal(panel.querySelectorAll("[data-bso-rally-exact]").length, 0, "the duplicate top-right current range is removed");
+  assert.equal(panel.querySelectorAll(".bv-rally-comparison").length, 0, "unchanged original proposals do not repeat the current range");
   assert.ok(panel.querySelector(".bv-rally-interval"), "interval bars are present as foreground hit targets");
   const rallyBody = panel.querySelector(".bv-panel-body");
   rallyBody.scrollTop = 140;
@@ -2309,7 +2315,13 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   const playback = { paused: session.video.paused, muted: session.video.muted, rate: session.video.playbackRate, src: session.video.src };
 
   let bar = panel.querySelector("[data-bso-rally-interval]");
-  bar.dispatchEvent({ type: "click", target: bar });
+  session.video.currentTime = 18.25;
+  let bodyStopped = false;
+  let bodyPointer = { type: "pointerdown", target: bar, button: 0, clientX: 560, stopPropagation() { bodyStopped = true; } };
+  bar.dispatchEvent(bodyPointer);
+  assert.equal(bodyStopped, true, "bar body stops the generic timeline seek surface");
+  assert.equal(session.video.currentTime, 18.25, "bar-body pointerdown does not seek to the pointer position");
+  bar.dispatchEvent({ type: "click", target: bar, stopPropagation() {} });
   assert.equal(session.video.currentTime, 10, "clicking a labeled time bar seeks the player to that bar's start");
   await new Promise((resolve) => setTimeout(resolve, 0));
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
@@ -2373,18 +2385,20 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(savedReview.intervals[0].original.startSec, 10, "the original proposed edge is immutable");
   assert.equal(savedReview.intervals[0].corrected.startSec, 12.345);
   assert.ok(savedReview.intervals[0].corrected.startSec < savedReview.intervals[0].corrected.endSec);
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelectorAll(".bv-rally-comparison").length, 1, "a changed interval shows one compact original-proposal comparison");
 
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   let editor = panel.querySelector("[data-bso-rally-editor]");
   assert.equal(editor.querySelector("[data-bso-rally-start-input]").getAttribute("type"), "text", "start accepts human clock strings");
   session.video.currentTime = 14.5;
   session.video.dispatchEvent({ type: "timeupdate", target: session.video });
-  buttonWithText(editor, "Set end from playhead").dispatchEvent({ type: "click" });
+  buttonWithText(panel, "Set end from playhead").dispatchEvent({ type: "click" });
   savedReview = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
   assert.equal(savedReview.intervals[0].corrected.endSec, 14.5, "set end copies the blue playhead time");
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   editor = panel.querySelector("[data-bso-rally-editor]");
-  buttonWithText(editor, "Set start from playhead").dispatchEvent({ type: "click" });
+  buttonWithText(panel, "Set start from playhead").dispatchEvent({ type: "click" });
   savedReview = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
   assert.ok(savedReview.intervals[0].corrected.startSec < savedReview.intervals[0].corrected.endSec, "set start clamps before end");
 
@@ -2454,8 +2468,8 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   editor = panel.querySelector("[data-bso-rally-editor]");
   assert.equal(editor.querySelector("[data-bso-rally-verifier]").value, "worker-test", "the last reviewed-by value is remembered for the next interval");
   assert.match(editor.querySelector("[data-bso-rally-date]").value, /^\d{4}-\d{2}-\d{2}T/, "a new interval still autofills an empty review date");
-  assert.ok(editor.querySelector("[data-bso-rally-set-start]"), "added missing rallies expose set-start from playhead");
-  assert.ok(editor.querySelector("[data-bso-rally-set-end]"), "added missing rallies expose set-end from playhead");
+  assert.ok(panel.querySelector("[data-bso-rally-set-start]"), "added missing rallies expose set-start from playhead in the timeline toolbar");
+  assert.ok(panel.querySelector("[data-bso-rally-set-end]"), "added missing rallies expose set-end from playhead in the timeline toolbar");
   assert.ok(editor.querySelectorAll(".bv-rally-edge").length >= 0, "added missing rallies keep timeline edges editable after selection");
   editor.querySelector("[data-bso-rally-comment]").value = "A second rally is visible at this media time.";
   editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
@@ -2587,6 +2601,48 @@ test("rally timeline history covers additions, removals, restores, and persists 
   buttonWithText(panel, "Redo").dispatchEvent({ type: "click" });
   stored = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
   assert.equal(stored.intervals.filter((item) => item.action === "removal").length, 0, "Redo restores the active interval");
+});
+
+test("rally widget collapse and close controls work without passing through to YouTube", async () => {
+  const review = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: { id: "chrome-widget-controls", videoKey: "youtube:real-match", videoUrl: "https://www.youtube.com/watch?v=real-match", reviewWindow: { startSec: 0, endSec: 60 } },
+    intervals: [{ id: "chrome-widget-controls:rally-001", original: { startSec: 10, endSec: 20 }, action: "unresolved" }],
+    controls: []
+  };
+  const session = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true }, rallyReviewsByVideo: { "youtube:real-match": review } } });
+  session.flushStorage();
+  let panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  panel.querySelector("[data-bso-rally-interval]").dispatchEvent({ type: "click", target: panel.querySelector("[data-bso-rally-interval]"), stopPropagation() {} });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  panel.querySelector(".bv-panel-body").scrollTop = 120;
+  panel.querySelector(".bv-panel-body").dispatchEvent({ type: "scroll", target: panel.querySelector(".bv-panel-body") });
+  let collapse = panel.querySelector("[data-bso-panel-collapse]");
+  assert.ok(collapse);
+  let collapsePointerStopped = false;
+  collapse.dispatchEvent({ type: "pointerdown", target: collapse, stopPropagation() { collapsePointerStopped = true; } });
+  assert.equal(collapsePointerStopped, true, "collapse control fences pointerdown from the draggable header");
+  collapse.dispatchEvent({ type: "click", target: collapse, stopPropagation() {} });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.getAttribute("data-bso-panel-collapsed"), "true", "collapse hides the widget body");
+  assert.equal(panel.querySelector(".bv-panel-body"), null, "collapsed rally widget leaves only its header");
+  assert.equal(session.storageWrites.at(-1).bvState.collapsedPanelsByVideo["youtube:real-match"].rallyLabeler, true, "collapse persists per video");
+  collapse = panel.querySelector("[data-bso-panel-collapse]");
+  assert.match(collapse.getAttribute("aria-label"), /^Expand /);
+  collapse.dispatchEvent({ type: "click", target: collapse, stopPropagation() {} });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.getAttribute("data-bso-panel-collapsed"), "false", "expand restores the widget");
+  assert.ok(panel.querySelector("[data-bso-rally-editor]"), "the selected interval remains available after expand");
+  assert.equal(panel.querySelector(".bv-panel-body").scrollTop, 120, "collapse and expand preserve widget scroll state");
+  const close = panel.querySelector('[aria-label="Disable developer rally labeler"]');
+  assert.ok(close);
+  let closePointerStopped = false;
+  close.dispatchEvent({ type: "pointerdown", target: close, stopPropagation() { closePointerStopped = true; } });
+  assert.equal(closePointerStopped, true, "close control fences pointerdown from the draggable header");
+  close.dispatchEvent({ type: "click", target: close, stopPropagation() {} });
+  assert.equal(session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]'), null, "close removes the widget");
 });
 
 test("short rally bars keep both resize edges interactive", async () => {

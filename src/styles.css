@@ -12,6 +12,9 @@
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
   /* Native player bottom control strip that overlay panels must never cover. */
   --overlay-controls-reserve: 72px;
+  /* Shared translucent surface for extension panels over live video. No blur:
+     the footage remains faintly visible while the panel stays foreground. */
+  --overlay-panel-surface: rgba(6,9,11,.86);
   /* Brighter highlight for the court-setup line projection on live footage. */
   --court-setup-line: var(--lime-400);
   --court-setup-net: var(--lime-300);
@@ -488,6 +491,9 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-source .bv-mono { overflow: hidden; color: var(--text-faint); font-size: var(--fs-10); text-overflow: ellipsis; white-space: nowrap; }
 .bv-rally-toolbar, .bv-rally-editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .bv-rally-toolbar-label { color: var(--text-faint); font: var(--type-ui-sm); font-size: var(--fs-11); margin-right: var(--sp-1); }
+.bv-rally-toolbar-spacer { flex: 1 1 auto; min-width: var(--sp-3); }
+.bv-rally-timeline-toolbar { flex-wrap: nowrap; overflow-x: auto; padding: var(--sp-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: rgba(255,255,255,.02); }
+.bv-rally-timeline-toolbar .bv-button { flex: 0 0 auto; }
 .bv-rally-labeler-panel .bv-button.ghost,
 .bv-rally-labeler-panel .bv-button.secondary { color: var(--text-primary); border-color: var(--border-subtle); background: var(--surface-raised); }
 .bv-rally-labeler-panel .bv-button:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-panel-solid); }
@@ -534,8 +540,8 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-edge.end:focus-visible { box-shadow: inset -2px 0 var(--text-primary); }
 .bv-rally-tombstone { position: sticky; left: var(--sp-3); top: 4px; max-width: 260px; height: 22px; overflow: hidden; padding: 0 var(--sp-3); border: 1px dashed var(--signal-out); border-radius: var(--radius-xs); background: var(--signal-out-tint); color: var(--signal-out); font: var(--type-mono); font-size: var(--fs-10); text-overflow: ellipsis; white-space: nowrap; }
 .bv-rally-editor, .bv-rally-control { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); background: rgba(255,255,255,.02); }
-.bv-rally-editor-heading .bv-mono { margin-left: auto; color: var(--lime-400); font-size: var(--fs-11); }
 .bv-rally-editor > .bv-helper { margin: 0; }
+.bv-rally-comparison { color: var(--text-faint); font-size: var(--fs-11); }
 .bv-rally-edge-inputs, .bv-rally-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
 .bv-rally-metadata .bv-rally-field:first-child { grid-column: 1 / -1; }
 .bv-rally-field { min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -617,7 +623,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-seed-note .bv-button { margin-left: auto; }
 .bv-seed-card .bv-button.ghost { color: var(--text-primary); border-color: var(--border-subtle); background: var(--ink-700); }
 .bv-seed-card .bv-button.primary { color: var(--text-on-accent); background: var(--lime-500); border-color: var(--lime-500); }
-.bv-overlay-root .bv-panel { background: var(--ink-900); border-color: var(--border-subtle); box-shadow: 0 8px 24px rgba(0,0,0,.68); }
+.bv-overlay-root .bv-panel { background: var(--overlay-panel-surface); border-color: var(--border-subtle); box-shadow: 0 8px 24px rgba(0,0,0,.68); }
 .bv-overlay-root .bv-panel-header { background: var(--ink-800); border-bottom-color: var(--border-subtle); }
 .bv-overlay-root .bv-panel-header h2,
 .bv-overlay-root .bv-panel .bv-feed-shot,

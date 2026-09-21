@@ -36,9 +36,13 @@ YouTube controls.
 
 - **Zoom in/out** expands or contracts the complete review window around the
   center of the visible viewport.
-- **Scroll left/right** and the timeline's native horizontal scrollbar expose
-  the expanded range. Every action is rendered as a bordered button so timeline
-  controls remain visibly clickable.
+- A single compact toolbar directly above the timeline contains **Zoom out**,
+  scale, **Zoom in**, **Scroll left/right**, **Undo/Redo**, and the right-aligned
+  **Set start/end from playhead** actions. Every action has a visible button
+  treatment, familiar icon, accessible label, tooltip, and disabled state where
+  it cannot currently apply. **Add missing rally** is available in that same
+  toolbar.
+- The timeline's native horizontal scrollbar exposes the expanded range.
 - **Undo** and **Redo** reverse saved interval boundary changes, additions,
   removals/restores, and review evidence/state changes. They write the restored
   document immediately; disabled buttons indicate an empty history stack.
@@ -61,9 +65,11 @@ YouTube controls.
   playhead time onto the selected interval (clamped and ordered so start stays
   before end). Newly added missing rallies use the same editor and edge handles.
 - With an edge focused, `Left`/`Right` changes it by 0.1 seconds and
-  `Shift+Left`/`Shift+Right` changes it by 1 second. Start/end text fields
-  accept human clocks (`h:mm:ss.sss`, `m:ss.sss`) as well as plain seconds; the
-  stored value remains a millisecond-rounded second number.
+  `Shift+Left`/`Shift+Right` changes it by 1 second. The compact Start/End
+  fields are the one authoritative editable current range. They accept human
+  clocks (`h:mm:ss.sss`, `m:ss.sss`) as well as plain seconds; the stored value
+  remains a millisecond-rounded second number. The original proposal is shown
+  once as compact provenance only when the current range differs.
 - While a comment, reviewed-by, date, or clock field inside the widget is focused,
   widget keybinds and YouTube page shortcuts are suppressed for those keys.
   Focus leaving the field restores both.
@@ -90,8 +96,12 @@ panel; within the panel, the foreground control under the cursor still receives
 the event first. The panel body scroll position is preserved across selection
 changes, button clicks, and other re-renders so the view does not jump back to
 the top. Developer playback help can be dismissed and restored with **Show
-playback help**. Control confirmations are explicit results for empty-set and
-inactive/negative-control sources, not additional rally labels.
+playback help**. Overlay panels use one restrained translucent surface token so
+video details remain faintly visible behind them without blur; text, fields,
+controls, focus states, and boundaries remain opaque/readable, and transparency
+never changes pointer hit-testing. Control confirmations are explicit results
+for empty-set and inactive/negative-control sources, not additional rally
+labels.
 
 ## Canonical JSON contract
 

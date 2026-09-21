@@ -2344,8 +2344,6 @@
       var endInput = root.querySelector("[data-bso-rally-end-input]");
       if (startInput && document.activeElement !== startInput) startInput.value = rallyApi.formatSeconds(selectedBounds.startSec);
       if (endInput && document.activeElement !== endInput) endInput.value = rallyApi.formatSeconds(selectedBounds.endSec);
-      var exact = root.querySelector("[data-bso-rally-exact]");
-      if (exact) exact.textContent = rallyApi.formatSeconds(selectedBounds.startSec) + " → " + rallyApi.formatSeconds(selectedBounds.endSec);
     }
     refreshRallyPlayhead();
   }
@@ -2543,10 +2541,9 @@
       var removalEditor = ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
         ui.el("div", { className: "bv-rally-editor-heading" }, [
           ui.el("strong", {}, [interval.id]),
-          ui.badge("removal", rallyActionBadgeTone("removal"), false),
-          ui.el("span", { className: "bv-mono", "data-bso-rally-exact": "true" }, [rallyApi.formatSeconds(bounds.startSec) + " → " + rallyApi.formatSeconds(bounds.endSec)])
+          ui.badge("removal", rallyActionBadgeTone("removal"), false)
         ]),
-        ui.el("p", { className: "bv-helper" }, ["Boundaries stay locked on a removal. Record why this was a false positive, then restore only if the interval should become active again."]),
+        ui.el("p", { className: "bv-helper bv-rally-comparison" }, ["Removed false positive · ", rallyApi.formatSeconds(bounds.startSec), " → ", rallyApi.formatSeconds(bounds.endSec), ". Boundaries stay locked; record why this was a false positive, then restore only if it should become active again."]),
         rallyMetadataFields(interval, { commentPlaceholder: "Why this labeled rally is a false positive" })
       ]);
       removalEditor.appendChild(ui.el("div", { className: "bv-rally-editor-actions" }, [
@@ -2558,21 +2555,15 @@
     var editor = ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
       ui.el("div", { className: "bv-rally-editor-heading" }, [
         ui.el("strong", {}, [interval.id]),
-        ui.badge(interval.action, rallyActionBadgeTone(interval.action), false),
-        ui.el("span", { className: "bv-mono", "data-bso-rally-exact": "true" }, [rallyApi.formatSeconds(bounds.startSec) + " → " + rallyApi.formatSeconds(bounds.endSec)])
+        ui.badge(interval.action, rallyActionBadgeTone(interval.action), false)
       ]),
-      ui.el("p", { className: "bv-helper" }, ["Original proposal: " + (interval.original ? rallyApi.formatSeconds(interval.original.startSec) + " → " + rallyApi.formatSeconds(interval.original.endSec) : "none (manual addition)")]),
+      (interval.original && (bounds.startSec !== interval.original.startSec || bounds.endSec !== interval.original.endSec)
+        ? ui.el("p", { className: "bv-helper bv-rally-comparison" }, ["Original proposal · ", rallyApi.formatSeconds(interval.original.startSec), " → ", rallyApi.formatSeconds(interval.original.endSec)])
+        : null),
       ui.el("div", { className: "bv-rally-edge-inputs" }, [
         rallyField("Start", rallyInput("text", rallyApi.formatSeconds(bounds.startSec), { inputmode: "decimal", autocomplete: "off", spellcheck: "false", "data-bso-rally-start-input": "true", placeholder: "h:mm:ss.sss or seconds", onChange: function (event) { updateRallyEdge(interval.id, "start", event.target.value); } })),
         rallyField("End", rallyInput("text", rallyApi.formatSeconds(bounds.endSec), { inputmode: "decimal", autocomplete: "off", spellcheck: "false", "data-bso-rally-end-input": "true", placeholder: "h:mm:ss.sss or seconds", onChange: function (event) { updateRallyEdge(interval.id, "end", event.target.value); } }))
       ]),
-      (function () {
-        var setStart = ui.button("Set start from playhead", { variant: "ghost", size: "sm", onClick: function () { setRallyEdgeFromPlayhead(interval.id, "start"); } });
-        var setEnd = ui.button("Set end from playhead", { variant: "ghost", size: "sm", onClick: function () { setRallyEdgeFromPlayhead(interval.id, "end"); } });
-        setStart.setAttribute("data-bso-rally-set-start", "true");
-        setEnd.setAttribute("data-bso-rally-set-end", "true");
-        return ui.el("div", { className: "bv-rally-toolbar" }, [setStart, setEnd]);
-      }()),
       rallyMetadataFields(interval)
     ]);
     var actions = ui.el("div", { className: "bv-rally-editor-actions" });
@@ -2653,12 +2644,18 @@
             ? "Removed false positive kept at its original time range. Click to inspect."
             : "Click to seek to this rally start. Drag to move. Use edges to resize.",
           style: { left: left + "%", width: Math.max(.001, width) + "%" },
+          onPointerdown: function (event) {
+            // Stop the parent timeline's generic seek surface. The body is a
+            // selector, never a playhead drag; only contained edge buttons
+            // start resize gestures.
+            if (event && event.stopPropagation) event.stopPropagation();
+          },
           onClick: function (event) {
             var target = event && event.target;
             if (target && target.closest && target.closest(".bv-rally-edge")) return;
+            if (event && event.stopPropagation) event.stopPropagation();
             selectRallyInterval(interval.id, { seekToStart: !removed });
-          },
-          // Body is click-to-seek only. Resize is edge-only so aiming stays sharp.
+          }
         }, [ui.el("span", { className: "bv-rally-interval-label" }, [removed ? interval.id + " · removed" : interval.id])]);
         if (!removed) {
           var startEdge = ui.el("button", {
@@ -2747,20 +2744,28 @@
       ui.el("div", {}, [ui.el("strong", {}, [rallyDocument.source.label]), ui.el("span", { className: "bv-mono" }, [rallyDocument.source.id + " · " + rallyDocument.source.videoKey])]),
       ui.badge(gate.complete ? "complete" : gate.unresolved.length + " unresolved", gate.complete ? "in" : "warn", false)
     ]));
-    var undoButton = ui.button("Undo", { variant: "secondary", size: "sm", disabled: !rallyUndoStack.length, title: "Undo the last saved timeline or review edit", onClick: undoRallyEdit });
+    var selectedForToolbar = rallyIntervalById(rallySelectedId);
+    var canSetToolbarEdge = Boolean(selectedForToolbar && selectedForToolbar.action !== "removal" && (rallyApi.effectiveBounds(selectedForToolbar) || selectedForToolbar.corrected || selectedForToolbar.original));
+    var undoButton = ui.button("Undo", { variant: "secondary", size: "sm", icon: "undo", disabled: !rallyUndoStack.length, title: "Undo the last saved timeline or review edit", onClick: undoRallyEdit });
     undoButton.setAttribute("data-bso-rally-undo", "true");
-    var redoButton = ui.button("Redo", { variant: "secondary", size: "sm", disabled: !rallyRedoStack.length, title: "Redo the last undone timeline or review edit", onClick: redoRallyEdit });
+    var redoButton = ui.button("Redo", { variant: "secondary", size: "sm", icon: "redo", disabled: !rallyRedoStack.length, title: "Redo the last undone timeline or review edit", onClick: redoRallyEdit });
     redoButton.setAttribute("data-bso-rally-redo", "true");
-    body.appendChild(ui.el("div", { className: "bv-rally-toolbar bv-rally-history", "aria-label": "Timeline edit history" }, [
-      ui.el("span", { className: "bv-rally-toolbar-label" }, ["Edit history"]), undoButton, redoButton
-    ]));
-    body.appendChild(ui.el("div", { className: "bv-rally-toolbar" }, [
+    var setStartButton = ui.button("Set start from playhead", { variant: "secondary", size: "sm", icon: "arrow-left", disabled: !canSetToolbarEdge, title: "Set the selected interval start to the blue playhead", onClick: function () { setRallyEdgeFromPlayhead(rallySelectedId, "start"); } });
+    setStartButton.setAttribute("data-bso-rally-set-start", "true");
+    var setEndButton = ui.button("Set end from playhead", { variant: "secondary", size: "sm", icon: "arrow-right", disabled: !canSetToolbarEdge, title: "Set the selected interval end to the blue playhead", onClick: function () { setRallyEdgeFromPlayhead(rallySelectedId, "end"); } });
+    setEndButton.setAttribute("data-bso-rally-set-end", "true");
+    body.appendChild(ui.el("div", { className: "bv-rally-toolbar bv-rally-timeline-toolbar", "aria-label": "Timeline controls" }, [
       ui.button("Add missing rally", { variant: "primary", size: "sm", title: "Create a new rally interval at the current playhead", onClick: addMissingRally }),
-      ui.button("Zoom out", { variant: "secondary", size: "sm", disabled: rallyTimelineZoom <= 1, title: "Show a wider time range", onClick: function () { zoomRallyTimeline(.5); } }),
+      ui.button("Zoom out", { variant: "secondary", size: "sm", icon: "zoom-out", disabled: rallyTimelineZoom <= 1, title: "Show a wider time range", onClick: function () { zoomRallyTimeline(.5); } }),
       ui.el("span", { className: "bv-mono", title: "Timeline zoom" }, [rallyTimelineZoom.toFixed(1) + "×"]),
-      ui.button("Zoom in", { variant: "secondary", size: "sm", disabled: rallyTimelineZoom >= rallyApi.MAX_ZOOM, title: "Show more detail around the timeline", onClick: function () { zoomRallyTimeline(2); } }),
-      ui.button("Scroll left", { variant: "secondary", size: "sm", title: "Scroll the timeline earlier", onClick: function () { scrollRallyTimeline(-1); } }),
-      ui.button("Scroll right", { variant: "secondary", size: "sm", title: "Scroll the timeline later", onClick: function () { scrollRallyTimeline(1); } })
+      ui.button("Zoom in", { variant: "secondary", size: "sm", icon: "zoom-in", disabled: rallyTimelineZoom >= rallyApi.MAX_ZOOM, title: "Show more detail around the timeline", onClick: function () { zoomRallyTimeline(2); } }),
+      ui.button("Scroll left", { variant: "secondary", size: "sm", icon: "arrow-left", title: "Scroll the timeline earlier", onClick: function () { scrollRallyTimeline(-1); } }),
+      ui.button("Scroll right", { variant: "secondary", size: "sm", icon: "arrow-right", title: "Scroll the timeline later", onClick: function () { scrollRallyTimeline(1); } }),
+      undoButton,
+      redoButton,
+      ui.el("span", { className: "bv-rally-toolbar-spacer" }),
+      setStartButton,
+      setEndButton
     ]));
     body.appendChild(rallyTimeline());
     body.appendChild(rallySelectedEditor(rallyIntervalById(rallySelectedId)));

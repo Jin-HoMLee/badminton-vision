@@ -7,6 +7,11 @@
   var iconPaths = {
     activity: [["path", { d: "M22 12h-4l-3 9L9 3l-3 9H2" }]],
     "arrow-left": [["path", { d: "m12 19-7-7 7-7" }], ["path", { d: "M19 12H5" }]],
+    "arrow-right": [["path", { d: "m12 5 7 7-7 7" }], ["path", { d: "M5 12h14" }]],
+    undo: [["path", { d: "M9 14 4 9l5-5" }], ["path", { d: "M4 9h10a6 6 0 0 1 0 12h-1" }]],
+    redo: [["path", { d: "m15 14 5-5-5-5" }], ["path", { d: "M20 9H10a6 6 0 0 0 0 12h1" }]],
+    "zoom-in": [["circle", { cx: "11", cy: "11", r: "7" }], ["line", { x1: "11", y1: "8", x2: "11", y2: "14" }], ["line", { x1: "8", y1: "11", x2: "14", y2: "11" }], ["line", { x1: "16.5", y1: "16.5", x2: "21", y2: "21" }]],
+    "zoom-out": [["circle", { cx: "11", cy: "11", r: "7" }], ["line", { x1: "8", y1: "11", x2: "14", y2: "11" }], ["line", { x1: "16.5", y1: "16.5", x2: "21", y2: "21" }]],
     check: [["path", { d: "m5 12 4 4L19 6" }]],
     clock: [["circle", { cx: "12", cy: "12", r: "10" }], ["polyline", { points: "12 6 12 12 16 14" }]],
     "chevron-down": [["path", { d: "m6 9 6 6 6-6" }]],
@@ -146,6 +151,17 @@
         collapseToggle.setAttribute("data-bso-panel-collapse", "true");
         actions.unshift(collapseToggle);
       }
+      // Header dragging listens on the parent header. Explicitly fence every
+      // action control at pointerdown so SVG/icon hit targets cannot be
+      // retargeted into a panel move or leak to the page underneath. The
+      // control's own click handler still runs normally.
+      actions.forEach(function (action) {
+        if (action && typeof action.addEventListener === "function") {
+          action.addEventListener("pointerdown", function (event) {
+            if (event && event.stopPropagation) event.stopPropagation();
+          });
+        }
+      });
       var heading = el("header", {
         className: "bv-panel-header",
         tabindex: movable ? "0" : null,
