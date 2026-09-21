@@ -65,10 +65,11 @@ keeps the interval and shows an inline error next to the actions instead of
 swallowing the click. A removed item has no interval bar, but its evidence
 fields stay editable; it can be restored.
 
-Hit testing follows the visible foreground under the cursor: buttons, fields,
-timeline bars/edges/playhead, and other controls receive clicks; empty or
-transparent panel chrome stays pass-through so it does not steal hits from the
-player or from a control you are actually hovering.
+Hit testing treats every visible pixel of the rally panel as a hit target: the
+Developer playback help callout, black/empty body background, buttons, fields,
+and timeline controls. Clicks never reach YouTube while the cursor is over the
+panel; within the panel, the foreground control under the cursor still receives
+the event first.
 
 ## Canonical JSON contract
 

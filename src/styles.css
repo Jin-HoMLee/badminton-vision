@@ -456,10 +456,26 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 /* Developer-only rally boundary editor. The timeline has exactly one visual
    interval bar per active record. Its transparent in-bar edge hit zones are
    the start/end affordances; no separate boundary marker is painted.
-   Empty chrome stays pass-through; only the interactive controls above capture
-   hits so the visible foreground under the cursor wins. */
-.bv-rally-labeler-panel { display: flex; flex-direction: column; }
+   Every visible pixel of this panel is a hit target (info callout, black/empty
+   body background, and controls) so clicks never fall through to YouTube; the
+   foreground control under the cursor still receives the event first. */
+.bv-rally-labeler-panel { display: flex; flex-direction: column; pointer-events: auto; }
+.bv-rally-labeler-panel .bv-panel-header,
+.bv-rally-labeler-panel .bv-panel-body,
+.bv-rally-labeler-panel .bv-panel-footer,
+.bv-rally-labeler-panel .bv-panel-resize-handle { pointer-events: auto; }
 .bv-rally-labeler-panel .bv-panel-body { display: flex; flex-direction: column; gap: var(--sp-4); overflow: auto; }
+.bv-rally-labeler-panel .bv-callout,
+.bv-rally-labeler-panel .bv-rally-empty,
+.bv-rally-labeler-panel .bv-rally-source,
+.bv-rally-labeler-panel .bv-rally-toolbar,
+.bv-rally-labeler-panel .bv-rally-editor,
+.bv-rally-labeler-panel .bv-rally-control,
+.bv-rally-labeler-panel .bv-rally-controls,
+.bv-rally-labeler-panel .bv-rally-completion,
+.bv-rally-labeler-panel .bv-rally-field,
+.bv-rally-labeler-panel .bv-helper,
+.bv-rally-labeler-panel label { pointer-events: auto; }
 .bv-rally-labeler-panel .bv-callout { flex: 0 0 auto; }
 .bv-rally-editor-error { margin: 0; color: var(--signal-out); font: var(--type-body-sm); }
 .bv-rally-empty { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-5); border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); }

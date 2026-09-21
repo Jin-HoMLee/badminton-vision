@@ -2526,8 +2526,9 @@
       collapsed: panelCollapsed("rallyLabeler"),
       onToggleCollapse: function (value) { togglePanelCollapsed("rallyLabeler", value); },
       actions: [ui.el("span", { className: "bv-panel-time", "data-bso-rally-clock": "true" }, [rallyApi.formatSeconds(currentMediaTimestamp()) || "—"]), close],
-      // Empty chrome stays pass-through; interactive children opt into hits via CSS.
-      bodyStyle: { pointerEvents: "none" }
+      // Every visible pixel of this developer panel is a hit target so clicks on
+      // the info callout or empty body never fall through to YouTube.
+      bodyStyle: { pointerEvents: "auto" }
     }, []);
     var body = panel.querySelector(".bv-panel-body");
     if (!body) return panel;
