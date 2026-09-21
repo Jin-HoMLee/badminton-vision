@@ -8,6 +8,10 @@
     activity: [["path", { d: "M22 12h-4l-3 9L9 3l-3 9H2" }]],
     "arrow-left": [["path", { d: "m12 19-7-7 7-7" }], ["path", { d: "M19 12H5" }]],
     "arrow-right": [["path", { d: "m12 5 7 7-7 7" }], ["path", { d: "M5 12h14" }]],
+    "pan-left": [["path", { d: "M4 12h16" }], ["path", { d: "m9 7-5 5 5 5" }], ["path", { d: "M14 7v10" }]],
+    "pan-right": [["path", { d: "M4 12h16" }], ["path", { d: "m15 7 5 5-5 5" }], ["path", { d: "M10 7v10" }]],
+    "interval-start": [["rect", { x: "3", y: "8", width: "18", height: "8", rx: "1" }], ["line", { x1: "11", y1: "4", x2: "11", y2: "20" }], ["line", { x1: "4", y1: "5", x2: "4", y2: "19" }]],
+    "interval-end": [["rect", { x: "3", y: "8", width: "18", height: "8", rx: "1" }], ["line", { x1: "13", y1: "4", x2: "13", y2: "20" }], ["line", { x1: "20", y1: "5", x2: "20", y2: "19" }]],
     undo: [["path", { d: "M9 14 4 9l5-5" }], ["path", { d: "M4 9h10a6 6 0 0 1 0 12h-1" }]],
     redo: [["path", { d: "m15 14 5-5-5-5" }], ["path", { d: "M20 9H10a6 6 0 0 0 0 12h1" }]],
     "zoom-in": [["circle", { cx: "11", cy: "11", r: "7" }], ["line", { x1: "11", y1: "8", x2: "11", y2: "14" }], ["line", { x1: "8", y1: "11", x2: "14", y2: "11" }], ["line", { x1: "16.5", y1: "16.5", x2: "21", y2: "21" }]],
@@ -77,7 +81,7 @@
   }
 
   function icon(name, size) {
-    var svg = svgEl("svg", { xmlns: "http://www.w3.org/2000/svg", width: size || 16, height: size || 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.75", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" });
+    var svg = svgEl("svg", { xmlns: "http://www.w3.org/2000/svg", width: size || 16, height: size || 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.75", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", "data-bso-icon": name });
     (iconPaths[name] || iconPaths.info).forEach(function (item) { var child = svgEl(item[0], item[1]); svg.appendChild(child); });
     return svg;
   }

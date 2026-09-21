@@ -2315,6 +2315,11 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.ok(timelineToolbar, "timeline actions share one compact toolbar directly above the timeline");
   assert.ok(timelineToolbar.querySelector("[data-bso-rally-undo]") && timelineToolbar.querySelector("[data-bso-rally-redo]"));
   assert.ok(timelineToolbar.querySelector("[data-bso-rally-set-start]") && timelineToolbar.querySelector("[data-bso-rally-set-end]"));
+  assert.equal(timelineToolbar.querySelector("[data-bso-rally-pan-left]").disabled, true, "fit-width earlier pan is disabled");
+  assert.equal(timelineToolbar.querySelector("[data-bso-rally-pan-right]").disabled, true, "fit-width later pan is disabled");
+  assert.notEqual(timelineToolbar.querySelector("[data-bso-rally-pan-left]").getAttribute("aria-label"), timelineToolbar.querySelector("[data-bso-rally-set-start]").getAttribute("aria-label"), "navigation and edge controls have distinct accessible semantics");
+  assert.equal(timelineToolbar.querySelector("[data-bso-rally-pan-left]").querySelector("[data-bso-icon]").getAttribute("data-bso-icon"), "pan-left");
+  assert.equal(timelineToolbar.querySelector("[data-bso-rally-set-start]").querySelector("[data-bso-icon]").getAttribute("data-bso-icon"), "interval-start");
   assert.equal(panel.querySelectorAll("[data-bso-rally-exact]").length, 0, "the duplicate top-right current range is removed");
   assert.equal(panel.querySelectorAll(".bv-rally-comparison").length, 0, "unchanged original proposals do not repeat the current range");
   assert.ok(panel.querySelector(".bv-rally-interval"), "interval bars are present as foreground hit targets");
@@ -2354,13 +2359,30 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.match(panel.querySelector("[data-bso-rally-interval]").className, /unresolved/);
   assert.match(panel.querySelector("[data-bso-rally-interval]").className, /selected/);
   assert.match(panel.querySelector("[data-bso-rally-editor]").querySelector(".bv-badge").className, /warn/, "editor badge matches pending timeline color");
+  const reviewActions = panel.querySelector("[data-bso-rally-editor]").querySelector(".bv-rally-editor-actions").querySelectorAll("button");
+  assert.match(reviewActions[0].className, /approve/, "Approve proposal uses the approved semantic action style");
+  assert.match(reviewActions[1].className, /correction/, "Save correction uses the corrected semantic action style");
+  assert.match(reviewActions[2].className, /removal/, "Remove false positive uses the removed semantic action style");
+  assert.equal(reviewActions[0].querySelector("[data-bso-icon]").getAttribute("data-bso-icon"), "check", "approval retains a non-color cue");
+  assert.equal(reviewActions[1].querySelector("[data-bso-icon]").getAttribute("data-bso-icon"), "pencil", "correction retains a non-color cue");
+  assert.equal(reviewActions[2].querySelector("[data-bso-icon]").getAttribute("data-bso-icon"), "x", "removal retains a non-color cue");
 
   buttonWithText(panel, "Zoom in").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   assert.equal(panel.querySelector(".bv-rally-timeline-track").style.width, "200%");
   const scroller = panel.querySelector("[data-bso-rally-scroll]");
-  buttonWithText(panel, "Scroll right").dispatchEvent({ type: "click" });
-  assert.ok(scroller.scrollLeft > 0, "the explicit scroll action advances the horizontal viewport");
+  assert.equal(Boolean(panel.querySelector("[data-bso-rally-pan-right]").disabled), false, "zoom exposes a useful later pan");
+  const mediaBeforePan = session.video.currentTime;
+  buttonWithText(panel, "Pan later").dispatchEvent({ type: "click" });
+  assert.ok(scroller.scrollLeft > 0, "the explicit pan action advances the horizontal viewport");
+  assert.equal(session.video.currentTime, mediaBeforePan, "panning does not seek the video");
+  buttonWithText(panel, "Pan later").dispatchEvent({ type: "click" });
+  assert.equal(panel.querySelector("[data-bso-rally-pan-right]").disabled, true, "the later pan disables at the right boundary");
+  assert.equal(Boolean(panel.querySelector("[data-bso-rally-pan-left]").disabled), false, "the earlier pan enables away from the left boundary");
+  buttonWithText(panel, "Pan earlier").dispatchEvent({ type: "click" });
+  buttonWithText(panel, "Pan earlier").dispatchEvent({ type: "click" });
+  assert.equal(panel.querySelector("[data-bso-rally-pan-left]").disabled, true, "the earlier pan disables at the left boundary");
+  assert.ok(panel.querySelector(".bv-rally-interval").className.includes("selected"), "panning preserves interval selection");
 
   // Body is click-to-seek only. Edge hit zones alone resize. A body pointer
   // drag must not start a move or mark a correction.
@@ -2416,12 +2438,12 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(editor.querySelector("[data-bso-rally-start-input]").getAttribute("type"), "text", "start accepts human clock strings");
   session.video.currentTime = 14.5;
   session.video.dispatchEvent({ type: "timeupdate", target: session.video });
-  buttonWithText(panel, "Set end from playhead").dispatchEvent({ type: "click" });
+  buttonWithText(panel, "Set end").dispatchEvent({ type: "click" });
   savedReview = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
   assert.equal(savedReview.intervals[0].corrected.endSec, 14.5, "set end copies the blue playhead time");
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   editor = panel.querySelector("[data-bso-rally-editor]");
-  buttonWithText(panel, "Set start from playhead").dispatchEvent({ type: "click" });
+  buttonWithText(panel, "Set start").dispatchEvent({ type: "click" });
   savedReview = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
   assert.ok(savedReview.intervals[0].corrected.startSec < savedReview.intervals[0].corrected.endSec, "set start clamps before end");
 

@@ -96,6 +96,16 @@ and remains incomplete until the reviewer explicitly confirms the empty set or
 adds/reviews a rally. JSON import still replaces that video-local document
 only after its identity check succeeds.
 
+The timeline navigation buttons are disabled when the review fits the viewport,
+and become bounded earlier/later pan controls only after zoom creates real
+horizontal pan state. Panning does not change media time or interval selection;
+zoom and layout rerenders recompute the boundary state. Set start/end use
+separate interval/playhead icons, while the collapsed playback-help affordance
+is a compact question-mark button with the accessible name `Show help`.
+Review actions reuse the approved, corrected, and removed semantic tokens used
+by their resulting timeline bars, with text and icons retained as non-color
+cues.
+
 The panel's user-resize bounds follow the rendered YouTube presentation
 container. Fullscreen removes the theater-mode width ceiling and permits a
 larger user-sized panel while preserving its current pixel size when valid;

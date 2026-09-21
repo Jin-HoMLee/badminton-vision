@@ -2543,13 +2543,29 @@
     rallyTimelineScroll = next.scrollLeft;
     render();
   }
-  function scrollRallyTimeline(direction) {
+  function rallyTimelinePanState() {
     var scroller = root && root.querySelector("[data-bso-rally-scroll]");
     var width = Number(scroller && scroller.clientWidth) || 640;
     var current = rallyApi.createTimelineView(rallyDocument, width, rallyTimelineZoom, Number(scroller && scroller.scrollLeft) || rallyTimelineScroll);
-    var next = rallyApi.scrollTimeline(rallyDocument, current, direction * width * .75);
+    return { view: current, canLeft: current.scrollLeft > 0.5, canRight: current.scrollLeft < current.maxScroll - 0.5 };
+  }
+  function syncRallyPanButtons() {
+    var state = rallyTimelinePanState();
+    var left = root && root.querySelector("[data-bso-rally-pan-left]");
+    var right = root && root.querySelector("[data-bso-rally-pan-right]");
+    if (left) left.disabled = !state.canLeft;
+    if (right) right.disabled = !state.canRight;
+    return state;
+  }
+  function scrollRallyTimeline(direction) {
+    if (!rallyDocument) return;
+    var state = rallyTimelinePanState();
+    if (direction < 0 && !state.canLeft || direction > 0 && !state.canRight) return;
+    var next = rallyApi.scrollTimeline(rallyDocument, state.view, direction * state.view.viewportWidth * .75);
     rallyTimelineScroll = next.scrollLeft;
+    var scroller = root && root.querySelector("[data-bso-rally-scroll]");
     if (scroller) scroller.scrollLeft = rallyTimelineScroll;
+    syncRallyPanButtons();
   }
   function isRallyEditableTarget(target) {
     if (!target || !rallyApi || !rallyApi.isEditableKeyboardTarget(target)) return false;
@@ -2636,9 +2652,9 @@
       rallyMetadataFields(interval)
     ]);
     var actions = ui.el("div", { className: "bv-rally-editor-actions" });
-    if (interval.original) actions.appendChild(ui.button("Approve proposal", { variant: "secondary", size: "sm", onClick: function () { commitRallyReview(interval.id, "approve", editor); } }));
-    actions.appendChild(ui.button(interval.original ? "Save correction" : "Save addition", { variant: "primary", size: "sm", onClick: function () { commitRallyReview(interval.id, interval.original ? "correction" : "addition", editor); } }));
-    actions.appendChild(ui.button("Remove false positive", { variant: "danger", size: "sm", onClick: function () { commitRallyReview(interval.id, "removal", editor); } }));
+    if (interval.original) actions.appendChild(ui.button("Approve proposal", { variant: "approve", size: "sm", icon: "check", title: "Approve proposal; the interval becomes approved", onClick: function () { commitRallyReview(interval.id, "approve", editor); } }));
+    actions.appendChild(ui.button(interval.original ? "Save correction" : "Save addition", { variant: interval.original ? "correction" : "primary", size: "sm", icon: interval.original ? "pencil" : "check", title: interval.original ? "Save correction; the interval becomes corrected" : "Save the new rally interval", onClick: function () { commitRallyReview(interval.id, interval.original ? "correction" : "addition", editor); } }));
+    actions.appendChild(ui.button("Remove false positive", { variant: "removal", size: "sm", icon: "x", title: "Remove false positive; the interval becomes removed", onClick: function () { commitRallyReview(interval.id, "removal", editor); } }));
     editor.appendChild(actions);
     return attachRallyKeyIsolation(editor);
   }
@@ -2761,7 +2777,7 @@
       track.appendChild(row);
     });
     scroll.appendChild(track);
-    scroll.addEventListener("scroll", function () { rallyTimelineScroll = Number(scroll.scrollLeft) || 0; });
+    scroll.addEventListener("scroll", function () { rallyTimelineScroll = Number(scroll.scrollLeft) || 0; syncRallyPanButtons(); });
     setTimeout(function () { if (scroll.isConnected) scroll.scrollLeft = rallyTimelineScroll; refreshRallyPlayhead(); }, 0);
     return scroll;
   }
@@ -2786,7 +2802,7 @@
       help.setAttribute("data-bso-rally-playback-help", "true");
       body.appendChild(help);
     } else {
-      var showHelp = ui.button("Show playback help", { variant: "secondary", size: "sm", title: "Show the developer playback help again", onClick: function () { rallyHelpVisible = true; render(); } });
+      var showHelp = ui.button("Show help", { variant: "secondary", size: "sm", icon: "help", compact: true, ariaLabel: "Show help", title: "Show the developer playback help again", onClick: function () { rallyHelpVisible = true; render(); } });
       showHelp.setAttribute("data-bso-rally-show-help", "true");
       body.appendChild(ui.el("div", { className: "bv-rally-help-actions" }, [showHelp]));
     }
@@ -2835,17 +2851,24 @@
     undoButton.setAttribute("data-bso-rally-undo", "true");
     var redoButton = ui.button("Redo", { variant: "secondary", size: "sm", icon: "redo", compact: true, ariaLabel: "Redo", disabled: !rallyRedoStack.length, title: "Redo the last undone timeline or review edit", onClick: redoRallyEdit });
     redoButton.setAttribute("data-bso-rally-redo", "true");
-    var setStartButton = ui.button("Set start from playhead", { variant: "secondary", size: "sm", icon: "arrow-left", compact: true, ariaLabel: "Set start from playhead", disabled: !canSetToolbarEdge, title: "Set the selected interval start to the blue playhead", onClick: function () { setRallyEdgeFromPlayhead(rallySelectedId, "start"); } });
+    var panState = rallyTimelinePanState();
+    var panEarlierButton = ui.button("Pan earlier", { variant: "secondary", size: "sm", icon: "pan-left", compact: true, ariaLabel: "Pan timeline earlier", disabled: !panState.canLeft, title: "Pan the zoomed timeline earlier", onClick: function () { scrollRallyTimeline(-1); } });
+    panEarlierButton.setAttribute("data-bso-rally-pan-left", "true");
+    var panLaterButton = ui.button("Pan later", { variant: "secondary", size: "sm", icon: "pan-right", compact: true, ariaLabel: "Pan timeline later", disabled: !panState.canRight, title: "Pan the zoomed timeline later", onClick: function () { scrollRallyTimeline(1); } });
+    panLaterButton.setAttribute("data-bso-rally-pan-right", "true");
+    var setStartButton = ui.button("Set start", { variant: "secondary", size: "sm", icon: "interval-start", compact: true, ariaLabel: "Set start from playhead", disabled: !canSetToolbarEdge, title: "Set the selected interval start to the blue playhead", onClick: function () { setRallyEdgeFromPlayhead(rallySelectedId, "start"); } });
+    setStartButton.className += " bv-rally-set-edge";
     setStartButton.setAttribute("data-bso-rally-set-start", "true");
-    var setEndButton = ui.button("Set end from playhead", { variant: "secondary", size: "sm", icon: "arrow-right", compact: true, ariaLabel: "Set end from playhead", disabled: !canSetToolbarEdge, title: "Set the selected interval end to the blue playhead", onClick: function () { setRallyEdgeFromPlayhead(rallySelectedId, "end"); } });
+    var setEndButton = ui.button("Set end", { variant: "secondary", size: "sm", icon: "interval-end", compact: true, ariaLabel: "Set end from playhead", disabled: !canSetToolbarEdge, title: "Set the selected interval end to the blue playhead", onClick: function () { setRallyEdgeFromPlayhead(rallySelectedId, "end"); } });
+    setEndButton.className += " bv-rally-set-edge";
     setEndButton.setAttribute("data-bso-rally-set-end", "true");
     body.appendChild(ui.el("div", { className: "bv-rally-toolbar bv-rally-timeline-toolbar", "aria-label": "Timeline controls" }, [
       ui.button("Add missing rally", { variant: "primary", size: "sm", title: "Create a new rally interval at the current playhead", onClick: addMissingRally }),
       ui.button("Zoom out", { variant: "secondary", size: "sm", icon: "zoom-out", compact: true, ariaLabel: "Zoom out", disabled: rallyTimelineZoom <= 1, title: "Show a wider time range", onClick: function () { zoomRallyTimeline(.5); } }),
       ui.el("span", { className: "bv-mono", title: "Timeline zoom" }, [rallyTimelineZoom.toFixed(1) + "×"]),
       ui.button("Zoom in", { variant: "secondary", size: "sm", icon: "zoom-in", compact: true, ariaLabel: "Zoom in", disabled: rallyTimelineZoom >= rallyApi.MAX_ZOOM, title: "Show more detail around the timeline", onClick: function () { zoomRallyTimeline(2); } }),
-      ui.button("Scroll left", { variant: "secondary", size: "sm", icon: "arrow-left", compact: true, ariaLabel: "Scroll left", title: "Scroll the timeline earlier", onClick: function () { scrollRallyTimeline(-1); } }),
-      ui.button("Scroll right", { variant: "secondary", size: "sm", icon: "arrow-right", compact: true, ariaLabel: "Scroll right", title: "Scroll the timeline later", onClick: function () { scrollRallyTimeline(1); } }),
+      panEarlierButton,
+      panLaterButton,
       undoButton,
       redoButton,
       ui.el("span", { className: "bv-rally-toolbar-spacer" }),

@@ -18,6 +18,17 @@
   /* Brighter highlight for the court-setup line projection on live footage. */
   --court-setup-line: var(--lime-400);
   --court-setup-net: var(--lime-300);
+  /* Shared rally review state surfaces; bars, badges, and actions use the
+     same semantic color rather than independent button literals. */
+  --rally-approve-color: var(--signal-in);
+  --rally-approve-tint: var(--signal-in-tint);
+  --rally-approve-border: rgba(63,212,139,.4);
+  --rally-correction-color: #c4b5ff;
+  --rally-correction-tint: rgba(139,124,255,.18);
+  --rally-correction-border: rgba(139,124,255,.45);
+  --rally-remove-color: var(--signal-out);
+  --rally-remove-tint: var(--signal-out-tint);
+  --rally-remove-border: rgba(255,107,90,.4);
 }
 
 :host {
@@ -146,6 +157,9 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-button.secondary { color: var(--text-primary); background: var(--surface-raised); }
 .bv-button.ghost { color: var(--text-muted); border-color: transparent; background: transparent; }
 .bv-button.danger { color: var(--signal-out); border-color: rgba(255,107,90,.4); background: var(--signal-out-tint); }
+.bv-button.approve { color: var(--rally-approve-color); border-color: var(--rally-approve-border); background: var(--rally-approve-tint); }
+.bv-button.correction { color: var(--rally-correction-color); border-color: var(--rally-correction-border); background: var(--rally-correction-tint); }
+.bv-button.removal { color: var(--rally-remove-color); border-color: var(--rally-remove-border); background: var(--rally-remove-tint); }
 .bv-button:disabled { opacity: .42; cursor: not-allowed; }
 .bv-button.full { width: 100%; }
 .bv-icon-button {
@@ -162,11 +176,11 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 }
 .bv-badge.neutral { color: var(--text-muted); background: var(--surface-active); }
 .bv-badge.accent { color: var(--lime-500); background: var(--lime-tint); border-color: rgba(200,240,74,.4); }
-.bv-badge.in { color: var(--signal-in); background: var(--signal-in-tint); border-color: rgba(63,212,139,.4); }
-.bv-badge.out { color: var(--signal-out); background: var(--signal-out-tint); border-color: rgba(255,107,90,.4); }
+.bv-badge.in { color: var(--rally-approve-color); background: var(--rally-approve-tint); border-color: var(--rally-approve-border); }
+.bv-badge.out { color: var(--rally-remove-color); background: var(--rally-remove-tint); border-color: var(--rally-remove-border); }
 .bv-badge.warn { color: var(--signal-warn); background: var(--signal-warn-tint); border-color: rgba(255,176,32,.4); }
 .bv-badge.info { color: var(--signal-info); background: var(--signal-info-tint); border-color: rgba(98,182,255,.4); }
-.bv-badge.correction { color: #c4b5ff; background: rgba(139,124,255,.18); border-color: rgba(139,124,255,.45); }
+.bv-badge.correction { color: var(--rally-correction-color); background: var(--rally-correction-tint); border-color: var(--rally-correction-border); }
 .bv-badge.unknown { color: var(--signal-unknown); background: var(--signal-unknown-tint); border-color: rgba(122,139,150,.4); }
 .bv-kbd {
   display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 var(--sp-2);
@@ -496,6 +510,10 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-timeline-toolbar .bv-button { flex: 0 0 auto; }
 .bv-rally-timeline-toolbar .bv-button.compact { width: var(--control-height-sm); padding: 0; }
 .bv-rally-timeline-toolbar .bv-button.compact .bv-button-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (min-width: 860px) {
+  .bv-rally-timeline-toolbar .bv-button.bv-rally-set-edge { width: auto; padding-inline: var(--sp-2); }
+  .bv-rally-timeline-toolbar .bv-button.bv-rally-set-edge .bv-button-label { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: nowrap; }
+}
 .bv-rally-labeler-panel .bv-button.ghost,
 .bv-rally-labeler-panel .bv-button.secondary { color: var(--text-primary); border-color: var(--border-subtle); background: var(--surface-raised); }
 .bv-rally-labeler-panel .bv-button:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-panel-solid); }
@@ -521,10 +539,10 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
    bright ring so clicking a bar never looks like a correction. */
 .bv-rally-interval { position: absolute; z-index: 3; top: 4px; box-sizing: border-box; min-width: 3px; height: 22px; overflow: hidden; border: 1px solid var(--signal-warn); border-radius: var(--radius-xs); border-style: dashed; background: var(--signal-warn-tint); color: var(--text-primary); cursor: pointer; touch-action: none; user-select: none; }
 .bv-rally-interval.unresolved { border-style: dashed; border-color: var(--signal-warn); background: var(--signal-warn-tint); }
-.bv-rally-interval.approve { border-style: solid; border-color: var(--signal-in); background: var(--signal-in-tint); }
+.bv-rally-interval.approve { border-style: solid; border-color: var(--rally-approve-color); background: var(--rally-approve-tint); }
 .bv-rally-interval.addition { border-style: solid; border-color: var(--lime-500); background: rgba(200,240,74,.18); }
-.bv-rally-interval.correction { border-style: solid; border-color: #8b7cff; background: rgba(139,124,255,.18); }
-.bv-rally-interval.removal { border-style: solid; border-color: var(--signal-out); background: var(--signal-out-tint); color: var(--signal-out); cursor: pointer; }
+.bv-rally-interval.correction { border-style: solid; border-color: var(--rally-correction-color); background: var(--rally-correction-tint); }
+.bv-rally-interval.removal { border-style: solid; border-color: var(--rally-remove-color); background: var(--rally-remove-tint); color: var(--rally-remove-color); cursor: pointer; }
 .bv-rally-interval.selected,
 .bv-rally-timeline-row.selected .bv-rally-interval { box-shadow: 0 0 0 2px rgba(255,255,255,.88), 0 0 0 4px rgba(98,182,255,.55); }
 .bv-rally-interval:focus-visible { box-shadow: inset 0 0 0 2px var(--ink-900), var(--focus-ring); }
