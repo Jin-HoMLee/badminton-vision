@@ -524,6 +524,24 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-labeler-panel .bv-button.secondary { color: var(--text-primary); border-color: var(--border-subtle); background: var(--surface-raised); }
 .bv-rally-labeler-panel .bv-button:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-panel-solid); }
 .bv-rally-labeler-panel .bv-button:focus-visible { outline: 2px solid var(--signal-info); outline-offset: 1px; }
+/* Primary actions keep their neon priority surface through every interaction
+   state. The generic button hover filter is intentionally neutralized here;
+   border/elevation provide feedback without sacrificing text/icon contrast. */
+.bv-button.primary,
+.bv-button.primary:hover:not(:disabled),
+.bv-button.primary:focus-visible,
+.bv-button.primary:active:not(:disabled),
+.bv-button.primary:disabled {
+  color: var(--action-primary-text);
+  background: var(--action-primary-fill);
+  border-color: var(--action-primary-fill);
+  filter: none;
+}
+.bv-button.primary [data-bso-icon] { color: var(--action-primary-text); }
+.bv-button.primary:hover:not(:disabled) { border-color: var(--lime-300); box-shadow: 0 2px 10px rgba(200,240,74,.22); }
+.bv-button.primary:focus-visible { box-shadow: var(--focus-ring); }
+.bv-button.primary:active:not(:disabled) { box-shadow: 0 1px 4px rgba(200,240,74,.2); }
+.bv-button.primary:disabled { opacity: .42; cursor: not-allowed; }
 .bv-rally-help-actions { display: flex; align-items: center; }
 .bv-rally-toolbar > .bv-mono { min-width: 38px; color: var(--lime-400); text-align: center; font-size: var(--fs-11); }
 .bv-rally-timeline-scroll { position: relative; flex: 0 0 auto; width: 100%; max-width: 100%; overflow-x: scroll; overflow-y: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--ink-800); scrollbar-gutter: stable; }
