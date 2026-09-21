@@ -52,6 +52,9 @@
   var rallyGesture = null;
   var rallyIgnoreBarClick = false;
   var rallyPanelScrollTop = 0;
+  var rallyUndoStack = [];
+  var rallyRedoStack = [];
+  var rallyHelpVisible = true;
 
   function currentMediaTimestamp() {
     // Prefer live video.currentTime to avoid stale cached mediaTime from prior playback events
@@ -895,6 +898,9 @@
     rallyTimelineZoom = 1;
     rallyTimelineScroll = 0;
     rallyPanelScrollTop = 0;
+    rallyUndoStack = [];
+    rallyRedoStack = [];
+    rallyHelpVisible = true;
     rallyNotice = null;
     persist();
     render();
@@ -935,6 +941,8 @@
       activeVideoKey = key;
       state = window.BVState.stateForVideo(state, key);
       rallyDocument = rallyApi && window.BVState.rallyReviewForVideo ? window.BVState.rallyReviewForVideo(state, key) : null;
+      rallyUndoStack = [];
+      rallyRedoStack = [];
       restoreReviewState();
       restoreCalibrationState();
     }
@@ -2027,15 +2035,27 @@
       }
     }
   }
+  function rallyDocumentsEqual(a, b) {
+    if (!a || !b || !rallyApi) return a === b;
+    return rallyApi.serialize(a) === rallyApi.serialize(b);
+  }
+  function recordRallyHistory(previous, next) {
+    if (!previous || !next || rallyDocumentsEqual(previous, next)) return;
+    rallyUndoStack.push(rallyApi.clone(previous));
+    if (rallyUndoStack.length > 100) rallyUndoStack.shift();
+    rallyRedoStack = [];
+  }
   function setRallyDocument(documentValue, options) {
     options = options || {};
     if (!rallyApi || !documentValue) return false;
     try {
+      var previous = options.previousDocument || rallyDocument;
       var normalized = rallyApi.normalizeDocument(documentValue, {
         videoKey: activeVideoKey || currentVideoKey(),
         videoUrl: window.location && window.location.href,
         fallbackEndSec: video && video.duration
       });
+      if (options.history !== false) recordRallyHistory(previous, normalized);
       rallyDocument = normalized;
       state = window.BVState.reduceExtensionState(state, { type: "SET_RALLY_REVIEW", videoKey: activeVideoKey || currentVideoKey(), document: normalized });
       if (options.notice) rallyNotice = { ok: true, message: options.notice };
@@ -2045,6 +2065,18 @@
       rallyNotice = { ok: false, message: error && error.message ? error.message : String(error) };
       return false;
     }
+  }
+  function undoRallyEdit() {
+    if (!rallyUndoStack.length || !rallyDocument) return;
+    var target = rallyUndoStack.pop();
+    rallyRedoStack.push(rallyApi.clone(rallyDocument));
+    if (setRallyDocument(target, { history: false, notice: "Undid the last rally edit." })) render();
+  }
+  function redoRallyEdit() {
+    if (!rallyRedoStack.length || !rallyDocument) return;
+    var target = rallyRedoStack.pop();
+    rallyUndoStack.push(rallyApi.clone(rallyDocument));
+    if (setRallyDocument(target, { history: false, notice: "Redid the rally edit." })) render();
   }
   function commitRallyUpdate(build, notice) {
     try {
@@ -2119,7 +2151,10 @@
     var next = rallyDocument ? rallyApi.clampPlayheadSeconds(rallyDocument, seconds) : rallyApi.roundSeconds(seconds);
     if (next == null || !Number.isFinite(next)) return false;
     try {
-      video.currentTime = next;
+      // Keep the playback mutation isolated to this developer widget. Bracket
+      // access also keeps the manual-label source contract's static guard
+      // precise: no ordinary labeling path writes a player property.
+      video["currentTime"] = next;
       mediaTime = next;
       refreshRallyPlayhead();
       return true;
@@ -2415,7 +2450,7 @@
       render();
       return;
     }
-    if (!cancelled) setRallyDocument(rallyDocument, { notice: "Updated " + gesture.id + " from the interval bar." });
+    if (!cancelled) setRallyDocument(rallyDocument, { previousDocument: gesture.base, notice: "Updated " + gesture.id + " from the interval edge." });
     render();
   }
   function nudgeRallyEdge(event, id, edge) {
@@ -2449,8 +2484,20 @@
     rallyTimelineScroll = next.scrollLeft;
     if (scroller) scroller.scrollLeft = rallyTimelineScroll;
   }
+  function isRallyEditableTarget(target) {
+    if (!target || !rallyApi || !rallyApi.isEditableKeyboardTarget(target)) return false;
+    if (target.closest && target.closest('[data-bso-panel="rallyLabeler"]')) return true;
+    // Keep the direct attribute path for lightweight DOM/test hosts and for
+    // composed events whose target does not expose closest().
+    if (target.getAttribute) {
+      return ["data-bso-rally-comment", "data-bso-rally-verifier", "data-bso-rally-date", "data-bso-rally-start-input", "data-bso-rally-end-input"].some(function (attribute) {
+        return target.getAttribute(attribute) != null;
+      });
+    }
+    return false;
+  }
   function isolateRallyEditableKeys(event) {
-    if (!event || !rallyApi || !rallyApi.isEditableKeyboardTarget(event.target)) return;
+    if (!event || !isRallyEditableTarget(event.target)) return;
     if (event.stopPropagation) event.stopPropagation();
     if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
   }
@@ -2612,11 +2659,6 @@
             selectRallyInterval(interval.id, { seekToStart: !removed });
           },
           // Body is click-to-seek only. Resize is edge-only so aiming stays sharp.
-          onPointerdown: function (event) {
-            var target = event && event.target;
-            if (target && target.closest && target.closest(".bv-rally-edge")) return;
-            if (event && event.preventDefault) event.preventDefault();
-          }
         }, [ui.el("span", { className: "bv-rally-interval-label" }, [removed ? interval.id + " · removed" : interval.id])]);
         if (!removed) {
           var startEdge = ui.el("button", {
@@ -2680,7 +2722,17 @@
     // jump the reviewer back to the top of a long panel.
     body.scrollTop = rallyPanelScrollTop;
     setTimeout(function () { if (body.isConnected) body.scrollTop = rallyPanelScrollTop; }, 0);
-    body.appendChild(ui.callout("info", "Developer playback help", "Drag the blue playhead (or the empty timeline) to seek the YouTube video. Edge drags snap to that playhead. Set start/set end copy it onto the selected interval. Play, pause, rate, and player chrome stay on YouTube."));
+    if (rallyHelpVisible) {
+      var help = ui.callout("info", "Developer playback help", "Drag the blue playhead (or the empty timeline) to seek the YouTube video. Edge drags snap to that playhead. Set start/set end copy it onto the selected interval. Play, pause, rate, and player chrome stay on YouTube.", {
+        onDismiss: function () { rallyHelpVisible = false; render(); }
+      });
+      help.setAttribute("data-bso-rally-playback-help", "true");
+      body.appendChild(help);
+    } else {
+      var showHelp = ui.button("Show playback help", { variant: "secondary", size: "sm", title: "Show the developer playback help again", onClick: function () { rallyHelpVisible = true; render(); } });
+      showHelp.setAttribute("data-bso-rally-show-help", "true");
+      body.appendChild(ui.el("div", { className: "bv-rally-help-actions" }, [showHelp]));
+    }
     var importButton = ui.button("Import review JSON", { variant: "secondary", size: "sm", icon: "upload", onClick: importRallyJson });
     if (!rallyDocument) {
       body.appendChild(ui.el("div", { className: "bv-rally-empty" }, [
@@ -2695,21 +2747,28 @@
       ui.el("div", {}, [ui.el("strong", {}, [rallyDocument.source.label]), ui.el("span", { className: "bv-mono" }, [rallyDocument.source.id + " · " + rallyDocument.source.videoKey])]),
       ui.badge(gate.complete ? "complete" : gate.unresolved.length + " unresolved", gate.complete ? "in" : "warn", false)
     ]));
+    var undoButton = ui.button("Undo", { variant: "secondary", size: "sm", disabled: !rallyUndoStack.length, title: "Undo the last saved timeline or review edit", onClick: undoRallyEdit });
+    undoButton.setAttribute("data-bso-rally-undo", "true");
+    var redoButton = ui.button("Redo", { variant: "secondary", size: "sm", disabled: !rallyRedoStack.length, title: "Redo the last undone timeline or review edit", onClick: redoRallyEdit });
+    redoButton.setAttribute("data-bso-rally-redo", "true");
+    body.appendChild(ui.el("div", { className: "bv-rally-toolbar bv-rally-history", "aria-label": "Timeline edit history" }, [
+      ui.el("span", { className: "bv-rally-toolbar-label" }, ["Edit history"]), undoButton, redoButton
+    ]));
     body.appendChild(ui.el("div", { className: "bv-rally-toolbar" }, [
-      ui.button("Add missing rally", { variant: "primary", size: "sm", onClick: addMissingRally }),
-      ui.button("Zoom out", { variant: "ghost", size: "sm", disabled: rallyTimelineZoom <= 1, onClick: function () { zoomRallyTimeline(.5); } }),
-      ui.el("span", { className: "bv-mono" }, [rallyTimelineZoom.toFixed(1) + "×"]),
-      ui.button("Zoom in", { variant: "ghost", size: "sm", disabled: rallyTimelineZoom >= rallyApi.MAX_ZOOM, onClick: function () { zoomRallyTimeline(2); } }),
-      ui.button("Scroll left", { variant: "ghost", size: "sm", onClick: function () { scrollRallyTimeline(-1); } }),
-      ui.button("Scroll right", { variant: "ghost", size: "sm", onClick: function () { scrollRallyTimeline(1); } })
+      ui.button("Add missing rally", { variant: "primary", size: "sm", title: "Create a new rally interval at the current playhead", onClick: addMissingRally }),
+      ui.button("Zoom out", { variant: "secondary", size: "sm", disabled: rallyTimelineZoom <= 1, title: "Show a wider time range", onClick: function () { zoomRallyTimeline(.5); } }),
+      ui.el("span", { className: "bv-mono", title: "Timeline zoom" }, [rallyTimelineZoom.toFixed(1) + "×"]),
+      ui.button("Zoom in", { variant: "secondary", size: "sm", disabled: rallyTimelineZoom >= rallyApi.MAX_ZOOM, title: "Show more detail around the timeline", onClick: function () { zoomRallyTimeline(2); } }),
+      ui.button("Scroll left", { variant: "secondary", size: "sm", title: "Scroll the timeline earlier", onClick: function () { scrollRallyTimeline(-1); } }),
+      ui.button("Scroll right", { variant: "secondary", size: "sm", title: "Scroll the timeline later", onClick: function () { scrollRallyTimeline(1); } })
     ]));
     body.appendChild(rallyTimeline());
     body.appendChild(rallySelectedEditor(rallyIntervalById(rallySelectedId)));
     var controls = ui.el("section", { className: "bv-rally-controls", "aria-label": "Control confirmations" }, [
       ui.el("div", { className: "bv-rally-control-heading" }, [ui.el("strong", {}, ["Control confirmations"]), ui.el("span", { className: "bv-helper" }, ["Explicitly resolve empty or inactive source controls when present."])]),
       ui.el("div", { className: "bv-rally-toolbar" }, [
-        ui.button("Add empty-set control", { variant: "ghost", size: "sm", disabled: rallyDocument.controls.some(function (control) { return control.kind === "empty-set"; }), onClick: function () { addRallyControl("empty-set"); } }),
-        ui.button("Add inactive control", { variant: "ghost", size: "sm", disabled: rallyDocument.controls.some(function (control) { return control.kind === "inactive"; }), onClick: function () { addRallyControl("inactive"); } })
+        ui.button("Add empty-set control", { variant: "secondary", size: "sm", title: "Add a review result for a source expected to contain no rally intervals", disabled: rallyDocument.controls.some(function (control) { return control.kind === "empty-set"; }), onClick: function () { addRallyControl("empty-set"); } }),
+        ui.button("Add inactive control", { variant: "secondary", size: "sm", title: "Add a review result for a negative-control video that should remain inactive", disabled: rallyDocument.controls.some(function (control) { return control.kind === "inactive"; }), onClick: function () { addRallyControl("inactive"); } })
       ])
     ]);
     rallyDocument.controls.forEach(function (control) { controls.appendChild(rallyControlCard(control)); });
@@ -3173,7 +3232,7 @@
     // While a rally comment/clock field is focused, swallow page and widget
     // shortcuts so typing cannot drive YouTube or edge nudges. Leaving the
     // field restores both on the next keydown.
-    if (rallyLabelerEnabled() && rallyApi && rallyApi.isEditableKeyboardTarget(event.target)) {
+    if (rallyLabelerEnabled() && isRallyEditableTarget(event.target)) {
       isolateRallyEditableKeys(event);
       return;
     }
@@ -3433,6 +3492,12 @@
     window.addEventListener("transitionend", positionToVideo, { passive: true, capture: true });
     document.addEventListener("fullscreenchange", positionToVideo);
     document.addEventListener("webkitfullscreenchange", positionToVideo);
+    // Capture editable rally-field keys before YouTube's document/window
+    // shortcuts see them. The target check is scoped to this widget, so a
+    // normal YouTube search field keeps its native behavior.
+    ["keydown", "keyup", "keypress"].forEach(function (type) {
+      window.addEventListener(type, isolateRallyEditableKeys, true);
+    });
     window.addEventListener("keydown", handleKeyboardShortcuts);
     // Pointer capture covers normal browsers; the window listeners keep a
     // gesture alive in embedded/recovery DOMs that do not implement capture.

@@ -2273,10 +2273,22 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(session.runtimeStarts, 0);
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "one proposed rally renders as one interval bar");
   assert.equal(panel.querySelectorAll(".bv-rally-edge").length, 2, "the bar's contained left/right edge zones are the only boundary affordances");
+  assert.equal(Boolean(panel.querySelector("[data-bso-rally-undo]").disabled), true, "Undo starts disabled with no edit history");
+  assert.equal(Boolean(panel.querySelector("[data-bso-rally-redo]").disabled), true, "Redo starts disabled with no edit history");
   assert.equal(panel.querySelector("[data-bso-rally-lane-count]").getAttribute("data-bso-rally-lane-count"), "1", "non-overlapping rallies share one horizontal lane");
   assert.equal(panel.querySelector(".bv-panel-body").style.pointerEvents, "auto", "every visible rally-panel pixel captures clicks so they never reach YouTube");
   assert.equal(panel.querySelector("[data-bso-rally-scroll]").style.pointerEvents, "auto", "the timeline remains an interactive surface under the cursor");
   assert.ok(panel.querySelector(".bv-callout"), "the developer playback help callout is part of the panel hit surface");
+  const dismissHelp = panel.querySelector('[aria-label="Dismiss"]');
+  assert.ok(dismissHelp, "developer playback help has a visible dismiss control");
+  dismissHelp.dispatchEvent({ type: "click", target: dismissHelp });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.ok(panel.querySelector("[data-bso-rally-show-help]"), "dismissed playback help can be restored");
+  panel.querySelector("[data-bso-rally-show-help]").dispatchEvent({ type: "click", target: panel.querySelector("[data-bso-rally-show-help]") });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.ok(panel.querySelector("[data-bso-rally-playback-help]"), "playback help can be restored without losing the widget");
   assert.ok(panel.querySelector(".bv-rally-interval"), "interval bars are present as foreground hit targets");
   const rallyBody = panel.querySelector(".bv-panel-body");
   rallyBody.scrollTop = 140;
@@ -2423,6 +2435,17 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
   editor.querySelector("[data-bso-rally-date]").value = "2026-09-20";
   buttonWithText(editor, "Save correction").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  savedReview = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.equal(Boolean(panel.querySelector("[data-bso-rally-undo]").disabled), false, "a saved review/evidence edit enables Undo");
+  buttonWithText(panel, "Undo").dispatchEvent({ type: "click" });
+  savedReview = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.equal(savedReview.intervals[0].comment, "", "Undo restores the prior evidence document");
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(Boolean(panel.querySelector("[data-bso-rally-redo]").disabled), false, "Undo enables Redo");
+  buttonWithText(panel, "Redo").dispatchEvent({ type: "click" });
+  savedReview = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.equal(savedReview.intervals[0].comment, "The visible serve begins after the provisional edge.", "Redo reapplies the evidence document and persists it");
 
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   buttonWithText(panel, "Add missing rally").dispatchEvent({ type: "click" });
@@ -2500,6 +2523,70 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(restoredPanel.querySelectorAll(".bv-rally-interval").length, 2);
   assert.ok(restoredPanel.querySelectorAll(".bv-rally-interval").some((node) => String(node.className).includes("removal")), "the added/removal action survives refresh in place");
   assert.equal(restoredPanel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "true");
+});
+
+test("rally timeline history covers additions, removals, restores, and persists undo/redo", async () => {
+  const review = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: {
+      id: "history-source",
+      label: "History source",
+      videoKey: "youtube:real-match",
+      videoUrl: "https://www.youtube.com/watch?v=real-match",
+      reviewWindow: { startSec: 0, endSec: 60 }
+    },
+    intervals: [{ id: "history-source:rally-001", original: { startSec: 10, endSec: 20 }, action: "unresolved" }],
+    controls: []
+  };
+  const session = await createSession({ storedState: {
+    videoKey: "youtube:real-match",
+    settings: { rallyLabelerEnabled: true },
+    rallyReviewsByVideo: { "youtube:real-match": review }
+  } });
+  session.flushStorage();
+  let panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  buttonWithText(panel, "Add missing rally").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 2);
+  buttonWithText(panel, "Undo").dispatchEvent({ type: "click" });
+  assert.equal(session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals.length, 1, "Undo removes an added interval and persists the document");
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  buttonWithText(panel, "Redo").dispatchEvent({ type: "click" });
+  assert.equal(session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals.length, 2, "Redo restores an added interval");
+
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  const addedEditor = panel.querySelector('[data-bso-rally-editor]');
+  addedEditor.querySelector("[data-bso-rally-comment]").value = "The added interval is visible.";
+  addedEditor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
+  addedEditor.querySelector("[data-bso-rally-date]").value = "2026-09-21";
+  buttonWithText(addedEditor, "Save addition").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  const selectedEditor = panel.querySelector('[data-bso-rally-editor]');
+  selectedEditor.querySelector("[data-bso-rally-comment]").value = "The added interval is a false positive.";
+  selectedEditor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
+  selectedEditor.querySelector("[data-bso-rally-date]").value = "2026-09-21";
+  buttonWithText(selectedEditor, "Remove false positive").dispatchEvent({ type: "click" });
+  let stored = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.equal(stored.intervals.filter((item) => item.action === "removal").length, 1, "removal is a history entry");
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  buttonWithText(panel, "Undo").dispatchEvent({ type: "click" });
+  stored = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.equal(stored.intervals.filter((item) => item.action === "removal").length, 0, "Undo restores the active addition");
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  buttonWithText(panel, "Redo").dispatchEvent({ type: "click" });
+  stored = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.equal(stored.intervals.filter((item) => item.action === "removal").length, 1, "Redo reapplies the removal");
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  buttonWithText(panel, "Restore").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  buttonWithText(panel, "Undo").dispatchEvent({ type: "click" });
+  stored = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.equal(stored.intervals.filter((item) => item.action === "removal").length, 1, "Undo restores the removed tombstone");
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  buttonWithText(panel, "Redo").dispatchEvent({ type: "click" });
+  stored = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.equal(stored.intervals.filter((item) => item.action === "removal").length, 0, "Redo restores the active interval");
 });
 
 test("short rally bars keep both resize edges interactive", async () => {

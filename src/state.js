@@ -60,7 +60,7 @@
     // pattern. Settings are global preferences; the settings panel's open
     // state, collapse, and geometry stay video-local through the panels,
     // collapse, and layout maps below.
-    settings: { rallyLabelerEnabled: false, rallyReviewerName: "" },
+    settings: { rallyLabelerEnabled: false },
     // Explicit panel choices override density presets while the preference
     // still gives Balanced/Full a useful default presentation. Both the
     // effective values and overrides are scoped to the active video.
@@ -334,7 +334,9 @@
   function copySettings(settings) {
     var result = settings && typeof settings === "object" && !Array.isArray(settings) ? clone(settings) : {};
     result.rallyLabelerEnabled = Boolean(result.rallyLabelerEnabled);
-    result.rallyReviewerName = String(result.rallyReviewerName == null ? "" : result.rallyReviewerName).trim();
+    if (Object.prototype.hasOwnProperty.call(result, "rallyReviewerName")) {
+      result.rallyReviewerName = String(result.rallyReviewerName == null ? "" : result.rallyReviewerName).trim();
+    }
     return result;
   }
 

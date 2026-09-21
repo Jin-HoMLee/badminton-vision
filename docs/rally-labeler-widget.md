@@ -37,7 +37,11 @@ YouTube controls.
 - **Zoom in/out** expands or contracts the complete review window around the
   center of the visible viewport.
 - **Scroll left/right** and the timeline's native horizontal scrollbar expose
-  the expanded range.
+  the expanded range. Every action is rendered as a bordered button so timeline
+  controls remain visibly clickable.
+- **Undo** and **Redo** reverse saved interval boundary changes, additions,
+  removals/restores, and review evidence/state changes. They write the restored
+  document immediately; disabled buttons indicate an empty history stack.
 - Each active rally is exactly one interval bar. Bars are packed horizontally
   on one lane in time order; a second row opens only when two ranges would
   overlap. The contained left and right edge hit zones edit start and end.
@@ -85,7 +89,9 @@ and timeline controls. Clicks never reach YouTube while the cursor is over the
 panel; within the panel, the foreground control under the cursor still receives
 the event first. The panel body scroll position is preserved across selection
 changes, button clicks, and other re-renders so the view does not jump back to
-the top.
+the top. Developer playback help can be dismissed and restored with **Show
+playback help**. Control confirmations are explicit results for empty-set and
+inactive/negative-control sources, not additional rally labels.
 
 ## Canonical JSON contract
 

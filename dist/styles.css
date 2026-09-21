@@ -487,6 +487,12 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-source strong, .bv-rally-control-heading strong, .bv-rally-editor-heading strong, .bv-rally-completion strong { color: var(--text-primary); font: var(--type-ui); }
 .bv-rally-source .bv-mono { overflow: hidden; color: var(--text-faint); font-size: var(--fs-10); text-overflow: ellipsis; white-space: nowrap; }
 .bv-rally-toolbar, .bv-rally-editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.bv-rally-toolbar-label { color: var(--text-faint); font: var(--type-ui-sm); font-size: var(--fs-11); margin-right: var(--sp-1); }
+.bv-rally-labeler-panel .bv-button.ghost,
+.bv-rally-labeler-panel .bv-button.secondary { color: var(--text-primary); border-color: var(--border-subtle); background: var(--surface-raised); }
+.bv-rally-labeler-panel .bv-button:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-panel-solid); }
+.bv-rally-labeler-panel .bv-button:focus-visible { outline: 2px solid var(--signal-info); outline-offset: 1px; }
+.bv-rally-help-actions { display: flex; align-items: center; }
 .bv-rally-toolbar > .bv-mono { min-width: 38px; color: var(--lime-400); text-align: center; font-size: var(--fs-11); }
 .bv-rally-timeline-scroll { position: relative; flex: 0 0 auto; width: 100%; max-width: 100%; overflow-x: scroll; overflow-y: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--ink-800); scrollbar-gutter: stable; }
 .bv-rally-timeline-scroll:focus-visible { box-shadow: var(--focus-ring); }
@@ -505,7 +511,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-timeline-row.selected { background: rgba(255,255,255,.04); }
 /* Review-state colors are independent from selection. Selection only adds a
    bright ring so clicking a bar never looks like a correction. */
-.bv-rally-interval { position: absolute; top: 4px; box-sizing: border-box; min-width: 3px; height: 22px; overflow: hidden; border: 1px solid var(--signal-warn); border-radius: var(--radius-xs); border-style: dashed; background: var(--signal-warn-tint); color: var(--text-primary); cursor: grab; touch-action: none; user-select: none; }
+.bv-rally-interval { position: absolute; top: 4px; box-sizing: border-box; min-width: 3px; height: 22px; overflow: hidden; border: 1px solid var(--signal-warn); border-radius: var(--radius-xs); border-style: dashed; background: var(--signal-warn-tint); color: var(--text-primary); cursor: pointer; touch-action: none; user-select: none; }
 .bv-rally-interval.unresolved { border-style: dashed; border-color: var(--signal-warn); background: var(--signal-warn-tint); }
 .bv-rally-interval.approve { border-style: solid; border-color: var(--signal-in); background: var(--signal-in-tint); }
 .bv-rally-interval.addition { border-style: solid; border-color: var(--lime-500); background: rgba(200,240,74,.18); }
@@ -517,9 +523,10 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-interval.selected:focus-visible { box-shadow: 0 0 0 2px rgba(255,255,255,.88), 0 0 0 4px rgba(98,182,255,.55), var(--focus-ring); }
 .bv-rally-interval-label { position: absolute; inset: 2px 11px; overflow: hidden; font: var(--type-mono); font-size: var(--fs-10); line-height: 16px; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
 /* Only the edge hit zones drag/resize. The bar body is click-to-seek only. */
-.bv-rally-edge { position: absolute; z-index: 2; top: -2px; bottom: -2px; width: 8px; padding: 0; border: 0; background: transparent; touch-action: none; cursor: ew-resize; }
-.bv-rally-edge.start { left: -4px; }
-.bv-rally-edge.end { right: -4px; }
+.bv-rally-edge { position: absolute; z-index: 2; top: -2px; bottom: -2px; width: 6px; padding: 0; border: 0; background: transparent; touch-action: none; cursor: ew-resize; }
+.bv-rally-edge:hover { cursor: ew-resize; }
+.bv-rally-edge.start { left: -3px; }
+.bv-rally-edge.end { right: -3px; }
 .bv-rally-edge::after { content: ""; position: absolute; top: 2px; bottom: 2px; width: 2px; background: rgba(255,255,255,.55); }
 .bv-rally-edge.start::after { left: 3px; }
 .bv-rally-edge.end::after { right: 3px; }
