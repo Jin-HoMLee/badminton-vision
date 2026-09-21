@@ -2277,6 +2277,13 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(panel.querySelector("[data-bso-rally-scroll]").style.pointerEvents, "auto", "the timeline remains an interactive surface under the cursor");
   assert.ok(panel.querySelector(".bv-callout"), "the developer playback help callout is part of the panel hit surface");
   assert.ok(panel.querySelector(".bv-rally-interval"), "interval bars are present as foreground hit targets");
+  const rallyBody = panel.querySelector(".bv-panel-body");
+  rallyBody.scrollTop = 140;
+  rallyBody.dispatchEvent({ type: "scroll", target: rallyBody });
+  panel.querySelector("[data-bso-rally-interval]").dispatchEvent({ type: "click", target: panel.querySelector("[data-bso-rally-interval]") });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelector(".bv-panel-body").scrollTop, 140, "button/selection rerenders keep the panel scrolled where the reviewer left it");
   assert.equal(panel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "false");
 
   // Native media time drives the playhead; playhead/timeline/bar seeks may

@@ -74,7 +74,9 @@ Hit testing treats every visible pixel of the rally panel as a hit target: the
 Developer playback help callout, black/empty body background, buttons, fields,
 and timeline controls. Clicks never reach YouTube while the cursor is over the
 panel; within the panel, the foreground control under the cursor still receives
-the event first.
+the event first. The panel body scroll position is preserved across selection
+changes, button clicks, and other re-renders so the view does not jump back to
+the top.
 
 ## Canonical JSON contract
 

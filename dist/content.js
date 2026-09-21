@@ -51,6 +51,7 @@
   var rallyNotice = null;
   var rallyGesture = null;
   var rallyIgnoreBarClick = false;
+  var rallyPanelScrollTop = 0;
 
   function currentMediaTimestamp() {
     // Prefer live video.currentTime to avoid stale cached mediaTime from prior playback events
@@ -893,6 +894,7 @@
     rallySelectedId = null;
     rallyTimelineZoom = 1;
     rallyTimelineScroll = 0;
+    rallyPanelScrollTop = 0;
     rallyNotice = null;
     persist();
     render();
@@ -2231,6 +2233,7 @@
     rallySelectedId = parsed.document.intervals.length ? parsed.document.intervals[0].id : null;
     rallyTimelineZoom = 1;
     rallyTimelineScroll = 0;
+    rallyPanelScrollTop = 0;
     if (setRallyDocument(parsed.document, { notice: "Imported " + parsed.document.intervals.length + " intervals and " + parsed.document.controls.length + " controls." })) render();
   }
   function readRallyJsonFile(file) {
@@ -2582,6 +2585,18 @@
     setTimeout(function () { if (scroll.isConnected) scroll.scrollLeft = rallyTimelineScroll; refreshRallyPlayhead(); }, 0);
     return scroll;
   }
+  function captureRallyPanelScroll() {
+    var panel = root && root.querySelector && root.querySelector('[data-bso-panel="rallyLabeler"]');
+    var body = panel && panel.querySelector && panel.querySelector(".bv-panel-body");
+    if (body) rallyPanelScrollTop = Number(body.scrollTop) || 0;
+  }
+  function restoreRallyPanelScroll() {
+    var panel = root && root.querySelector && root.querySelector('[data-bso-panel="rallyLabeler"]');
+    var body = panel && panel.querySelector && panel.querySelector(".bv-panel-body");
+    if (!body) return false;
+    body.scrollTop = rallyPanelScrollTop;
+    return true;
+  }
   function rallyLabelerPanel() {
     var close = ui.iconButton("x", "Disable developer rally labeler", { size: "sm", onClick: function () {
       state = window.BVState.reduceExtensionState(state, { type: "SET_SETTING", key: "rallyLabelerEnabled", value: false });
@@ -2600,6 +2615,11 @@
     }, []);
     var body = panel.querySelector(".bv-panel-body");
     if (!body) return panel;
+    body.addEventListener("scroll", function () { rallyPanelScrollTop = Number(body.scrollTop) || 0; }, { passive: true });
+    // Restore immediately and after layout so button-driven rerenders do not
+    // jump the reviewer back to the top of a long panel.
+    body.scrollTop = rallyPanelScrollTop;
+    setTimeout(function () { if (body.isConnected) body.scrollTop = rallyPanelScrollTop; }, 0);
     body.appendChild(ui.callout("info", "Developer playback help", "Drag the blue playhead (or the empty timeline) to seek the YouTube video. Edge drags snap to that playhead. Set start/set end copy it onto the selected interval. Play, pause, rate, and player chrome stay on YouTube."));
     var importButton = ui.button("Import review JSON", { variant: "secondary", size: "sm", icon: "upload", onClick: importRallyJson });
     if (!rallyDocument) {
@@ -3157,6 +3177,7 @@
     if (!root) return;
     // Structural state updates replace the panel DOM. Never leave a pointer
     // gesture attached to a retired node or let it write stale geometry.
+    captureRallyPanelScroll();
     clearPanelGesture();
     clearRallyGesture(true);
     updateDiagnosticsMarkers();
@@ -3192,6 +3213,7 @@
     syncHoughDetectionLoop();
     refreshPanelLayouts();
     installPanelInteractionsInRoot();
+    restoreRallyPanelScroll();
   }
   function applyStoredState(nextState) {
     clearRallyGesture(true);
