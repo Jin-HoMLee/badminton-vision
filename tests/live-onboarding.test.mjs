@@ -2646,6 +2646,57 @@ test("rally widget collapse and close controls work without passing through to Y
   assert.equal(session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]'), null, "close removes the widget");
 });
 
+test("rally panel bounds expand in fullscreen and clamp back to standard presentation", async () => {
+  const review = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: { id: "fullscreen-rally", videoKey: "youtube:real-match", videoUrl: "https://www.youtube.com/watch?v=real-match", reviewWindow: { startSec: 0, endSec: 60 } },
+    intervals: [{ id: "fullscreen-rally:rally-001", original: { startSec: 10, endSec: 20 }, action: "unresolved" }],
+    controls: []
+  };
+  const session = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true }, rallyReviewsByVideo: { "youtube:real-match": review } } });
+  session.flushStorage();
+  const root = session.overlayRoot();
+  const host = session.host();
+  root.rect = { left: 0, top: 0, width: 640, height: 360 };
+  host.rect = root.rect;
+  let panel = root.querySelector('[data-bso-panel="rallyLabeler"]');
+  let standardWidth = Number.parseFloat(panel.style.width);
+  assert.ok(standardWidth <= 616 + 1e-6, "standard presentation keeps the small-player margin");
+  panel.rect = { left: Number.parseFloat(panel.style.left), top: Number.parseFloat(panel.style.top), width: standardWidth, height: Number.parseFloat(panel.style.height) };
+
+  // Fullscreen changes the actual presentation container and signals the
+  // content script through the same document event as Chrome.
+  session.video.rect = { left: 0, top: 0, width: 1920, height: 1080 };
+  root.rect = { left: 0, top: 0, width: 1920, height: 1080 };
+  host.rect = root.rect;
+  session.documentRef.fullscreenElement = host;
+  session.documentRef.dispatchEvent({ type: "fullscreenchange", target: session.documentRef });
+  panel = root.querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(Number.parseFloat(panel.style.width), standardWidth, "fullscreen preserves the user's existing panel size when it remains valid");
+
+  // Resize the mounted panel toward the fullscreen edge. The dynamic bound
+  // must exceed the theater-era 1100px ceiling without forcing full width.
+  const resize = panel.querySelector("[data-bso-panel-resize-handle]");
+  panel.rect = { left: Number.parseFloat(panel.style.left), top: Number.parseFloat(panel.style.top), width: standardWidth, height: Number.parseFloat(panel.style.height) };
+  resize.dispatchEvent({ type: "pointerdown", target: resize, pointerId: 71, button: 0, clientX: 0, clientY: 0 });
+  session.emitWindow("pointermove", { pointerId: 71, clientX: 1400, clientY: 0 });
+  assert.ok(Number.parseFloat(panel.style.width) > 1100, "fullscreen permits resizing beyond the theater maximum");
+  assert.ok(Number.parseFloat(panel.style.width) < 1920, "fullscreen keeps an outer margin instead of forcing full width");
+  session.emitWindow("pointerup", { pointerId: 71, clientX: 1400, clientY: 0 });
+
+  // Leaving fullscreen restores the normal bound and clamps the oversized
+  // layout safely above the player controls.
+  session.documentRef.fullscreenElement = null;
+  session.video.rect = { left: 0, top: 0, width: 640, height: 360 };
+  root.rect = { left: 0, top: 0, width: 640, height: 360 };
+  host.rect = root.rect;
+  session.documentRef.dispatchEvent({ type: "fullscreenchange", target: session.documentRef });
+  panel = root.querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.ok(Number.parseFloat(panel.style.width) <= 616 + 1e-6, "leaving fullscreen clamps width to the standard player");
+  assert.ok(Number.parseFloat(panel.style.left) >= 12 - 1e-6, "leaving fullscreen keeps the panel margin");
+});
+
 test("short rally bars keep both resize edges interactive", async () => {
   const review = {
     schema: "badminton-vision.rally-review",

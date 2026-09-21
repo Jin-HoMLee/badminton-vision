@@ -86,9 +86,9 @@
     opts = opts || {};
     var children = [];
     if (opts.icon) children.push(icon(opts.icon, opts.iconSize || 16));
-    children.push(label);
+    if (label != null && label !== "") children.push(el("span", { className: "bv-button-label" }, [label]));
     if (opts.iconRight) children.push(icon(opts.iconRight, opts.iconSize || 13));
-    var attrs = { className: "bv-button " + (opts.variant || "secondary") + (opts.size ? " " + opts.size : "") + (opts.full ? " full" : ""), type: "button", disabled: opts.disabled, title: opts.title, "aria-pressed": opts.pressed, onClick: opts.onClick, style: opts.style };
+    var attrs = { className: "bv-button " + (opts.variant || "secondary") + (opts.size ? " " + opts.size : "") + (opts.full ? " full" : "") + (opts.compact ? " compact" : ""), type: "button", disabled: opts.disabled, title: opts.title, "aria-label": opts.ariaLabel, "aria-pressed": opts.pressed, onClick: opts.onClick, style: opts.style };
     return el("button", attrs, children);
   }
 

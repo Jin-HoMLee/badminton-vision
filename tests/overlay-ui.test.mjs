@@ -351,6 +351,9 @@ test("overlay geometry, treatment, and hit targets cannot fall back when mounted
   assert.match(css, /--overlay-panel-surface:\s*rgba\(6,9,11,.86\)/);
   assert.match(css, /\.bv-overlay-root \.bv-panel\s*\{[^}]*background:\s*var\(--overlay-panel-surface\)[^}]*border-color:\s*var\(--border-subtle\)[^}]*box-shadow:/s);
   assert.doesNotMatch(css, /\.bv-overlay-root \.bv-panel[^}]*backdrop-filter\s*:/s, "panel translucency does not introduce blur");
+  assert.match(css, /\.bv-rally-timeline-toolbar\s*\{[^}]*flex-wrap:\s*wrap[^}]*overflow:\s*visible/s, "rally controls reflow without an inner scrollbar");
+  assert.doesNotMatch(css, /\.bv-rally-timeline-toolbar\s*\{[^}]*overflow-x:\s*auto/s, "rally controls never create horizontal scrolling");
+  assert.match(css, /\.bv-rally-timeline-toolbar \.bv-button\.compact[^}]*width:\s*var\(--control-height-sm\)/s, "narrow timelines use compact icon controls");
 });
 
 test("overlay panels reserve the native player strip and every panel collapses from its header", async () => {

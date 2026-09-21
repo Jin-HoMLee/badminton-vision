@@ -89,6 +89,13 @@ can see why it was removed. If those fields are empty, the panel keeps the
 interval and shows an inline error that names the exact empty fields. Removal
 evidence stays editable; the bar can be restored.
 
+The panel's user-resize bounds follow the rendered YouTube presentation
+container. Fullscreen removes the theater-mode width ceiling and permits a
+larger user-sized panel while preserving its current pixel size when valid;
+leaving fullscreen clamps it back inside the normal player margins and above
+the native control strip. Layout and fullscreen/resize transitions recompute
+these bounds without forcing the panel to full width.
+
 Hit testing treats every visible pixel of the rally panel as a hit target: the
 Developer playback help callout, black/empty body background, buttons, fields,
 and timeline controls. Clicks never reach YouTube while the cursor is over the

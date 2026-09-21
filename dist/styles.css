@@ -492,8 +492,10 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-toolbar, .bv-rally-editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .bv-rally-toolbar-label { color: var(--text-faint); font: var(--type-ui-sm); font-size: var(--fs-11); margin-right: var(--sp-1); }
 .bv-rally-toolbar-spacer { flex: 1 1 auto; min-width: var(--sp-3); }
-.bv-rally-timeline-toolbar { flex-wrap: nowrap; overflow-x: auto; padding: var(--sp-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: rgba(255,255,255,.02); }
+.bv-rally-timeline-toolbar { flex-wrap: wrap; min-width: 0; overflow: visible; padding: var(--sp-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: rgba(255,255,255,.02); }
 .bv-rally-timeline-toolbar .bv-button { flex: 0 0 auto; }
+.bv-rally-timeline-toolbar .bv-button.compact { width: var(--control-height-sm); padding: 0; }
+.bv-rally-timeline-toolbar .bv-button.compact .bv-button-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .bv-rally-labeler-panel .bv-button.ghost,
 .bv-rally-labeler-panel .bv-button.secondary { color: var(--text-primary); border-color: var(--border-subtle); background: var(--surface-raised); }
 .bv-rally-labeler-panel .bv-button:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-panel-solid); }

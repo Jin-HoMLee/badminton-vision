@@ -8117,9 +8117,9 @@
       opts = opts || {};
       var children = [];
       if (opts.icon) children.push(icon(opts.icon, opts.iconSize || 16));
-      children.push(label);
+      if (label != null && label !== "") children.push(el("span", { className: "bv-button-label" }, [label]));
       if (opts.iconRight) children.push(icon(opts.iconRight, opts.iconSize || 13));
-      var attrs = { className: "bv-button " + (opts.variant || "secondary") + (opts.size ? " " + opts.size : "") + (opts.full ? " full" : ""), type: "button", disabled: opts.disabled, title: opts.title, "aria-pressed": opts.pressed, onClick: opts.onClick, style: opts.style };
+      var attrs = { className: "bv-button " + (opts.variant || "secondary") + (opts.size ? " " + opts.size : "") + (opts.full ? " full" : "") + (opts.compact ? " compact" : ""), type: "button", disabled: opts.disabled, title: opts.title, "aria-label": opts.ariaLabel, "aria-pressed": opts.pressed, onClick: opts.onClick, style: opts.style };
       return el("button", attrs, children);
     }
 
@@ -8562,6 +8562,11 @@
     var rallyGesture = null;
     var rallyIgnoreBarClick = false;
     var rallyPanelScrollTop = 0;
+    // Keep the rally panel's pixel dimensions across presentation-container
+    // changes. Saved layouts remain normalized for persistence, but entering
+    // fullscreen should not unexpectedly scale a reviewer-sized panel.
+    var rallyPanelViewport = null;
+    var rallyPanelPixelSize = null;
     var rallyUndoStack = [];
     var rallyRedoStack = [];
     var rallyHelpVisible = true;
@@ -9408,6 +9413,8 @@
       rallyTimelineZoom = 1;
       rallyTimelineScroll = 0;
       rallyPanelScrollTop = 0;
+      rallyPanelViewport = null;
+      rallyPanelPixelSize = null;
       rallyUndoStack = [];
       rallyRedoStack = [];
       rallyHelpVisible = true;
@@ -9702,7 +9709,35 @@
       settings: { minWidth: 240, minHeight: 96, maxWidth: 420, maxHeight: 480, bottomReserve: PLAYER_CONTROLS_RESERVE },
       rallyLabeler: { minWidth: 360, minHeight: 260, maxWidth: 1100, maxHeight: 760, bottomReserve: PLAYER_CONTROLS_RESERVE }
     };
-    function panelConstraints(panelId) { return PANEL_LAYOUT_CONSTRAINTS[panelId] || {}; }
+    function currentPresentationRect() {
+      if (!video || typeof video.getBoundingClientRect !== "function") return null;
+      var rect = window.BVRuntime && typeof window.BVRuntime.videoContentRect === "function"
+        ? window.BVRuntime.videoContentRect(video, window)
+        : video.getBoundingClientRect();
+      return rect && Number(rect.width) > 0 && Number(rect.height) > 0 ? rect : null;
+    }
+    function isFullscreenPresentation() {
+      if (document && (document.fullscreenElement || document.webkitFullscreenElement)) return true;
+      var node = video;
+      while (node && node !== document.body && node !== document.documentElement) {
+        var classes = node.className && String(node.className);
+        if (classes && /(?:^|\\s)(?:ytp-fullscreen|fullscreen)(?:\\s|$)/i.test(classes)) return true;
+        node = node.parentNode;
+      }
+      return false;
+    }
+    function panelConstraints(panelId) {
+      var base = PANEL_LAYOUT_CONSTRAINTS[panelId] || {};
+      if (panelId !== "rallyLabeler" || !isFullscreenPresentation()) return base;
+      var rect = currentPresentationRect();
+      if (!rect) return base;
+      // Fullscreen removes YouTube's theater-mode width ceiling, but the panel
+      // still keeps the normal overlay margin and native control-strip reserve.
+      var margin = 12;
+      var availableWidth = Math.max(base.minWidth, Number(rect.width) - margin * 2);
+      var availableHeight = Math.max(base.minHeight, Number(rect.height) - margin * 2 - PLAYER_CONTROLS_RESERVE);
+      return Object.assign({}, base, { maxWidth: availableWidth, maxHeight: availableHeight });
+    }
     function panelMetrics(container, panel) {
       var containerRect = container && typeof container.getBoundingClientRect === "function" ? container.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
       var panelRect = panel && typeof panel.getBoundingClientRect === "function" ? panel.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
@@ -9749,7 +9784,21 @@
       // small players without persisting a viewport-specific default.
       var collapsed = panel.getAttribute && panel.getAttribute("data-bso-panel-collapsed") === "true";
       if (collapsed) metrics.rendered.height = 32;
-      var result = panelLayoutApi.pixelPanelLayout(layout, metrics.viewport, metrics.rendered, panelConstraints(panelId));
+      var constraints = panelConstraints(panelId);
+      var effectiveLayout = layout;
+      // Layouts are normalized for persistence, so applying them against a new
+      // fullscreen viewport would otherwise scale the panel. Preserve the last
+      // user-sized pixel dimensions across a presentation transition, then let
+      // the new bounds clamp them safely when returning to theater/standard.
+      if (panelId === "rallyLabeler" && !collapsed && rallyPanelViewport &&
+        (Math.abs(rallyPanelViewport.width - metrics.viewport.width) > 0.5 || Math.abs(rallyPanelViewport.height - metrics.viewport.height) > 0.5) &&
+        rallyPanelPixelSize && rallyPanelPixelSize.width > 0 && rallyPanelPixelSize.height > 0 && metrics.viewport.width > 0 && metrics.viewport.height > 0) {
+        effectiveLayout = Object.assign({}, layout || {}, {
+          width: rallyPanelPixelSize.width / metrics.viewport.width,
+          height: rallyPanelPixelSize.height / metrics.viewport.height
+        });
+      }
+      var result = panelLayoutApi.pixelPanelLayout(effectiveLayout, metrics.viewport, metrics.rendered, constraints);
       if (!layout && panelId === "settings") result = settingsFirstOpenPlacement(panel, metrics.viewport, metrics.rendered, result);
       panel.style.left = result.left + "px"; panel.style.top = result.top + "px";
       panel.style.right = "auto"; panel.style.bottom = "auto";
@@ -9759,6 +9808,10 @@
       panel.style.height = collapsed ? "auto" : result.height + "px";
       panel.style.transform = "none";
       panel.setAttribute("data-bso-panel-bounds", "clamped");
+      if (panelId === "rallyLabeler") {
+        rallyPanelViewport = { width: metrics.viewport.width, height: metrics.viewport.height };
+        rallyPanelPixelSize = { width: result.width, height: result.height };
+      }
       return result;
     }
     function refreshPanelLayouts() {
@@ -11260,21 +11313,21 @@
       ]));
       var selectedForToolbar = rallyIntervalById(rallySelectedId);
       var canSetToolbarEdge = Boolean(selectedForToolbar && selectedForToolbar.action !== "removal" && (rallyApi.effectiveBounds(selectedForToolbar) || selectedForToolbar.corrected || selectedForToolbar.original));
-      var undoButton = ui.button("Undo", { variant: "secondary", size: "sm", icon: "undo", disabled: !rallyUndoStack.length, title: "Undo the last saved timeline or review edit", onClick: undoRallyEdit });
+      var undoButton = ui.button("Undo", { variant: "secondary", size: "sm", icon: "undo", compact: true, ariaLabel: "Undo", disabled: !rallyUndoStack.length, title: "Undo the last saved timeline or review edit", onClick: undoRallyEdit });
       undoButton.setAttribute("data-bso-rally-undo", "true");
-      var redoButton = ui.button("Redo", { variant: "secondary", size: "sm", icon: "redo", disabled: !rallyRedoStack.length, title: "Redo the last undone timeline or review edit", onClick: redoRallyEdit });
+      var redoButton = ui.button("Redo", { variant: "secondary", size: "sm", icon: "redo", compact: true, ariaLabel: "Redo", disabled: !rallyRedoStack.length, title: "Redo the last undone timeline or review edit", onClick: redoRallyEdit });
       redoButton.setAttribute("data-bso-rally-redo", "true");
-      var setStartButton = ui.button("Set start from playhead", { variant: "secondary", size: "sm", icon: "arrow-left", disabled: !canSetToolbarEdge, title: "Set the selected interval start to the blue playhead", onClick: function () { setRallyEdgeFromPlayhead(rallySelectedId, "start"); } });
+      var setStartButton = ui.button("Set start from playhead", { variant: "secondary", size: "sm", icon: "arrow-left", compact: true, ariaLabel: "Set start from playhead", disabled: !canSetToolbarEdge, title: "Set the selected interval start to the blue playhead", onClick: function () { setRallyEdgeFromPlayhead(rallySelectedId, "start"); } });
       setStartButton.setAttribute("data-bso-rally-set-start", "true");
-      var setEndButton = ui.button("Set end from playhead", { variant: "secondary", size: "sm", icon: "arrow-right", disabled: !canSetToolbarEdge, title: "Set the selected interval end to the blue playhead", onClick: function () { setRallyEdgeFromPlayhead(rallySelectedId, "end"); } });
+      var setEndButton = ui.button("Set end from playhead", { variant: "secondary", size: "sm", icon: "arrow-right", compact: true, ariaLabel: "Set end from playhead", disabled: !canSetToolbarEdge, title: "Set the selected interval end to the blue playhead", onClick: function () { setRallyEdgeFromPlayhead(rallySelectedId, "end"); } });
       setEndButton.setAttribute("data-bso-rally-set-end", "true");
       body.appendChild(ui.el("div", { className: "bv-rally-toolbar bv-rally-timeline-toolbar", "aria-label": "Timeline controls" }, [
         ui.button("Add missing rally", { variant: "primary", size: "sm", title: "Create a new rally interval at the current playhead", onClick: addMissingRally }),
-        ui.button("Zoom out", { variant: "secondary", size: "sm", icon: "zoom-out", disabled: rallyTimelineZoom <= 1, title: "Show a wider time range", onClick: function () { zoomRallyTimeline(.5); } }),
+        ui.button("Zoom out", { variant: "secondary", size: "sm", icon: "zoom-out", compact: true, ariaLabel: "Zoom out", disabled: rallyTimelineZoom <= 1, title: "Show a wider time range", onClick: function () { zoomRallyTimeline(.5); } }),
         ui.el("span", { className: "bv-mono", title: "Timeline zoom" }, [rallyTimelineZoom.toFixed(1) + "×"]),
-        ui.button("Zoom in", { variant: "secondary", size: "sm", icon: "zoom-in", disabled: rallyTimelineZoom >= rallyApi.MAX_ZOOM, title: "Show more detail around the timeline", onClick: function () { zoomRallyTimeline(2); } }),
-        ui.button("Scroll left", { variant: "secondary", size: "sm", icon: "arrow-left", title: "Scroll the timeline earlier", onClick: function () { scrollRallyTimeline(-1); } }),
-        ui.button("Scroll right", { variant: "secondary", size: "sm", icon: "arrow-right", title: "Scroll the timeline later", onClick: function () { scrollRallyTimeline(1); } }),
+        ui.button("Zoom in", { variant: "secondary", size: "sm", icon: "zoom-in", compact: true, ariaLabel: "Zoom in", disabled: rallyTimelineZoom >= rallyApi.MAX_ZOOM, title: "Show more detail around the timeline", onClick: function () { zoomRallyTimeline(2); } }),
+        ui.button("Scroll left", { variant: "secondary", size: "sm", icon: "arrow-left", compact: true, ariaLabel: "Scroll left", title: "Scroll the timeline earlier", onClick: function () { scrollRallyTimeline(-1); } }),
+        ui.button("Scroll right", { variant: "secondary", size: "sm", icon: "arrow-right", compact: true, ariaLabel: "Scroll right", title: "Scroll the timeline later", onClick: function () { scrollRallyTimeline(1); } }),
         undoButton,
         redoButton,
         ui.el("span", { className: "bv-rally-toolbar-spacer" }),
