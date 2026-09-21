@@ -298,7 +298,7 @@ test("settings panel visibility, collapse, and layout register like the other pa
   const videoB = state.videoKeyForUrl("https://www.youtube.com/watch?v=beta");
   let current = state.initialExtensionState({ videoKey: videoA });
   assert.equal(current.panels.settings, false, "settings starts closed");
-  assert.deepEqual(JSON.parse(JSON.stringify(current.settings)), {}, "Phase 1 settings values are an empty reserved container");
+  assert.deepEqual(JSON.parse(JSON.stringify(current.settings)), { rallyLabelerEnabled: false }, "developer rally review starts disabled");
 
   // The visibility toggle is a normal per-video panel choice and survives
   // density changes even though presets never own the settings panel.
@@ -327,10 +327,36 @@ test("settings panel visibility, collapse, and layout register like the other pa
   assert.equal(back.panels.settings, true, "returning to the video restores the open settings panel");
   assert.deepEqual(JSON.parse(JSON.stringify(back.panelLayouts.settings)), { x: 0.2, y: 0.15, width: 0.4, height: 0.3 });
 
-  const withValues = state.initialExtensionState(Object.assign({}, JSON.parse(JSON.stringify(current)), { settings: { densityDefault: "balanced" } }));
+  const withValues = state.initialExtensionState(Object.assign({}, JSON.parse(JSON.stringify(current)), { settings: { densityDefault: "balanced", rallyLabelerEnabled: true } }));
   assert.equal(withValues.settings.densityDefault, "balanced");
+  assert.equal(withValues.settings.rallyLabelerEnabled, true);
   const roundTrip = state.initialExtensionState(JSON.parse(JSON.stringify(withValues)));
   assert.equal(roundTrip.settings.densityDefault, "balanced", "future settings keys survive storage round trips");
   const reset = state.resetVideoLocalState(roundTrip, videoB);
   assert.equal(reset.settings.densityDefault, "balanced", "video-local resets never clear global settings values");
+});
+
+test("developer rally reviews are opt-in and persist under only their video key", async () => {
+  const state = await stateModule();
+  const videoA = state.videoKeyForUrl("https://www.youtube.com/watch?v=alpha");
+  const videoB = state.videoKeyForUrl("https://www.youtube.com/watch?v=beta");
+  const document = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: { id: "source-a", videoKey: videoA, reviewWindow: { startSec: 0, endSec: 60 } },
+    intervals: [],
+    controls: []
+  };
+  let current = state.initialExtensionState({ videoKey: videoA });
+  assert.equal(current.settings.rallyLabelerEnabled, false);
+  assert.equal(state.rallyReviewForVideo(current, videoA), null);
+  current = state.reduceExtensionState(current, { type: "SET_SETTING", key: "rallyLabelerEnabled", value: true });
+  current = state.reduceExtensionState(current, { type: "SET_RALLY_REVIEW", videoKey: videoA, document });
+  assert.equal(current.settings.rallyLabelerEnabled, true);
+  assert.equal(state.rallyReviewForVideo(current, videoA).source.id, "source-a");
+  assert.equal(state.rallyReviewForVideo(current, videoB), null);
+  const switched = state.resetVideoLocalState(JSON.parse(JSON.stringify(current)), videoB);
+  assert.equal(switched.settings.rallyLabelerEnabled, true, "the developer opt-in is global");
+  assert.equal(state.rallyReviewForVideo(switched, videoB), null, "review data never projects into another video");
+  assert.equal(state.rallyReviewForVideo(switched, videoA).source.id, "source-a", "the original video review remains durable");
 });

@@ -15,6 +15,7 @@ const require = createRequire(import.meta.url);
 // canvas-capable fake DOM, observing chrome messages + the guidance canvas.
 
 const sources = [
+  "src/rally-labeler.js",
   "src/state.js",
   "analysis/index.js",
   "src/calibration.js",

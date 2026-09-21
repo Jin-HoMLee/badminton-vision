@@ -60,9 +60,18 @@ camera-cut reseed (`!(state.seeding && state.cameraCut)` in `render()`).
   pointer events through; only the header/footer/resize surface and the About
   links (`a` elements, already covered by the `.bv-panel-body a` rule) opt in.
 
+## Developer rally-review entry
+
+The first value-backed extension of this panel is the collapsed **Developer
+tools** disclosure. Its **Rally boundary review** switch owns
+`settings.rallyLabelerEnabled`, defaults to `false`, and mounts the video-local
+widget without starting inference. Hiding the widget retains its canonical
+review document. See [`rally-labeler-widget.md`](rally-labeler-widget.md) for
+the interaction, persistence, completion, and JSON contracts.
+
 ## Phase 2 extension point (display/inference settings)
 
-Phase 2 must not rework any panel registration. The seams are:
+Further Phase 2 work must not rework any panel registration. The seams are:
 
 1. **Values:** add keys to `defaults.settings` in `src/state.js`. Settings are
    one serializable, global object mirroring the toggle-backed

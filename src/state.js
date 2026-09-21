@@ -20,6 +20,9 @@
     labelUndoByVideo: {},
     manualLabelsVersion: LABEL_STORE_VERSION,
     lastEdit: null,
+    // Developer-only rally-boundary reviews are separate from shot labels.
+    // Each canonical JSON document is owned by its stable video key.
+    rallyReviewsByVideo: {},
     // Evidence visibility is independent from analyzer execution. These
     // preferences survive every live result rerender; unavailable groups keep
     // their remembered value without implying that evidence exists.
@@ -57,7 +60,7 @@
     // pattern. Settings are global preferences; the settings panel's open
     // state, collapse, and geometry stay video-local through the panels,
     // collapse, and layout maps below.
-    settings: {},
+    settings: { rallyLabelerEnabled: false },
     // Explicit panel choices override density presets while the preference
     // still gives Balanced/Full a useful default presentation. Both the
     // effective values and overrides are scoped to the active video.
@@ -229,7 +232,7 @@
     return { x: Math.max(0, Math.min(1, x)), y: Math.max(0, Math.min(1, y)) };
   }
 
-  var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls", "settings"];
+  var PANEL_LAYOUT_KEYS = ["courtSetup", "stats", "map", "feed", "manual", "controls", "settings", "rallyLabeler"];
 
   function copyPanelLayout(layout) {
     if (!layout || typeof layout !== "object") return null;
@@ -273,7 +276,7 @@
 
   // Panels that are overlay furniture (not the transient court-setup card)
   // get a header collapse/expand affordance; state mirrors layout persistence.
-  var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls", "settings"];
+  var PANEL_COLLAPSE_KEYS = ["stats", "map", "feed", "manual", "controls", "settings", "rallyLabeler"];
 
   function copyPanelCollapseState(collapsed) {
     var result = {};
@@ -311,6 +314,27 @@
 
   function copyRecords(records) {
     return Array.isArray(records) ? records.map(clone) : [];
+  }
+
+  function copyRallyReviewMap(raw) {
+    var result = {};
+    if (!raw || typeof raw !== "object") return result;
+    Object.keys(raw).forEach(function (key) {
+      if (raw[key] && typeof raw[key] === "object" && !Array.isArray(raw[key])) result[String(key)] = clone(raw[key]);
+    });
+    return result;
+  }
+
+  function rallyReviewForVideo(stateOrMap, videoKey) {
+    var map = stateOrMap && stateOrMap.rallyReviewsByVideo ? stateOrMap.rallyReviewsByVideo : stateOrMap;
+    if (!map || videoKey == null || !map[String(videoKey)]) return null;
+    return clone(map[String(videoKey)]);
+  }
+
+  function copySettings(settings) {
+    var result = settings && typeof settings === "object" && !Array.isArray(settings) ? clone(settings) : {};
+    result.rallyLabelerEnabled = Boolean(result.rallyLabelerEnabled);
+    return result;
   }
 
   function copyEdit(edit) { return edit && typeof edit === "object" ? clone(edit) : null; }
@@ -609,6 +633,8 @@
     var raw = overrides || {};
     var value = Object.assign({}, defaults, raw);
     value.panels = Object.assign({}, defaults.panels, copyPanelVisibility(raw.panels));
+    value.settings = Object.assign({}, defaults.settings, copySettings(raw.settings));
+    value.rallyReviewsByVideo = copyRallyReviewMap(raw.rallyReviewsByVideo);
     value.panelOverrides = copyPanelOverrides(raw.panelOverrides);
     value.panelsByVideo = copyPanelVisibilityMap(raw.panelsByVideo);
     value.panelOverridesByVideo = copyPanelOverridesMap(raw.panelOverridesByVideo);
@@ -816,6 +842,18 @@
         return initialExtensionState(Object.assign({}, current, { videoKey: linesKey || current.videoKey, courtLinesByVideo: nextLines }));
       }
       case "TOGGLE_PANEL_CONTROLS_EXPANDED": return Object.assign(current, { panelControlsExpanded: Boolean(action.value) });
+      case "SET_SETTING": {
+        if (action.key !== "rallyLabelerEnabled") return current;
+        return initialExtensionState(Object.assign({}, current, { settings: Object.assign({}, current.settings, { rallyLabelerEnabled: Boolean(action.value) }) }));
+      }
+      case "SET_RALLY_REVIEW": {
+        var rallyKey = action.videoKey != null ? String(action.videoKey) : current.videoKey;
+        if (!rallyKey) return current;
+        var rallyReviews = copyRallyReviewMap(current.rallyReviewsByVideo);
+        if (action.document && typeof action.document === "object") rallyReviews[rallyKey] = clone(action.document);
+        else delete rallyReviews[rallyKey];
+        return initialExtensionState(Object.assign({}, current, { rallyReviewsByVideo: rallyReviews }));
+      }
       case "SET_PANELS": {
         var nextPanels = Object.assign({}, current.panels);
         var nextOverrides = Object.assign({}, current.panelOverrides);
@@ -905,6 +943,7 @@
     normalizeLabelStore: function (input, videoKey, options) { return stateForVideo(input, videoKey, options); },
     stateForVideo: stateForVideo,
     labelsForVideo: labelsForVideo,
+    rallyReviewForVideo: rallyReviewForVideo,
     PANEL_LAYOUT_KEYS: PANEL_LAYOUT_KEYS.slice(),
     PANEL_COLLAPSE_KEYS: PANEL_COLLAPSE_KEYS.slice(),
     panelLayoutsForVideo: panelLayoutsForVideo,

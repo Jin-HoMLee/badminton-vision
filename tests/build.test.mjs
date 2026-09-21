@@ -30,6 +30,7 @@ const expectedFiles = [
   "popup.html",
   "popup.js",
   "review.js",
+  "rally-labeler.js",
   "runtime.js",
   "seed-card.js",
   "state.js",

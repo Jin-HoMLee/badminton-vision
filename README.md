@@ -273,6 +273,15 @@ both detectors on your own footage is in
 `src/runtime.js` is the read-only playback boundary and UI seam. It reads
 `currentTime`, frame metadata, dimensions, and playback state; it does not
 assign playback properties, call player controls, or style the video.
+
+A developer-only rally-boundary review widget is available from **Settings →
+Developer tools** and is off by default. It reuses that playback/anchoring
+boundary and video-local state for a synchronized, zoomable/scrollable interval
+timeline with pointer, keyboard, and exact numeric edge editing, durable
+add/remove actions, completion gating, and canonical local JSON import/export.
+It stores no media. The schema and workflow are documented in
+[`docs/rally-labeler-widget.md`](docs/rally-labeler-widget.md).
+
 `src/analysis.js` contains the deterministic highlights-index and CSV adapters
 used by fixtures, manual labels, and later runtime messages. Court calibration
 uses the shared browser copy of `analysis/index.js` (`analysis-primitives.js`)

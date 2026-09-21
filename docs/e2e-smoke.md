@@ -231,3 +231,62 @@ video-local session ends and a new session gets a new sanitized status; no
 account URL or frame data is stored. If the real match cannot initialize the
 cleared local artifact or backend, record the exact browser/runtime error as an
 unresolved blocker rather than calling the MVP complete.
+
+## 5. Developer rally-boundary review acceptance
+
+This path is separate from the captain-only MVP checklist above. A worker may
+run it only in a worker-owned Chrome process with a fresh temporary profile,
+dedicated debugging port/session, and muted audio. Never attach to or reuse the
+operator's browser/profile. Headless is preferred; use headed Chrome only when
+a real pointer/fullscreen action cannot be exercised headlessly.
+
+Load this worktree's `dist/` through the extension-manager procedure in §1 and
+open a declared corpus YouTube match. The review JSON's `source.videoUrl` is
+the declaration; do not substitute another account/private video. In
+**Settings → Developer tools**, enable **Rally boundary review**, import that
+source's JSON, and record the before snapshot:
+
+```js
+() => {
+  const v = document.querySelector("video");
+  const h = document.querySelector("[data-badminton-vision]");
+  const p = h?.shadowRoot?.querySelector('[data-bso-panel="rallyLabeler"]');
+  return {
+    url: location.href,
+    video: v && { currentTime: v.currentTime, paused: v.paused, muted: v.muted,
+      playbackRate: v.playbackRate, src: v.currentSrc || v.src },
+    widget: Boolean(p),
+    intervals: p?.querySelectorAll("[data-bso-rally-interval]").length,
+    complete: p?.querySelector("[data-bso-rally-complete]")?.getAttribute("data-bso-rally-complete")
+  };
+}
+```
+
+Exercise the real path with `chrome-devtools-axi` native mouse/key actions, not
+page-injected synthetic pointer events:
+
+1. Let playback advance, use YouTube's native seek bar, change playback rate,
+   and verify the widget clock/playhead follows `video.currentTime`.
+2. Toggle theater and fullscreen and verify the same widget/review remains
+   anchored and usable. Audio must stay muted for the entire worker run.
+3. Trigger a YouTube SPA navigation to another declared source and back, then
+   exercise a DOM/video-element replacement. Verify source reviews stay under
+   their own video keys and the original review returns.
+4. Zoom and horizontally scroll. Drag a whole interval, resize both bar edges,
+   use an edge's arrow-key path, and enter exact numeric seconds. Confirm
+   `start < end` and that original proposal seconds remain unchanged.
+5. Add a missing rally, remove both an added interval and a proposed false
+   positive, enter comment/verifier/date evidence, and resolve imported
+   empty/inactive controls. Reload the page and verify all edits/tombstones and
+   the completion gate persist.
+6. Export canonical JSON, import it into a fresh state for the same video, and
+   compare `BVRallyLabeler.serialize` output after normalization. Verify the
+   download directory contains JSON only—no video, audio, image, or frame file.
+
+The extension may observe naturally advancing or natively sought
+`currentTime`; it must not initiate those changes. Compare `muted`,
+`playbackRate`, and `src` around widget-only edits. They must stay unchanged.
+`paused` may change only when the acceptance operator used YouTube's native
+play/pause control. Record theater/fullscreen and SPA/replacement results along
+with the dedicated profile path, debugging port, declared URL, and exported
+JSON hash.
