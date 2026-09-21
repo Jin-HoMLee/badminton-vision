@@ -1999,9 +1999,6 @@
   function rallyIntervalById(id) {
     return rallyDocument && rallyDocument.intervals.find(function (interval) { return interval.id === String(id); });
   }
-  function rallyControlById(id) {
-    return rallyDocument && rallyDocument.controls.find(function (control) { return control.id === String(id); });
-  }
   function selectRallyInterval(id) {
     rallySelectedId = String(id);
     render();
@@ -2110,9 +2107,6 @@
       });
     }
     rallyImportInput.click();
-  }
-  function currentRallyView(viewportWidth) {
-    return rallyApi.createTimelineView(rallyDocument, viewportWidth || 640, rallyTimelineZoom, rallyTimelineScroll);
   }
   function updateRallyTimelineGeometry() {
     if (!root || !rallyDocument) return;
@@ -2265,7 +2259,7 @@
   function rallyTimeline() {
     var windowBounds = rallyDocument.source.reviewWindow;
     var duration = windowBounds.endSec - windowBounds.startSec;
-    var scroll = ui.el("div", { className: "bv-rally-timeline-scroll", tabindex: "0", role: "region", "aria-label": "Horizontally scrollable rally timeline", "data-bso-rally-scroll": "true" });
+    var scroll = ui.el("div", { className: "bv-rally-timeline-scroll", tabindex: "0", role: "region", "aria-label": "Horizontally scrollable rally timeline", "data-bso-rally-scroll": "true", style: { pointerEvents: "auto" } });
     var track = ui.el("div", { className: "bv-rally-timeline-track", style: { width: (rallyTimelineZoom * 100) + "%", height: Math.max(96, 42 + rallyDocument.intervals.length * 34) + "px" } });
     var ruler = ui.el("div", { className: "bv-rally-ruler" });
     for (var tickIndex = 0; tickIndex <= 8; tickIndex += 1) {
@@ -2326,7 +2320,8 @@
       className: "bv-rally-labeler-panel",
       collapsed: panelCollapsed("rallyLabeler"),
       onToggleCollapse: function (value) { togglePanelCollapsed("rallyLabeler", value); },
-      actions: [ui.el("span", { className: "bv-panel-time", "data-bso-rally-clock": "true" }, [rallyApi.formatSeconds(currentMediaTimestamp()) || "—"]), close]
+      actions: [ui.el("span", { className: "bv-panel-time", "data-bso-rally-clock": "true" }, [rallyApi.formatSeconds(currentMediaTimestamp()) || "—"]), close],
+      bodyStyle: { pointerEvents: "none" }
     }, []);
     var body = panel.querySelector(".bv-panel-body");
     if (!body) return panel;

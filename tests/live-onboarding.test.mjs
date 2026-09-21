@@ -2255,6 +2255,8 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   assert.equal(session.runtimeStarts, 0);
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "one proposed rally renders as one interval bar");
   assert.equal(panel.querySelectorAll(".bv-rally-edge").length, 2, "the bar's contained left/right edge zones are the only boundary affordances");
+  assert.equal(panel.querySelector(".bv-panel-body").style.pointerEvents, "none", "blank rally-panel body space stays pass-through to the player");
+  assert.equal(panel.querySelector("[data-bso-rally-scroll]").style.pointerEvents, "auto", "the timeline remains an interactive surface");
   assert.equal(panel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "false");
 
   // Native media time drives the read-only playhead; no extension action

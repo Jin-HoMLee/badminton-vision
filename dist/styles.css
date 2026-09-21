@@ -449,9 +449,8 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-panel-body button, .bv-panel-body [role="button"], .bv-panel-body input, .bv-panel-body textarea,
 .bv-panel-body select, .bv-panel-body details, .bv-panel-body summary, .bv-panel-body a,
 .bv-panel-body .bv-feed, .bv-panel-body .bv-suggestion, .bv-panel-body .bv-review-undo,
-.bv-panel-body .bv-status-chip { pointer-events: auto; }
+.bv-panel-body .bv-status-chip, .bv-panel-body .bv-rally-timeline-scroll { pointer-events: auto; }
 .bv-label-panel .bv-panel-body { pointer-events: auto; }
-.bv-rally-labeler-panel .bv-panel-body { pointer-events: auto; }
 /* Developer-only rally boundary editor. The timeline has exactly one visual
    interval bar per active record. Its transparent in-bar edge hit zones are
    the start/end affordances; no separate boundary marker is painted. */
