@@ -10463,8 +10463,15 @@
       link.click();
       setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
     }
-    function importRallyJsonText(text) {
-      var parsed = rallyApi.parse(String(text || ""), { videoKey: activeVideoKey || currentVideoKey(), videoUrl: window.location && window.location.href, fallbackEndSec: video && video.duration });
+    function importRallyJsonText(text, importIdentity) {
+      importIdentity = importIdentity || { videoKey: activeVideoKey || currentVideoKey(), videoUrl: window.location && window.location.href };
+      var currentIdentity = { videoKey: activeVideoKey || currentVideoKey(), videoUrl: window.location && window.location.href };
+      if (currentIdentity.videoKey !== importIdentity.videoKey || currentIdentity.videoUrl !== importIdentity.videoUrl) {
+        rallyNotice = { ok: false, message: "Import canceled because the video changed." };
+        render();
+        return;
+      }
+      var parsed = rallyApi.parse(String(text || ""), { videoKey: importIdentity.videoKey, videoUrl: importIdentity.videoUrl, fallbackEndSec: video && video.duration });
       if (!parsed.ok) {
         rallyNotice = { ok: false, message: "Import failed: " + parsed.error };
         render();
@@ -10477,7 +10484,8 @@
       if (setRallyDocument(parsed.document, { notice: "Imported " + parsed.document.intervals.length + " intervals and " + parsed.document.controls.length + " controls." })) render();
     }
     function readRallyJsonFile(file) {
-      function handle(text) { importRallyJsonText(text); }
+      var importIdentity = { videoKey: activeVideoKey || currentVideoKey(), videoUrl: window.location && window.location.href };
+      function handle(text) { importRallyJsonText(text, importIdentity); }
       if (file && typeof file.text === "function") {
         var reading = file.text();
         if (reading && typeof reading.then === "function") reading.then(handle, function () { rallyNotice = { ok: false, message: "Could not read the selected JSON file." }; render(); });

@@ -2502,6 +2502,32 @@ test("rally JSON export/import round-trips canonical review evidence without med
   assert.equal(target.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals[0].verifiedAt, "2026-09-20T12:34:56Z", "saving preserves the full ISO UTC evidence");
 });
 
+test("rally import discards delayed identity-free files after navigation", async () => {
+  const session = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true } } });
+  session.flushStorage();
+  let panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  buttonWithText(panel, "Import review JSON").dispatchEvent({ type: "click" });
+  const input = session.documentRef.querySelector("[data-bso-rally-import-input]");
+  let resolveText;
+  input.files = [{ text: () => new Promise((resolve) => { resolveText = resolve; }) }];
+  input.dispatchEvent({ type: "change", target: input });
+
+  session.context.location.href = "https://www.youtube.com/watch?v=other-match";
+  session.emitWindow("yt-navigate-start");
+  const writesAfterNavigation = session.storageWrites.length;
+  resolveText(JSON.stringify({
+    source: { id: "delayed-source", label: "Delayed source", reviewWindow: { startSec: 0, endSec: 10 } },
+    intervals: [{ id: "delayed-source:rally-001", start: 2, end: 4 }],
+    controls: []
+  }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(session.storageWrites.length, writesAfterNavigation, "a delayed import does not persist after navigation");
+  assert.equal(session.storageWrites.at(-1).bvState.rallyReviewsByVideo?.["youtube:other-match"], undefined);
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.match(textOf(panel), /video changed/);
+});
+
 test("invalid rally evidence stays editable and shows a validation notice", async () => {
   const review = {
     schema: "badminton-vision.rally-review",
