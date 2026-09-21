@@ -60,8 +60,15 @@ YouTube controls.
 the observed media time and persists it immediately. **Remove false positive**
 turns either a proposed or added interval into a durable removal tombstone and
 requires the same non-empty comment/verifier/date evidence as an approval so
-later analysis can see why it was removed. A removed item has no interval bar,
-but its evidence fields stay editable; it can be restored.
+later analysis can see why it was removed. If those fields are empty, the panel
+keeps the interval and shows an inline error next to the actions instead of
+swallowing the click. A removed item has no interval bar, but its evidence
+fields stay editable; it can be restored.
+
+Hit testing follows the visible foreground under the cursor: buttons, fields,
+timeline bars/edges/playhead, and other controls receive clicks; empty or
+transparent panel chrome stays pass-through so it does not steal hits from the
+player or from a control you are actually hovering.
 
 ## Canonical JSON contract
 

@@ -1962,18 +1962,43 @@
       verifiedAt: rallyReadValue(container, "data-bso-rally-date")
     };
   }
-  function showRallyValidationError(error) {
+  function showRallyValidationError(error, options) {
+    options = options || {};
     var message = error && error.message ? error.message : String(error);
     rallyNotice = { ok: false, message: message };
     var notice = root && root.querySelector && root.querySelector("[data-bso-rally-notice]");
     if (notice) {
       notice.textContent = message;
       notice.className = "bv-helper error";
-      return;
+    } else {
+      var panel = root && root.querySelector && root.querySelector('[data-bso-panel="rallyLabeler"]');
+      var body = panel && panel.querySelector && panel.querySelector(".bv-panel-body");
+      if (body) body.appendChild(ui.el("p", { className: "bv-helper error", role: "status", "data-bso-rally-notice": "true" }, [message]));
     }
-    var panel = root && root.querySelector && root.querySelector('[data-bso-panel="rallyLabeler"]');
-    var body = panel && panel.querySelector && panel.querySelector(".bv-panel-body");
-    if (body) body.appendChild(ui.el("p", { className: "bv-helper error", role: "status", "data-bso-rally-notice": "true" }, [message]));
+    if (options.container && options.container.querySelector) {
+      var inline = options.container.querySelector("[data-bso-rally-editor-error]");
+      if (!inline) {
+        inline = ui.el("p", { className: "bv-rally-editor-error", role: "alert", "data-bso-rally-editor-error": "true" });
+        inline.textContent = message;
+        var actions = options.container.querySelector(".bv-rally-editor-actions");
+        var parent = actions && actions.parentNode;
+        if (parent && typeof parent.insertBefore === "function") parent.insertBefore(inline, actions);
+        else if (parent && Array.isArray(parent.children) && actions) {
+          var actionIndex = parent.children.indexOf(actions);
+          if (actionIndex >= 0) parent.children.splice(actionIndex, 0, inline);
+          else parent.children.push(inline);
+          inline.parentNode = parent;
+        } else if (typeof options.container.appendChild === "function") {
+          options.container.appendChild(inline);
+        }
+      } else {
+        inline.textContent = message;
+      }
+      var comment = options.container.querySelector("[data-bso-rally-comment]");
+      if (comment && typeof comment.focus === "function") {
+        try { comment.focus(); } catch (_) {}
+      }
+    }
   }
   function setRallyDocument(documentValue, options) {
     options = options || {};
@@ -2089,21 +2114,31 @@
     var fields = rallyEvidence(container);
     fields.action = action;
     if (action === "removal" && !(fields.comment && fields.verifier && fields.verifiedAt)) {
-      showRallyValidationError(new Error("False-positive removals need a comment, verifier, and date explaining why the rally was removed."));
+      showRallyValidationError(
+        new Error("Fill comment, verifier, and date first — false-positive removals need that explanation before the rally is removed."),
+        { container: container }
+      );
       return;
     }
-    commitRallyUpdate(function () {
+    try {
       var next = action === "removal"
         ? rallyApi.removeInterval(rallyDocument, id, fields)
         : rallyApi.reviewInterval(rallyDocument, id, fields);
       if (action === "removal") {
         var removed = next.intervals.find(function (interval) { return interval.id === String(id); });
         if (!removed || !rallyApi.completeMetadata(removed)) {
-          throw new Error("False-positive removals need a comment, verifier, and date explaining why the rally was removed.");
+          showRallyValidationError(
+            new Error("Fill comment, verifier, and date first — false-positive removals need that explanation before the rally is removed."),
+            { container: container }
+          );
+          return;
         }
       }
-      return next;
-    }, "Saved " + action + " evidence for " + id + ".");
+      if (setRallyDocument(next, { notice: "Saved " + action + " evidence for " + id + "." })) render();
+      else showRallyValidationError(rallyNotice && rallyNotice.message, { container: container });
+    } catch (error) {
+      showRallyValidationError(error, { container: container });
+    }
   }
   function restoreRallyInterval(id) {
     if (setRallyDocument(rallyApi.restoreInterval(rallyDocument, id), { notice: "Restored " + id + " for review." })) render();
@@ -2491,6 +2526,7 @@
       collapsed: panelCollapsed("rallyLabeler"),
       onToggleCollapse: function (value) { togglePanelCollapsed("rallyLabeler", value); },
       actions: [ui.el("span", { className: "bv-panel-time", "data-bso-rally-clock": "true" }, [rallyApi.formatSeconds(currentMediaTimestamp()) || "—"]), close],
+      // Empty chrome stays pass-through; interactive children opt into hits via CSS.
       bodyStyle: { pointerEvents: "none" }
     }, []);
     var body = panel.querySelector(".bv-panel-body");

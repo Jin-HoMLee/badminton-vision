@@ -2273,8 +2273,9 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(session.runtimeStarts, 0);
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "one proposed rally renders as one interval bar");
   assert.equal(panel.querySelectorAll(".bv-rally-edge").length, 2, "the bar's contained left/right edge zones are the only boundary affordances");
-  assert.equal(panel.querySelector(".bv-panel-body").style.pointerEvents, "none", "blank rally-panel body space stays pass-through to the player");
-  assert.equal(panel.querySelector("[data-bso-rally-scroll]").style.pointerEvents, "auto", "the timeline remains an interactive surface");
+  assert.equal(panel.querySelector(".bv-panel-body").style.pointerEvents, "none", "empty rally-panel chrome stays pass-through so transparent gaps do not steal clicks");
+  assert.equal(panel.querySelector("[data-bso-rally-scroll]").style.pointerEvents, "auto", "the timeline remains an interactive surface under the cursor");
+  assert.ok(panel.querySelector(".bv-rally-interval"), "interval bars are present as foreground hit targets");
   assert.equal(panel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "false");
 
   // Native media time drives the playhead; only an explicit playhead/timeline
@@ -2381,6 +2382,12 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   session.emitWindow("keydown", isolated);
   assert.equal(stopped, true, "focused comment fields stop page/widget shortcut propagation");
   assert.equal(session.emitKey("k", { target: commentField }), false, "focused rally text does not trigger extension shortcuts");
+
+  const blockedWrites = session.storageWrites.length;
+  buttonWithText(editor, "Remove false positive").dispatchEvent({ type: "click" });
+  assert.equal(session.storageWrites.length, blockedWrites, "empty removal evidence does not remove the interval");
+  assert.match(editor.querySelector("[data-bso-rally-editor-error]").textContent, /Fill comment, verifier, and date first/i, "the panel explains why remove did not run");
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "the proposed bar remains until removal evidence is complete");
 
   editor.querySelector("[data-bso-rally-comment]").value = "The visible serve begins after the provisional edge.";
   editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";

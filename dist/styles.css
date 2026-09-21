@@ -448,15 +448,20 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-panel-body { pointer-events: none; }
 .bv-panel-body button, .bv-panel-body [role="button"], .bv-panel-body input, .bv-panel-body textarea,
 .bv-panel-body select, .bv-panel-body details, .bv-panel-body summary, .bv-panel-body a,
-.bv-panel-body .bv-feed, .bv-panel-body .bv-suggestion, .bv-panel-body .bv-review-undo,
-.bv-panel-body .bv-status-chip, .bv-panel-body .bv-rally-timeline-scroll { pointer-events: auto; }
+.bv-panel-body label, .bv-panel-body .bv-feed, .bv-panel-body .bv-suggestion, .bv-panel-body .bv-review-undo,
+.bv-panel-body .bv-status-chip, .bv-panel-body .bv-rally-timeline-scroll,
+.bv-panel-body .bv-rally-interval, .bv-panel-body .bv-rally-edge, .bv-panel-body .bv-rally-playhead,
+.bv-panel-body .bv-rally-tombstone, .bv-panel-body .bv-rally-editor-error { pointer-events: auto; }
 .bv-label-panel .bv-panel-body { pointer-events: auto; }
 /* Developer-only rally boundary editor. The timeline has exactly one visual
    interval bar per active record. Its transparent in-bar edge hit zones are
-   the start/end affordances; no separate boundary marker is painted. */
+   the start/end affordances; no separate boundary marker is painted.
+   Empty chrome stays pass-through; only the interactive controls above capture
+   hits so the visible foreground under the cursor wins. */
 .bv-rally-labeler-panel { display: flex; flex-direction: column; }
 .bv-rally-labeler-panel .bv-panel-body { display: flex; flex-direction: column; gap: var(--sp-4); overflow: auto; }
 .bv-rally-labeler-panel .bv-callout { flex: 0 0 auto; }
+.bv-rally-editor-error { margin: 0; color: var(--signal-out); font: var(--type-body-sm); }
 .bv-rally-empty { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-5); border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); }
 .bv-rally-empty p { margin: 0; color: var(--text-muted); font: var(--type-body-sm); }
 .bv-rally-source, .bv-rally-control-heading, .bv-rally-editor-heading, .bv-rally-completion { display: flex; align-items: center; gap: var(--sp-4); }
