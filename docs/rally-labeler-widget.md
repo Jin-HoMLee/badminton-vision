@@ -40,9 +40,10 @@ YouTube controls.
   the expanded range.
 - Each active rally is exactly one interval bar. The contained left and right
   edge hit zones edit start and end. There are no separate boundary markers.
-- Drag the bar body to move an interval without changing its duration. Drag an
-  edge to stretch or shorten it. Edge drags snap/clip to the blue playhead when
-  they pass near it.
+- Click the bar body to seek the blue playhead and YouTube player to that
+  interval's start. Drag the bar body to move an interval without changing its
+  duration. Drag an edge to stretch or shorten it. Edge drags snap/clip to the
+  blue playhead when they pass near it.
 - **Set start from playhead** / **Set end from playhead** copy the current
   playhead time onto the selected interval (clamped and ordered so start stays
   before end). Newly added missing rallies use the same editor and edge handles.

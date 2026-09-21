@@ -50,6 +50,7 @@
   var rallyImportInput = null;
   var rallyNotice = null;
   var rallyGesture = null;
+  var rallyIgnoreBarClick = false;
 
   function currentMediaTimestamp() {
     // Prefer live video.currentTime to avoid stale cached mediaTime from prior playback events
@@ -2050,8 +2051,14 @@
   function rallyIntervalById(id) {
     return rallyDocument && rallyDocument.intervals.find(function (interval) { return interval.id === String(id); });
   }
-  function selectRallyInterval(id) {
+  function selectRallyInterval(id, options) {
+    options = options || {};
     rallySelectedId = String(id);
+    if (options.seekToStart && rallyDocument && rallyApi) {
+      var interval = rallyIntervalById(id);
+      var bounds = interval && rallyApi.effectiveBounds(interval);
+      if (bounds) seekVideoToSeconds(bounds.startSec);
+    }
     render();
   }
   function updateRallyEdge(id, edge, value) {
@@ -2326,6 +2333,7 @@
     if (!rallyGesture || event && event.pointerId != null && rallyGesture.pointerId != null && event.pointerId !== rallyGesture.pointerId) return;
     var gesture = releaseRallyGesture(cancelled);
     if (!gesture) return;
+    var dragDistance = Math.abs((Number(event && event.clientX) || 0) - (Number(gesture.startX) || 0));
     if (gesture.mode === "playhead") {
       if (!cancelled && event) {
         var scroller = gesture.scroller;
@@ -2334,6 +2342,8 @@
       }
       return;
     }
+    // A real drag should not also fire the bar's click-to-seek path.
+    if (!cancelled && dragDistance > 3) rallyIgnoreBarClick = true;
     if (!cancelled) setRallyDocument(rallyDocument, { notice: "Updated " + gesture.id + " from the interval bar." });
     render();
   }
@@ -2487,20 +2497,32 @@
           tabindex: "0",
           "data-bso-rally-interval": interval.id,
           "aria-label": interval.id + " from " + rallyApi.formatSeconds(bounds.startSec) + " to " + rallyApi.formatSeconds(bounds.endSec),
+          title: "Click to seek to this rally start. Drag to move. Use edges to resize.",
           style: { left: left + "%", width: Math.max(.001, width) + "%" },
-          onClick: function () { selectRallyInterval(interval.id); },
+          onClick: function (event) {
+            var target = event && event.target;
+            if (target && target.closest && target.closest(".bv-rally-edge")) return;
+            if (rallyIgnoreBarClick) {
+              rallyIgnoreBarClick = false;
+              selectRallyInterval(interval.id);
+              return;
+            }
+            selectRallyInterval(interval.id, { seekToStart: true });
+          },
           onPointerdown: function (event) { startRallyGesture(event, interval.id, "move", scroll); }
         }, [ui.el("span", { className: "bv-rally-interval-label" }, [interval.id])]);
         var startEdge = ui.el("button", {
           className: "bv-rally-edge start", type: "button", role: "slider", "aria-label": "Resize start of " + interval.id,
           "aria-valuemin": windowBounds.startSec, "aria-valuemax": bounds.endSec - rallyApi.MIN_INTERVAL_SECONDS, "aria-valuenow": bounds.startSec, "aria-valuetext": rallyApi.formatSeconds(bounds.startSec),
-          onPointerdown: function (event) { startRallyGesture(event, interval.id, "start", scroll); },
+          onPointerdown: function (event) { if (event && event.stopPropagation) event.stopPropagation(); startRallyGesture(event, interval.id, "start", scroll); },
+          onClick: function (event) { if (event && event.stopPropagation) event.stopPropagation(); },
           onKeydown: function (event) { nudgeRallyEdge(event, interval.id, "start"); }
         });
         var endEdge = ui.el("button", {
           className: "bv-rally-edge end", type: "button", role: "slider", "aria-label": "Resize end of " + interval.id,
           "aria-valuemin": bounds.startSec + rallyApi.MIN_INTERVAL_SECONDS, "aria-valuemax": windowBounds.endSec, "aria-valuenow": bounds.endSec, "aria-valuetext": rallyApi.formatSeconds(bounds.endSec),
-          onPointerdown: function (event) { startRallyGesture(event, interval.id, "end", scroll); },
+          onPointerdown: function (event) { if (event && event.stopPropagation) event.stopPropagation(); startRallyGesture(event, interval.id, "end", scroll); },
+          onClick: function (event) { if (event && event.stopPropagation) event.stopPropagation(); },
           onKeydown: function (event) { nudgeRallyEdge(event, interval.id, "end"); }
         });
         bar.appendChild(startEdge);

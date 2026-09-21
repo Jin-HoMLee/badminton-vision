@@ -2279,14 +2279,21 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.ok(panel.querySelector(".bv-rally-interval"), "interval bars are present as foreground hit targets");
   assert.equal(panel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "false");
 
-  // Native media time drives the playhead; only an explicit playhead/timeline
-  // drag may assign currentTime. Pause/mute/rate stay untouched.
+  // Native media time drives the playhead; playhead/timeline/bar seeks may
+  // assign currentTime. Pause/mute/rate stay untouched.
   session.video.currentTime = 18.25;
   session.video.dispatchEvent({ type: "timeupdate", target: session.video });
   let playhead = panel.querySelector("[data-bso-rally-playhead]");
   assert.equal(playhead.getAttribute("data-bso-media-seconds"), "18.25");
   assert.equal(panel.querySelector("[data-bso-rally-clock]").textContent, "0:18.250");
   const playback = { paused: session.video.paused, muted: session.video.muted, rate: session.video.playbackRate, src: session.video.src };
+
+  panel.querySelector("[data-bso-rally-interval]").dispatchEvent({ type: "click", target: panel.querySelector("[data-bso-rally-interval]") });
+  assert.equal(session.video.currentTime, 10, "clicking a labeled time bar seeks the player to that bar's start");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  session.video.dispatchEvent({ type: "timeupdate", target: session.video });
+  assert.equal(panel.querySelector("[data-bso-rally-playhead]").getAttribute("data-bso-media-seconds"), "10");
 
   buttonWithText(panel, "Zoom in").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
