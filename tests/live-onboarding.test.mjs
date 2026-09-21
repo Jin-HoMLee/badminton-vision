@@ -485,6 +485,24 @@ function buttonWithText(root, label) {
   return root.querySelectorAll("button").find((button) => textOf(button).trim().includes(label));
 }
 
+test("starting a rally review waits for metadata before persisting its full duration", async () => {
+  const session = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true } } });
+  session.flushStorage();
+  let panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  const writesBefore = session.storageWrites.length;
+  buttonWithText(panel, "Start review for this video").dispatchEvent({ type: "click" });
+  assert.equal(session.storageWrites.length, writesBefore, "unknown duration does not persist a truncated review");
+  assert.match(panel.querySelector("[data-bso-rally-notice]").textContent, /duration is unavailable/);
+  assert.equal(panel.querySelector("[data-bso-rally-timeline]"), null);
+
+  session.video.duration = 180;
+  buttonWithText(panel, "Start review for this video").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  const created = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.ok(panel.querySelector("[data-bso-rally-timeline]"));
+  assert.equal(created.source.reviewWindow.endSec, 180, "retry uses the full duration once metadata is available");
+});
+
 test("popup keeps a failed recovery injection visible instead of closing silently", async () => {
   const popup = await createPopupSession({ failInjection: true });
   const primary = popup.app.querySelector('[data-bso-action="enable"]');
