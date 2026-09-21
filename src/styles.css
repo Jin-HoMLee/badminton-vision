@@ -499,12 +499,19 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-playhead::before { content: ""; position: absolute; left: 1px; top: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid var(--signal-info); pointer-events: none; }
 .bv-rally-playhead:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .bv-rally-timeline-row { position: absolute; left: 0; right: 0; height: 30px; border-bottom: 1px solid rgba(255,255,255,.025); }
-.bv-rally-timeline-row.selected { background: rgba(98,182,255,.06); }
-.bv-rally-interval { position: absolute; top: 4px; box-sizing: border-box; min-width: 3px; height: 22px; overflow: hidden; border: 1px solid var(--lime-500); border-radius: var(--radius-xs); background: rgba(200,240,74,.18); color: var(--text-primary); cursor: grab; touch-action: none; user-select: none; }
-.bv-rally-interval.correction { border-color: var(--signal-info); background: var(--signal-info-tint); }
-.bv-rally-interval.addition { border-color: var(--signal-in); background: var(--signal-in-tint); }
+.bv-rally-timeline-row.selected { background: rgba(255,255,255,.04); }
+/* Review-state colors are independent from selection. Selection only adds a
+   bright ring so clicking a bar never looks like a correction. */
+.bv-rally-interval { position: absolute; top: 4px; box-sizing: border-box; min-width: 3px; height: 22px; overflow: hidden; border: 1px solid var(--signal-warn); border-radius: var(--radius-xs); border-style: dashed; background: var(--signal-warn-tint); color: var(--text-primary); cursor: grab; touch-action: none; user-select: none; }
 .bv-rally-interval.unresolved { border-style: dashed; border-color: var(--signal-warn); background: var(--signal-warn-tint); }
+.bv-rally-interval.approve { border-style: solid; border-color: var(--signal-in); background: var(--signal-in-tint); }
+.bv-rally-interval.addition { border-style: solid; border-color: var(--lime-500); background: rgba(200,240,74,.18); }
+.bv-rally-interval.correction { border-style: solid; border-color: #8b7cff; background: rgba(139,124,255,.18); }
+.bv-rally-interval.removal { border-style: solid; border-color: var(--signal-out); background: var(--signal-out-tint); color: var(--signal-out); cursor: pointer; }
+.bv-rally-interval.selected,
+.bv-rally-timeline-row.selected .bv-rally-interval { box-shadow: 0 0 0 2px rgba(255,255,255,.88), 0 0 0 4px rgba(98,182,255,.55); }
 .bv-rally-interval:focus-visible { box-shadow: inset 0 0 0 2px var(--ink-900), var(--focus-ring); }
+.bv-rally-interval.selected:focus-visible { box-shadow: 0 0 0 2px rgba(255,255,255,.88), 0 0 0 4px rgba(98,182,255,.55), var(--focus-ring); }
 .bv-rally-interval-label { position: absolute; inset: 2px 11px; overflow: hidden; font: var(--type-mono); font-size: var(--fs-10); line-height: 16px; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
 .bv-rally-edge { position: absolute; z-index: 2; top: 0; bottom: 0; width: min(10px, 50%); padding: 0; border: 0; background: transparent; touch-action: none; cursor: ew-resize; }
 .bv-rally-edge.start { left: 0; }

@@ -2295,12 +2295,17 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(panel.querySelector("[data-bso-rally-clock]").textContent, "0:18.250");
   const playback = { paused: session.video.paused, muted: session.video.muted, rate: session.video.playbackRate, src: session.video.src };
 
-  panel.querySelector("[data-bso-rally-interval]").dispatchEvent({ type: "click", target: panel.querySelector("[data-bso-rally-interval]") });
-  assert.equal(session.video.currentTime, 10, "clicking a labeled time bar seeks the player to that bar's start");
+  let bar = panel.querySelector("[data-bso-rally-interval]");
+  bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 31, button: 0, clientX: 120, currentTarget: bar });
+  session.emitWindow("pointerup", { pointerId: 31, clientX: 120 });
+  assert.equal(session.video.currentTime, 10, "tapping a labeled time bar seeks the player to that bar's start");
   await new Promise((resolve) => setTimeout(resolve, 0));
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   session.video.dispatchEvent({ type: "timeupdate", target: session.video });
   assert.equal(panel.querySelector("[data-bso-rally-playhead]").getAttribute("data-bso-media-seconds"), "10");
+  assert.equal(session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals[0].action, "unresolved", "selecting a bar does not mark it corrected");
+  assert.match(panel.querySelector("[data-bso-rally-interval]").className, /unresolved/);
+  assert.match(panel.querySelector("[data-bso-rally-interval]").className, /selected/);
 
   buttonWithText(panel, "Zoom in").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
@@ -2311,7 +2316,7 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
 
   // Drag the whole bar, pointer-resize the left edge, then use the keyboard on
   // the right edge and exact numeric editing. All paths share one model.
-  let bar = panel.querySelector("[data-bso-rally-interval]");
+  bar = panel.querySelector("[data-bso-rally-interval]");
   const writesBeforeSecondaryPointer = session.storageWrites.length;
   bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 6, button: 2, clientX: 100 });
   session.emitWindow("pointermove", { pointerId: 6, clientX: 140 });
@@ -2402,10 +2407,13 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(editor.querySelector("[data-bso-rally-verifier]").getAttribute("placeholder"), "Jin-Ho Lee");
   assert.match(textOf(editor.querySelector(".bv-rally-metadata")), /Reviewed by/, "verifier is labeled in plain language");
 
+  editor.querySelector("[data-bso-rally-comment]").value = "";
+  editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
+  editor.querySelector("[data-bso-rally-date]").value = "2026-09-20";
   const blockedWrites = session.storageWrites.length;
   buttonWithText(editor, "Remove false positive").dispatchEvent({ type: "click" });
   assert.equal(session.storageWrites.length, blockedWrites, "empty removal evidence does not remove the interval");
-  assert.match(editor.querySelector("[data-bso-rally-editor-error]").textContent, /comment explaining why this is a false positive/i, "the panel explains why remove did not run");
+  assert.match(editor.querySelector("[data-bso-rally-editor-error]").textContent, /Fill in comment before removing this false positive/i, "the panel names the exact empty field");
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "the proposed bar remains until removal evidence is complete");
 
   editor.querySelector("[data-bso-rally-comment]").value = "The visible serve begins after the provisional edge.";
@@ -2435,16 +2443,25 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   editor.querySelector("[data-bso-rally-date]").value = "2026-09-20";
   buttonWithText(editor, "Remove false positive").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
-  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "removing an added interval removes its bar");
-  assert.ok(panel.querySelector(".bv-rally-tombstone"), "the durable removal remains inspectable and restorable");
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 2, "removed intervals stay visible in place on the timeline");
+  const removedBar = panel.querySelectorAll(".bv-rally-interval").find((node) => String(node.className).includes("removal"));
+  assert.ok(removedBar, "the removed bar turns red and stays labeled removed");
+  assert.match(removedBar.getAttribute("aria-label"), /removed/);
+  assert.equal(removedBar.getAttribute("data-bso-rally-action"), "removal");
+  assert.equal(removedBar.querySelectorAll(".bv-rally-edge").length, 0, "removed bars are not resizable");
+  const removedReview = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals.find((item) => item.action === "removal");
+  assert.ok(removedReview.corrected, "removal keeps corrected bounds");
+  assert.ok(removedReview.corrected.endSec - removedReview.corrected.startSec < 10, "removal keeps the original short range instead of stretching");
+  assert.ok(removedReview.corrected.startSec > 1, "removal stays at the original media time instead of jumping to the start of the video");
   editor = panel.querySelector("[data-bso-rally-editor]");
-  assert.equal(editor.querySelector("[data-bso-rally-start-input]"), null, "removed tombstones have no editable start input");
-  assert.equal(editor.querySelector("[data-bso-rally-end-input]"), null, "removed tombstones have no editable end input");
+  assert.equal(editor.querySelector("[data-bso-rally-start-input]"), null, "removed bars have no editable start input");
+  assert.equal(editor.querySelector("[data-bso-rally-end-input]"), null, "removed bars have no editable end input");
   assert.equal(editor.querySelector("[data-bso-rally-comment]").value, "Added in error; remove this false positive.", "false-positive removals keep their explanation");
   assert.ok(buttonWithText(editor, "Save removal evidence"), "removal evidence remains editable on the tombstone");
   buttonWithText(editor, "Restore").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 2, "explicit Restore brings the interval back");
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").filter((node) => String(node.className).includes("removal")).length, 0, "restored intervals leave the removal style");
   editor = panel.querySelector("[data-bso-rally-editor]");
   assert.ok(editor.querySelector("[data-bso-rally-start-input]"), "restored intervals regain editable boundaries");
   assert.equal(editor.querySelector("[data-bso-rally-comment]").value, "", "restored intervals require fresh comments");
@@ -2455,7 +2472,8 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   editor.querySelector("[data-bso-rally-date]").value = "2026-09-20";
   buttonWithText(editor, "Remove false positive").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
-  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "the interval can be removed again after restoration");
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").filter((node) => String(node.className).includes("removal")).length, 1, "the interval can be removed again after restoration");
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 2, "the removed bar remains in place beside the active one");
 
   buttonWithText(panel, "Add empty-set control").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
@@ -2476,8 +2494,8 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   restored.flushStorage();
   const restoredPanel = restored.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   assert.ok(restoredPanel);
-  assert.equal(restoredPanel.querySelectorAll(".bv-rally-interval").length, 1);
-  assert.ok(restoredPanel.querySelector(".bv-rally-tombstone"), "the added/removal action survives refresh");
+  assert.equal(restoredPanel.querySelectorAll(".bv-rally-interval").length, 2);
+  assert.ok(restoredPanel.querySelectorAll(".bv-rally-interval").some((node) => String(node.className).includes("removal")), "the added/removal action survives refresh in place");
   assert.equal(restoredPanel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "true");
 });
 

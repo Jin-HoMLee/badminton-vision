@@ -2142,18 +2142,32 @@
     rallySelectedId = added && added.id;
     if (setRallyDocument(next, { notice: "Added a missing rally at the observed media time." })) render();
   }
+  function missingRallyEvidenceLabels(fields) {
+    var missing = [];
+    if (!fields || !fields.comment) missing.push("comment");
+    if (!fields || !fields.verifier) missing.push("Reviewed by");
+    if (!fields || !fields.verifiedAt) missing.push("review date");
+    return missing;
+  }
+  function rallyMissingEvidenceError(fields, purpose) {
+    var missing = missingRallyEvidenceLabels(fields);
+    if (!missing.length) return null;
+    if (missing.length === 1) return new Error("Fill in " + missing[0] + " before " + purpose + ".");
+    if (missing.length === 2) return new Error("Fill in " + missing[0] + " and " + missing[1] + " before " + purpose + ".");
+    return new Error("Fill in " + missing[0] + ", " + missing[1] + ", and " + missing[2] + " before " + purpose + ".");
+  }
   function commitRallyReview(id, action, container) {
     if (!rallyDocument) return;
     var fields = rallyEvidence(container);
     if (!fields.verifier) fields.verifier = rallyPreferredVerifier({});
     if (!fields.verifiedAt) fields.verifiedAt = defaultRallyVerifiedAt();
     fields.action = action;
-    if (action === "removal" && !(fields.comment && fields.verifier && fields.verifiedAt)) {
-      showRallyValidationError(
-        new Error("Add a short comment explaining why this is a false positive. Reviewed-by and date autofill when empty."),
-        { container: container }
-      );
-      return;
+    if (action === "removal") {
+      var removalError = rallyMissingEvidenceError(fields, "removing this false positive");
+      if (removalError) {
+        showRallyValidationError(removalError, { container: container });
+        return;
+      }
     }
     try {
       var next = action === "removal"
@@ -2163,7 +2177,8 @@
         var removed = next.intervals.find(function (interval) { return interval.id === String(id); });
         if (!removed || !rallyApi.completeMetadata(removed)) {
           showRallyValidationError(
-            new Error("Add a short comment explaining why this is a false positive. Reviewed-by and date autofill when empty."),
+            rallyMissingEvidenceError(removed || fields, "removing this false positive") ||
+              new Error("Fill in comment, Reviewed by, and review date before removing this false positive."),
             { container: container }
           );
           return;
@@ -2269,18 +2284,22 @@
     }
     rallyImportInput.click();
   }
+  function rallyDisplayBounds(interval) {
+    if (!interval || !rallyApi) return null;
+    return rallyApi.effectiveBounds(interval) || interval.corrected || interval.original || null;
+  }
   function updateRallyTimelineGeometry() {
     if (!root || !rallyDocument) return;
     var bars = root.querySelectorAll("[data-bso-rally-interval]");
     Array.prototype.forEach.call(bars, function (bar) {
       var interval = rallyIntervalById(bar.getAttribute("data-bso-rally-interval"));
-      var bounds = interval && rallyApi.effectiveBounds(interval);
+      var bounds = rallyDisplayBounds(interval);
       if (!bounds) return;
       var windowBounds = rallyDocument.source.reviewWindow;
       var duration = windowBounds.endSec - windowBounds.startSec;
       bar.style.left = ((bounds.startSec - windowBounds.startSec) / duration * 100) + "%";
       bar.style.width = (Math.max(.001, bounds.endSec - bounds.startSec) / duration * 100) + "%";
-      bar.setAttribute("aria-label", interval.id + " from " + rallyApi.formatSeconds(bounds.startSec) + " to " + rallyApi.formatSeconds(bounds.endSec));
+      bar.setAttribute("aria-label", interval.id + (interval.action === "removal" ? " removed" : "") + " from " + rallyApi.formatSeconds(bounds.startSec) + " to " + rallyApi.formatSeconds(bounds.endSec));
     });
     var selected = rallyIntervalById(rallySelectedId);
     var selectedBounds = selected && (rallyApi.effectiveBounds(selected) || selected.corrected || selected.original);
@@ -2381,8 +2400,20 @@
       }
       return;
     }
-    // A real drag should not also fire the bar's click-to-seek path.
-    if (!cancelled && dragDistance > 3) rallyIgnoreBarClick = true;
+    // pointerup rebuilds the bar DOM, so the later click event is unreliable.
+    // A tap (no real drag) selects only and seeks to the bar start without
+    // writing a correction. A real drag commits the geometry change.
+    if (cancelled || dragDistance <= 3) {
+      rallyDocument = gesture.base;
+      if (!cancelled && gesture.mode === "move" && gesture.id) {
+        var tapped = gesture.base.intervals.find(function (interval) { return interval.id === String(gesture.id); });
+        var tappedBounds = tapped && (rallyApi.effectiveBounds(tapped) || tapped.corrected || tapped.original);
+        rallySelectedId = String(gesture.id);
+        if (tappedBounds) seekVideoToSeconds(tappedBounds.startSec);
+      }
+      render();
+      return;
+    }
     if (!cancelled) setRallyDocument(rallyDocument, { notice: "Updated " + gesture.id + " from the interval bar." });
     render();
   }
@@ -2534,48 +2565,55 @@
     });
     rallyDocument.intervals.forEach(function (interval, index) {
       var row = ui.el("div", { className: "bv-rally-timeline-row" + (interval.id === rallySelectedId ? " selected" : "") + (interval.action === "removal" ? " removed" : ""), style: { top: (34 + index * 34) + "px" } });
-      var bounds = rallyApi.effectiveBounds(interval);
+      var bounds = rallyDisplayBounds(interval);
       if (!bounds) {
         row.appendChild(ui.el("button", { className: "bv-rally-tombstone", type: "button", onClick: function () { selectRallyInterval(interval.id); } }, [interval.id + " · removed"]));
       } else {
+        var removed = interval.action === "removal";
         var left = (bounds.startSec - windowBounds.startSec) / duration * 100;
         var width = (bounds.endSec - bounds.startSec) / duration * 100;
         var bar = ui.el("div", {
-          className: "bv-rally-interval " + interval.action,
+          className: "bv-rally-interval " + interval.action + (interval.id === rallySelectedId ? " selected" : ""),
           role: "group",
           tabindex: "0",
           "data-bso-rally-interval": interval.id,
-          "aria-label": interval.id + " from " + rallyApi.formatSeconds(bounds.startSec) + " to " + rallyApi.formatSeconds(bounds.endSec),
-          title: "Click to seek to this rally start. Drag to move. Use edges to resize.",
+          "data-bso-rally-action": interval.action,
+          "aria-label": interval.id + (removed ? " removed" : "") + " from " + rallyApi.formatSeconds(bounds.startSec) + " to " + rallyApi.formatSeconds(bounds.endSec),
+          title: removed
+            ? "Removed false positive kept at its original time range. Click to inspect."
+            : "Click to seek to this rally start. Drag to move. Use edges to resize.",
           style: { left: left + "%", width: Math.max(.001, width) + "%" },
           onClick: function (event) {
             var target = event && event.target;
             if (target && target.closest && target.closest(".bv-rally-edge")) return;
-            if (rallyIgnoreBarClick) {
-              rallyIgnoreBarClick = false;
-              selectRallyInterval(interval.id);
+            selectRallyInterval(interval.id, { seekToStart: !removed });
+          },
+          onPointerdown: function (event) {
+            if (removed) {
+              if (event && event.preventDefault) event.preventDefault();
               return;
             }
-            selectRallyInterval(interval.id, { seekToStart: true });
-          },
-          onPointerdown: function (event) { startRallyGesture(event, interval.id, "move", scroll); }
-        }, [ui.el("span", { className: "bv-rally-interval-label" }, [interval.id])]);
-        var startEdge = ui.el("button", {
-          className: "bv-rally-edge start", type: "button", role: "slider", "aria-label": "Resize start of " + interval.id,
-          "aria-valuemin": windowBounds.startSec, "aria-valuemax": bounds.endSec - rallyApi.MIN_INTERVAL_SECONDS, "aria-valuenow": bounds.startSec, "aria-valuetext": rallyApi.formatSeconds(bounds.startSec),
-          onPointerdown: function (event) { if (event && event.stopPropagation) event.stopPropagation(); startRallyGesture(event, interval.id, "start", scroll); },
-          onClick: function (event) { if (event && event.stopPropagation) event.stopPropagation(); },
-          onKeydown: function (event) { nudgeRallyEdge(event, interval.id, "start"); }
-        });
-        var endEdge = ui.el("button", {
-          className: "bv-rally-edge end", type: "button", role: "slider", "aria-label": "Resize end of " + interval.id,
-          "aria-valuemin": bounds.startSec + rallyApi.MIN_INTERVAL_SECONDS, "aria-valuemax": windowBounds.endSec, "aria-valuenow": bounds.endSec, "aria-valuetext": rallyApi.formatSeconds(bounds.endSec),
-          onPointerdown: function (event) { if (event && event.stopPropagation) event.stopPropagation(); startRallyGesture(event, interval.id, "end", scroll); },
-          onClick: function (event) { if (event && event.stopPropagation) event.stopPropagation(); },
-          onKeydown: function (event) { nudgeRallyEdge(event, interval.id, "end"); }
-        });
-        bar.appendChild(startEdge);
-        bar.appendChild(endEdge);
+            startRallyGesture(event, interval.id, "move", scroll);
+          }
+        }, [ui.el("span", { className: "bv-rally-interval-label" }, [removed ? interval.id + " · removed" : interval.id])]);
+        if (!removed) {
+          var startEdge = ui.el("button", {
+            className: "bv-rally-edge start", type: "button", role: "slider", "aria-label": "Resize start of " + interval.id,
+            "aria-valuemin": windowBounds.startSec, "aria-valuemax": bounds.endSec - rallyApi.MIN_INTERVAL_SECONDS, "aria-valuenow": bounds.startSec, "aria-valuetext": rallyApi.formatSeconds(bounds.startSec),
+            onPointerdown: function (event) { if (event && event.stopPropagation) event.stopPropagation(); startRallyGesture(event, interval.id, "start", scroll); },
+            onClick: function (event) { if (event && event.stopPropagation) event.stopPropagation(); },
+            onKeydown: function (event) { nudgeRallyEdge(event, interval.id, "start"); }
+          });
+          var endEdge = ui.el("button", {
+            className: "bv-rally-edge end", type: "button", role: "slider", "aria-label": "Resize end of " + interval.id,
+            "aria-valuemin": bounds.startSec + rallyApi.MIN_INTERVAL_SECONDS, "aria-valuemax": windowBounds.endSec, "aria-valuenow": bounds.endSec, "aria-valuetext": rallyApi.formatSeconds(bounds.endSec),
+            onPointerdown: function (event) { if (event && event.stopPropagation) event.stopPropagation(); startRallyGesture(event, interval.id, "end", scroll); },
+            onClick: function (event) { if (event && event.stopPropagation) event.stopPropagation(); },
+            onKeydown: function (event) { nudgeRallyEdge(event, interval.id, "end"); }
+          });
+          bar.appendChild(startEdge);
+          bar.appendChild(endEdge);
+        }
         row.appendChild(bar);
       }
       track.appendChild(row);

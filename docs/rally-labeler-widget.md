@@ -40,10 +40,15 @@ YouTube controls.
   the expanded range.
 - Each active rally is exactly one interval bar. The contained left and right
   edge hit zones edit start and end. There are no separate boundary markers.
-- Click the bar body to seek the blue playhead and YouTube player to that
-  interval's start. Drag the bar body to move an interval without changing its
-  duration. Drag an edge to stretch or shorten it. Edge drags snap/clip to the
-  blue playhead when they pass near it.
+- Click/tap the bar body to select it and seek the blue playhead and YouTube
+  player to that interval's start. Selection never changes review state.
+  Drag the bar body to move an interval without changing its duration. Drag an
+  edge to stretch or shorten it. Edge drags snap/clip to the blue playhead when
+  they pass near it.
+- Timeline colors: orange dashed = pending review, green = approved,
+  lime = added, purple = corrected, red labeled removed = false-positive
+  removal kept at its original start/end. The selected bar gets a bright ring
+  only; selection is not a correction.
 - **Set start from playhead** / **Set end from playhead** copy the current
   playhead time onto the selected interval (clamped and ordered so start stays
   before end). Newly added missing rallies use the same editor and edge handles.
@@ -63,12 +68,12 @@ YouTube controls.
 
 **Add missing rally** creates a stable `source-id:addition-NNN` interval around
 the observed media time and persists it immediately. **Remove false positive**
-turns either a proposed or added interval into a durable removal tombstone and
-requires the same non-empty comment/verifier/date evidence as an approval so
-later analysis can see why it was removed. If those fields are empty, the panel
-keeps the interval and shows an inline error next to the actions instead of
-swallowing the click. A removed item has no interval bar, but its evidence
-fields stay editable; it can be restored.
+turns either a proposed or added interval into a durable removal kept at the
+same start/end on the timeline (red, labeled removed) and requires the same
+non-empty comment/Reviewed by/date evidence as an approval so later analysis
+can see why it was removed. If those fields are empty, the panel keeps the
+interval and shows an inline error that names the exact empty fields. Removal
+evidence stays editable; the bar can be restored.
 
 Hit testing treats every visible pixel of the rally panel as a hit target: the
 Developer playback help callout, black/empty body background, buttons, fields,
