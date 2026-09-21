@@ -64,6 +64,12 @@
 
   function optionalText(value) { return String(value == null ? "" : value).trim(); }
 
+  function clearEvidence(item) {
+    item.comment = "";
+    item.verifier = "";
+    item.verifiedAt = "";
+  }
+
   function normalizedDate(value) {
     var text = optionalText(value);
     if (!text) return "";
@@ -417,8 +423,10 @@
     fields = fields || {};
     editableInterval(document, id);
     return replaceInterval(document, id, function (interval) {
+      var previousAction = interval.action;
       interval.corrected = interval.corrected || interval.original;
       interval.action = "removal";
+      if (previousAction !== interval.action) clearEvidence(interval);
       if (fields.comment != null) interval.comment = optionalText(fields.comment);
       if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
       if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
@@ -429,9 +437,7 @@
   function restoreInterval(document, id) {
     return replaceInterval(document, id, function (interval) {
       interval.action = interval.original ? "unresolved" : "addition";
-      interval.comment = "";
-      interval.verifier = "";
-      interval.verifiedAt = "";
+      clearEvidence(interval);
       return interval;
     });
   }
@@ -452,6 +458,7 @@
       } else if (action === "removal") {
         interval.corrected = interval.corrected || interval.original;
       }
+      if (interval.action !== action) clearEvidence(interval);
       interval.action = action;
       if (fields.comment != null) interval.comment = optionalText(fields.comment);
       if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
@@ -477,7 +484,9 @@
     var index = next.controls.findIndex(function (control) { return control.id === String(id); });
     if (index < 0) throw new TypeError("unknown control id: " + id);
     var control = next.controls[index];
+    var previousState = control.state;
     if (fields.state != null) control.state = fields.state;
+    if (previousState !== control.state) clearEvidence(control);
     if (fields.comment != null) control.comment = fields.comment;
     if (fields.verifier != null) control.verifier = fields.verifier;
     if (fields.verifiedAt != null) control.verifiedAt = fields.verifiedAt;

@@ -6387,6 +6387,12 @@
 
     function optionalText(value) { return String(value == null ? "" : value).trim(); }
 
+    function clearEvidence(item) {
+      item.comment = "";
+      item.verifier = "";
+      item.verifiedAt = "";
+    }
+
     function normalizedDate(value) {
       var text = optionalText(value);
       if (!text) return "";
@@ -6740,8 +6746,10 @@
       fields = fields || {};
       editableInterval(document, id);
       return replaceInterval(document, id, function (interval) {
+        var previousAction = interval.action;
         interval.corrected = interval.corrected || interval.original;
         interval.action = "removal";
+        if (previousAction !== interval.action) clearEvidence(interval);
         if (fields.comment != null) interval.comment = optionalText(fields.comment);
         if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
         if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
@@ -6752,9 +6760,7 @@
     function restoreInterval(document, id) {
       return replaceInterval(document, id, function (interval) {
         interval.action = interval.original ? "unresolved" : "addition";
-        interval.comment = "";
-        interval.verifier = "";
-        interval.verifiedAt = "";
+        clearEvidence(interval);
         return interval;
       });
     }
@@ -6775,6 +6781,7 @@
         } else if (action === "removal") {
           interval.corrected = interval.corrected || interval.original;
         }
+        if (interval.action !== action) clearEvidence(interval);
         interval.action = action;
         if (fields.comment != null) interval.comment = optionalText(fields.comment);
         if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
@@ -6800,7 +6807,9 @@
       var index = next.controls.findIndex(function (control) { return control.id === String(id); });
       if (index < 0) throw new TypeError("unknown control id: " + id);
       var control = next.controls[index];
+      var previousState = control.state;
       if (fields.state != null) control.state = fields.state;
+      if (previousState !== control.state) clearEvidence(control);
       if (fields.comment != null) control.comment = fields.comment;
       if (fields.verifier != null) control.verifier = fields.verifier;
       if (fields.verifiedAt != null) control.verifiedAt = fields.verifiedAt;
@@ -9289,6 +9298,7 @@
       }
     }
     function bindVideoState() {
+      clearRallyGesture(true);
       var key = currentVideoKey();
       if (activeVideoKey !== null && key !== activeVideoKey) resetVideoLocalState("navigation");
       else if (state.videoKey && key && state.videoKey !== key) resetVideoLocalState("video-replacement");
@@ -10437,6 +10447,7 @@
         render();
         return;
       }
+      clearRallyGesture(true);
       rallySelectedId = parsed.document.intervals.length ? parsed.document.intervals[0].id : null;
       rallyTimelineZoom = 1;
       rallyTimelineScroll = 0;
@@ -10770,6 +10781,7 @@
       var developerToggle = ui.toggle("Rally boundary review", "Developer-only interval editor; off by default and playback read-only", rallyLabelerEnabled(), function (next) {
         state = window.BVState.reduceExtensionState(state, { type: "SET_SETTING", key: "rallyLabelerEnabled", value: next });
         if (next) {
+          clearRallyGesture(true);
           activeVideoKey = activeVideoKey || currentVideoKey();
           rallyDocument = window.BVState.rallyReviewForVideo(state, activeVideoKey);
         }
@@ -11257,7 +11269,7 @@
       // Structural state updates replace the panel DOM. Never leave a pointer
       // gesture attached to a retired node or let it write stale geometry.
       clearPanelGesture();
-      clearRallyGesture(false);
+      clearRallyGesture(true);
       updateDiagnosticsMarkers();
       root.replaceChildren();
       // The settings panel is on-demand furniture like manual labeling: it
@@ -11293,6 +11305,7 @@
       installPanelInteractionsInRoot();
     }
     function applyStoredState(nextState) {
+      clearRallyGesture(true);
       var key = currentVideoKey();
       var wasLabeling = state.labeling;
       state = window.BVState.stateForVideo(nextState, key);

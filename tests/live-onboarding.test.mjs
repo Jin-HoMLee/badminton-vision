@@ -2279,9 +2279,12 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   // the right edge and exact numeric editing. All paths share one model.
   let bar = panel.querySelector("[data-bso-rally-interval]");
   bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 7, clientX: 100 });
+  session.emitWindow("pointermove", { pointerId: 7, clientX: 140 });
   assert.equal(bar.capturedPointerId, 7, "the rally bar captures its active pointer");
   session.onMessage({ type: "SET_PANELS", panels: { settings: true }, requestId: "rally-structural-rerender" });
   assert.equal(bar.releasedPointerId, 7, "a structural rerender releases the retired rally pointer capture");
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.match(panel.querySelector("[data-bso-rally-interval]").getAttribute("aria-label"), /0:10\.000 to 0:20\.000/, "cancelling a drag restores the persisted bounds");
   const writesAfterRerender = session.storageWrites.length;
   session.emitWindow("pointermove", { pointerId: 7, clientX: 140 });
   session.emitWindow("pointerup", { pointerId: 7, clientX: 140 });

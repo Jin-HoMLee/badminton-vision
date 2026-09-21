@@ -922,6 +922,7 @@
     }
   }
   function bindVideoState() {
+    clearRallyGesture(true);
     var key = currentVideoKey();
     if (activeVideoKey !== null && key !== activeVideoKey) resetVideoLocalState("navigation");
     else if (state.videoKey && key && state.videoKey !== key) resetVideoLocalState("video-replacement");
@@ -2070,6 +2071,7 @@
       render();
       return;
     }
+    clearRallyGesture(true);
     rallySelectedId = parsed.document.intervals.length ? parsed.document.intervals[0].id : null;
     rallyTimelineZoom = 1;
     rallyTimelineScroll = 0;
@@ -2403,6 +2405,7 @@
     var developerToggle = ui.toggle("Rally boundary review", "Developer-only interval editor; off by default and playback read-only", rallyLabelerEnabled(), function (next) {
       state = window.BVState.reduceExtensionState(state, { type: "SET_SETTING", key: "rallyLabelerEnabled", value: next });
       if (next) {
+        clearRallyGesture(true);
         activeVideoKey = activeVideoKey || currentVideoKey();
         rallyDocument = window.BVState.rallyReviewForVideo(state, activeVideoKey);
       }
@@ -2890,7 +2893,7 @@
     // Structural state updates replace the panel DOM. Never leave a pointer
     // gesture attached to a retired node or let it write stale geometry.
     clearPanelGesture();
-    clearRallyGesture(false);
+    clearRallyGesture(true);
     updateDiagnosticsMarkers();
     root.replaceChildren();
     // The settings panel is on-demand furniture like manual labeling: it
@@ -2926,6 +2929,7 @@
     installPanelInteractionsInRoot();
   }
   function applyStoredState(nextState) {
+    clearRallyGesture(true);
     var key = currentVideoKey();
     var wasLabeling = state.labeling;
     state = window.BVState.stateForVideo(nextState, key);
