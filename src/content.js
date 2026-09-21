@@ -2225,7 +2225,7 @@
     return ui.el("div", { className: "bv-rally-metadata" }, [
       rallyField("Comment / reason", rallyTextarea(item.comment, { "data-bso-rally-comment": "true", placeholder: "Why this approval or change is correct" })),
       rallyField("Verifier", rallyInput("text", item.verifier, { "data-bso-rally-verifier": "true", placeholder: "Name or handle" })),
-      rallyField("Review date", rallyInput("date", item.verifiedAt, { "data-bso-rally-date": "true" }))
+      rallyField("Review date", rallyInput("text", item.verifiedAt, { "data-bso-rally-date": "true", placeholder: "YYYY-MM-DD or UTC timestamp", autocomplete: "off" }))
     ]);
   }
   function rallySelectedEditor(interval) {

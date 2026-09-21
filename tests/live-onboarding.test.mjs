@@ -2454,7 +2454,7 @@ test("rally JSON export/import round-trips canonical review evidence without med
     schema: "badminton-vision.rally-review",
     version: 1,
     source: { id: "round-trip", label: "Round trip", videoKey: "youtube:real-match", videoUrl: "https://www.youtube.com/watch?v=real-match", reviewWindow: { startSec: 0, endSec: 30 } },
-    intervals: [{ id: "round-trip:rally-001", sourceId: "round-trip", original: { startSec: 4, endSec: 8 }, corrected: { startSec: 4.125, endSec: 8.25 }, action: "correction", comment: "Frame transition checked.", verifier: "worker-test", verifiedAt: "2026-09-20" }],
+    intervals: [{ id: "round-trip:rally-001", sourceId: "round-trip", original: { startSec: 4, endSec: 8 }, corrected: { startSec: 4.125, endSec: 8.25 }, action: "correction", comment: "Frame transition checked.", verifier: "worker-test", verifiedAt: "2026-09-20T12:34:56Z" }],
     controls: []
   };
   const source = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true }, rallyReviewsByVideo: { "youtube:real-match": canonical } } });
@@ -2478,6 +2478,10 @@ test("rally JSON export/import round-trips canonical review evidence without med
   const imported = target.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
   assert.equal(target.context.BVRallyLabeler.serialize(imported), exported, "documented canonical normalization is byte-stable");
   assert.equal(target.overlayRoot().querySelectorAll(".bv-rally-interval").length, 1);
+  panel = target.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelector("[data-bso-rally-date]").value, "2026-09-20T12:34:56Z", "ISO UTC evidence remains visible in the editor");
+  buttonWithText(panel.querySelector("[data-bso-rally-editor]"), "Save correction").dispatchEvent({ type: "click" });
+  assert.equal(target.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals[0].verifiedAt, "2026-09-20T12:34:56Z", "saving preserves the full ISO UTC evidence");
 });
 
 test("the settings panel stays available during setup and withholds only for a camera-cut reseed", async () => {
