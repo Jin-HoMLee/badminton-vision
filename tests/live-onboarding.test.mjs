@@ -493,7 +493,7 @@ test("starting a rally review waits for metadata before persisting its full dura
   buttonWithText(panel, "Start review for this video").dispatchEvent({ type: "click" });
   assert.equal(session.storageWrites.length, writesBefore, "unknown duration does not persist a truncated review");
   assert.match(textOf(panel.querySelector("[data-bso-rally-notice]")), /duration is unavailable/);
-  assert.equal(panel.querySelector("[data-bso-rally-timeline]"), null);
+  assert.equal(panel.querySelector("[data-bso-rally-scroll]"), null);
 
   session.video.duration = 180;
   buttonWithText(panel, "Start review for this video").dispatchEvent({ type: "click" });

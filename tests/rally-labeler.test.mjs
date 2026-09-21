@@ -133,6 +133,15 @@ test("adjudication state changes require fresh evidence", () => {
   assert.deepEqual({ comment: interval.comment, verifier: interval.verifier, verifiedAt: interval.verifiedAt }, { comment: "", verifier: "", verifiedAt: "" });
   assert.equal(model.completion(document).complete, false);
 
+  const exportedRemoval = model.removeInterval(
+    model.reviewInterval(fixture(), "bwf-ws-2026:rally-001", { action: "approve", ...evidence }),
+    "bwf-ws-2026:rally-001",
+    evidence
+  );
+  const removedInterval = exportedRemoval.intervals.find((item) => item.id === "bwf-ws-2026:rally-001");
+  assert.deepEqual({ comment: removedInterval.comment, verifier: removedInterval.verifier, verifiedAt: removedInterval.verifiedAt }, { comment: "", verifier: "", verifiedAt: "" });
+  assert.equal(model.completion(exportedRemoval).complete, false);
+
   document = model.reviewControl(document, "club-fixed-cam:empty", { state: "confirmed", ...evidence });
   document = model.reviewControl(document, "club-fixed-cam:empty", { state: "rejected", ...evidence });
   const control = document.controls.find((item) => item.id === "club-fixed-cam:empty");

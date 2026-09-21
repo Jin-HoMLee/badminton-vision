@@ -434,11 +434,14 @@
     return replaceInterval(document, id, function (interval) {
       var previousAction = interval.action;
       interval.corrected = interval.corrected || interval.original;
+      var staleEvidence = previousAction !== "removal" && evidenceMatches(interval, fields);
       interval.action = "removal";
       if (previousAction !== interval.action) clearEvidence(interval);
-      if (fields.comment != null) interval.comment = optionalText(fields.comment);
-      if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
-      if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
+      if (!staleEvidence) {
+        if (fields.comment != null) interval.comment = optionalText(fields.comment);
+        if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
+        if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
+      }
       return interval;
     });
   }
