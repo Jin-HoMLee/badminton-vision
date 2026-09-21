@@ -146,3 +146,35 @@ test("canonical JSON round-trips source/start/end semantics without media", () =
   assert.deepEqual(corpusShape.document.intervals[0].original, { startSec: 12.25, endSec: 16.5 });
   assert.equal(model.parse(json, { videoKey: "youtube:other" }).ok, false, "a review cannot leak into another video's store");
 });
+
+test("URL-only imports bind only to the canonical active video identity", () => {
+  const document = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: {
+      id: "url-only",
+      videoUrl: "https://youtu.be/declared-match?si=tracking",
+      reviewWindow: { startSec: 0, endSec: 10 }
+    },
+    intervals: [{ id: "url-only:rally-001", start: 2, end: 4 }],
+    controls: []
+  };
+  const sameVideo = model.parse(JSON.stringify(document), {
+    videoKey: "youtube:declared-match",
+    videoUrl: "https://www.youtube.com/watch?v=declared-match"
+  });
+  assert.equal(sameVideo.ok, true);
+  assert.equal(sameVideo.document.source.videoKey, "youtube:declared-match");
+
+  const mismatch = model.parse(JSON.stringify(Object.assign({}, document, {
+    source: Object.assign({}, document.source, { videoUrl: "https://www.youtube.com/watch?v=other-match" })
+  })), { videoKey: "youtube:declared-match" });
+  assert.equal(mismatch.ok, false);
+  assert.match(mismatch.error, /different video/);
+
+  const unparseable = model.parse(JSON.stringify(Object.assign({}, document, {
+    source: Object.assign({}, document.source, { videoUrl: "not-a-url" })
+  })), { videoKey: "youtube:declared-match" });
+  assert.equal(unparseable.ok, false);
+  assert.match(unparseable.error, /absolute HTTP\(S\) URL/);
+});

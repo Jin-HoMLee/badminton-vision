@@ -187,6 +187,37 @@
     };
   }
 
+  function canonicalVideoIdentity(value) {
+    var text = optionalText(value);
+    var parsed = null;
+    try {
+      if (typeof URL !== "function") throw new Error("URL is unavailable");
+      parsed = new URL(text);
+    } catch (_) {
+      throw new TypeError("source.videoUrl must be an absolute HTTP(S) URL");
+    }
+    if (!/^https?:$/.test(parsed.protocol)) throw new TypeError("source.videoUrl must be an absolute HTTP(S) URL");
+    var host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    var id = null;
+    if (host === "youtube.com" || host === "m.youtube.com" || host === "youtu.be") {
+      if (host === "youtu.be") id = parsed.pathname.split("/").filter(Boolean)[0] || null;
+      try { id = id || parsed.searchParams.get("v"); } catch (_) {}
+      if (!id) {
+        var pathMatch = parsed.pathname.match(/^\/(?:shorts|embed|live)\/([^/]+)/);
+        if (pathMatch) id = pathMatch[1];
+      }
+    }
+    if (id) {
+      try { id = decodeURIComponent(id); } catch (_) {}
+      return "youtube:" + id;
+    }
+    var query = [];
+    try { parsed.searchParams.forEach(function (valuePart, key) { query.push([key, valuePart]); }); } catch (_) {}
+    query.sort(function (a, b) { return a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]); });
+    var search = query.map(function (pair) { return encodeURIComponent(pair[0]) + "=" + encodeURIComponent(pair[1]); }).join("&");
+    return "url:" + parsed.origin + parsed.pathname + (search ? "?" + search : "");
+  }
+
   function inferredWindow(rawWindow, intervals, fallbackEnd) {
     rawWindow = rawWindow || {};
     var start = parseSeconds(rawWindow.startSec != null ? rawWindow.startSec : rawWindow.start);
@@ -228,6 +259,12 @@
     });
     var expectedVideoKey = optionalText(options.videoKey);
     if (expectedVideoKey && source.videoKey && source.videoKey !== expectedVideoKey) throw new TypeError("import source belongs to a different video");
+    if (!source.videoKey && source.videoUrl) {
+      var sourceVideoIdentity = canonicalVideoIdentity(source.videoUrl);
+      var expectedVideoIdentity = expectedVideoKey || (options.videoUrl ? canonicalVideoIdentity(options.videoUrl) : "");
+      if (expectedVideoIdentity && sourceVideoIdentity !== expectedVideoIdentity) throw new TypeError("import source belongs to a different video");
+      source.videoKey = expectedVideoKey || sourceVideoIdentity;
+    }
     if (!source.videoKey && expectedVideoKey) source.videoKey = expectedVideoKey;
     if (!source.videoUrl && options.videoUrl) source.videoUrl = optionalText(options.videoUrl);
     return {
