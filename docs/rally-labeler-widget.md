@@ -95,8 +95,10 @@ and timeline controls. Clicks never reach YouTube while the cursor is over the
 panel; within the panel, the foreground control under the cursor still receives
 the event first. The panel body scroll position is preserved across selection
 changes, button clicks, and other re-renders so the view does not jump back to
-the top. Developer playback help can be dismissed and restored with **Show
-playback help**. Overlay panels use one restrained translucent surface token so
+the top. Developer playback help is placed after the primary review content
+near the bottom of the panel; it can be dismissed and restored with **Show
+playback help** in that same lower area. Overlay panels use one restrained
+translucent surface token so
 video details remain faintly visible behind them without blur; text, fields,
 controls, focus states, and boundaries remain opaque/readable, and transparency
 never changes pointer hit-testing. Control confirmations are explicit results

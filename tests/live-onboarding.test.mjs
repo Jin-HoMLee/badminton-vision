@@ -2297,6 +2297,7 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(panel.querySelectorAll(".bv-rally-comparison").length, 0, "unchanged original proposals do not repeat the current range");
   assert.ok(panel.querySelector(".bv-rally-interval"), "interval bars are present as foreground hit targets");
   const rallyBody = panel.querySelector(".bv-panel-body");
+  assert.equal(rallyBody.children[rallyBody.children.length - 1], rallyBody.querySelector("[data-bso-rally-playback-help]"), "playback help sits after the primary review content");
   rallyBody.scrollTop = 140;
   rallyBody.dispatchEvent({ type: "scroll", target: rallyBody });
   panel.querySelector("[data-bso-rally-interval]").dispatchEvent({ type: "click", target: panel.querySelector("[data-bso-rally-interval]") });

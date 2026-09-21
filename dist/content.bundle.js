@@ -11206,6 +11206,20 @@
       body.scrollTop = rallyPanelScrollTop;
       return true;
     }
+    function appendRallyPlaybackHelp(body) {
+      if (!body) return;
+      if (rallyHelpVisible) {
+        var help = ui.callout("info", "Developer playback help", "Drag the blue playhead (or the empty timeline) to seek the YouTube video. Edge drags snap to that playhead. Set start/set end copy it onto the selected interval. Play, pause, rate, and player chrome stay on YouTube.", {
+          onDismiss: function () { rallyHelpVisible = false; render(); }
+        });
+        help.setAttribute("data-bso-rally-playback-help", "true");
+        body.appendChild(help);
+      } else {
+        var showHelp = ui.button("Show playback help", { variant: "secondary", size: "sm", title: "Show the developer playback help again", onClick: function () { rallyHelpVisible = true; render(); } });
+        showHelp.setAttribute("data-bso-rally-show-help", "true");
+        body.appendChild(ui.el("div", { className: "bv-rally-help-actions" }, [showHelp]));
+      }
+    }
     function rallyLabelerPanel() {
       var close = ui.iconButton("x", "Disable developer rally labeler", { size: "sm", onClick: function () {
         state = window.BVState.reduceExtensionState(state, { type: "SET_SETTING", key: "rallyLabelerEnabled", value: false });
@@ -11229,17 +11243,6 @@
       // jump the reviewer back to the top of a long panel.
       body.scrollTop = rallyPanelScrollTop;
       setTimeout(function () { if (body.isConnected) body.scrollTop = rallyPanelScrollTop; }, 0);
-      if (rallyHelpVisible) {
-        var help = ui.callout("info", "Developer playback help", "Drag the blue playhead (or the empty timeline) to seek the YouTube video. Edge drags snap to that playhead. Set start/set end copy it onto the selected interval. Play, pause, rate, and player chrome stay on YouTube.", {
-          onDismiss: function () { rallyHelpVisible = false; render(); }
-        });
-        help.setAttribute("data-bso-rally-playback-help", "true");
-        body.appendChild(help);
-      } else {
-        var showHelp = ui.button("Show playback help", { variant: "secondary", size: "sm", title: "Show the developer playback help again", onClick: function () { rallyHelpVisible = true; render(); } });
-        showHelp.setAttribute("data-bso-rally-show-help", "true");
-        body.appendChild(ui.el("div", { className: "bv-rally-help-actions" }, [showHelp]));
-      }
       var importButton = ui.button("Import review JSON", { variant: "secondary", size: "sm", icon: "upload", onClick: importRallyJson });
       if (!rallyDocument) {
         body.appendChild(ui.el("div", { className: "bv-rally-empty" }, [
@@ -11247,6 +11250,7 @@
           ui.el("div", { className: "bv-rally-toolbar" }, [ui.button("Start review for this video", { variant: "primary", size: "sm", onClick: createRallyDocument }), importButton])
         ]));
         if (rallyNotice) body.appendChild(ui.el("p", { className: "bv-helper", role: "status" }, [rallyNotice.message]));
+        appendRallyPlaybackHelp(body);
         return panel;
       }
       var gate = rallyApi.completion(rallyDocument);
@@ -11300,6 +11304,7 @@
           ui.button("Export verified JSON", { variant: "primary", size: "sm", icon: "download", disabled: !gate.complete, onClick: function () { exportRallyJson(true); } })
         ])
       ]));
+      appendRallyPlaybackHelp(body);
       return panel;
     }
     function settingsPanel() {
