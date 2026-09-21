@@ -1963,6 +1963,30 @@
       verifiedAt: rallyReadValue(container, "data-bso-rally-date")
     };
   }
+  function defaultRallyVerifiedAt() {
+    try {
+      return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    } catch (_) {
+      return "";
+    }
+  }
+  function rallyPreferredVerifier(item) {
+    var existing = item && item.verifier != null ? String(item.verifier).trim() : "";
+    if (existing) return existing;
+    var remembered = state.settings && state.settings.rallyReviewerName != null ? String(state.settings.rallyReviewerName).trim() : "";
+    return remembered;
+  }
+  function rallyPreferredVerifiedAt(item) {
+    var existing = item && item.verifiedAt != null ? String(item.verifiedAt).trim() : "";
+    return existing || defaultRallyVerifiedAt();
+  }
+  function rememberRallyVerifier(value) {
+    var text = String(value == null ? "" : value).trim();
+    if (!text) return;
+    if (state.settings && String(state.settings.rallyReviewerName || "").trim() === text) return;
+    state = window.BVState.reduceExtensionState(state, { type: "SET_SETTING", key: "rallyReviewerName", value: text });
+    persist();
+  }
   function showRallyValidationError(error, options) {
     options = options || {};
     var message = error && error.message ? error.message : String(error);
@@ -2119,10 +2143,12 @@
   function commitRallyReview(id, action, container) {
     if (!rallyDocument) return;
     var fields = rallyEvidence(container);
+    if (!fields.verifier) fields.verifier = rallyPreferredVerifier({});
+    if (!fields.verifiedAt) fields.verifiedAt = defaultRallyVerifiedAt();
     fields.action = action;
     if (action === "removal" && !(fields.comment && fields.verifier && fields.verifiedAt)) {
       showRallyValidationError(
-        new Error("Fill comment, verifier, and date first — false-positive removals need that explanation before the rally is removed."),
+        new Error("Add a short comment explaining why this is a false positive. Reviewed-by and date autofill when empty."),
         { container: container }
       );
       return;
@@ -2135,12 +2161,13 @@
         var removed = next.intervals.find(function (interval) { return interval.id === String(id); });
         if (!removed || !rallyApi.completeMetadata(removed)) {
           showRallyValidationError(
-            new Error("Fill comment, verifier, and date first — false-positive removals need that explanation before the rally is removed."),
+            new Error("Add a short comment explaining why this is a false positive. Reviewed-by and date autofill when empty."),
             { container: container }
           );
           return;
         }
       }
+      rememberRallyVerifier(fields.verifier);
       if (setRallyDocument(next, { notice: "Saved " + action + " evidence for " + id + "." })) render();
       else showRallyValidationError(rallyNotice && rallyNotice.message, { container: container });
     } catch (error) {
@@ -2155,8 +2182,17 @@
   }
   function commitRallyControl(id, controlState, container) {
     var fields = rallyEvidence(container);
+    if (!fields.verifier) fields.verifier = rallyPreferredVerifier({});
+    if (!fields.verifiedAt) fields.verifiedAt = defaultRallyVerifiedAt();
     fields.state = controlState;
-    commitRallyUpdate(function () { return rallyApi.reviewControl(rallyDocument, id, fields); }, "Saved control confirmation for " + id + ".");
+    try {
+      var next = rallyApi.reviewControl(rallyDocument, id, fields);
+      rememberRallyVerifier(fields.verifier);
+      if (setRallyDocument(next, { notice: "Saved control confirmation for " + id + "." })) render();
+      else showRallyValidationError(rallyNotice && rallyNotice.message, { container: container });
+    } catch (error) {
+      showRallyValidationError(error, { container: container });
+    }
   }
   function exportRallyJson(verifiedOnly) {
     if (!rallyDocument) return;
@@ -2394,10 +2430,20 @@
   function rallyMetadataFields(item, options) {
     options = options || {};
     var commentPlaceholder = options.commentPlaceholder || "Why this approval, change, or removal is correct";
+    var verifierValue = rallyPreferredVerifier(item);
+    var verifiedAtValue = rallyPreferredVerifiedAt(item);
+    var verifierInput = rallyInput("text", verifierValue, {
+      "data-bso-rally-verifier": "true",
+      placeholder: "Jin-Ho Lee",
+      autocomplete: "name",
+      onChange: function (event) { rememberRallyVerifier(event && event.target && event.target.value); }
+    });
+    verifierInput.setAttribute("aria-label", "Reviewed by");
+    verifierInput.title = "Who is recording this review decision (you). The last name is remembered for the next interval.";
     return ui.el("div", { className: "bv-rally-metadata" }, [
       rallyField("Comment / reason", rallyTextarea(item.comment, { "data-bso-rally-comment": "true", placeholder: commentPlaceholder })),
-      rallyField("Verifier", rallyInput("text", item.verifier, { "data-bso-rally-verifier": "true", placeholder: "Name or handle" })),
-      rallyField("Review date", rallyInput("text", item.verifiedAt, { "data-bso-rally-date": "true", placeholder: "YYYY-MM-DD or UTC timestamp", autocomplete: "off" }))
+      rallyField("Reviewed by", verifierInput),
+      rallyField("Review date", rallyInput("text", verifiedAtValue, { "data-bso-rally-date": "true", placeholder: "Autofills with the current time when empty", autocomplete: "off" }))
     ]);
   }
   function rallySelectedEditor(interval) {

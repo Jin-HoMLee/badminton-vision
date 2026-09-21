@@ -51,9 +51,13 @@ YouTube controls.
   `Shift+Left`/`Shift+Right` changes it by 1 second. Start/end text fields
   accept human clocks (`h:mm:ss.sss`, `m:ss.sss`) as well as plain seconds; the
   stored value remains a millisecond-rounded second number.
-- While a comment, verifier, date, or clock field inside the widget is focused,
+- While a comment, reviewed-by, date, or clock field inside the widget is focused,
   widget keybinds and YouTube page shortcuts are suppressed for those keys.
   Focus leaving the field restores both.
+- **Reviewed by** is the human recording the decision. It uses a plain-language
+  label and remembers the last non-empty value (for example `Jin-Ho Lee`) so it
+  does not need retyping on every interval. **Review date** autofills with the
+  current UTC timestamp whenever the field is empty on open or save.
 - Every edit is clamped to the review window and enforces `start < end`.
   Changing seconds reopens comment/verifier/date evidence.
 

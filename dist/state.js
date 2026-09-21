@@ -60,7 +60,7 @@
     // pattern. Settings are global preferences; the settings panel's open
     // state, collapse, and geometry stay video-local through the panels,
     // collapse, and layout maps below.
-    settings: { rallyLabelerEnabled: false },
+    settings: { rallyLabelerEnabled: false, rallyReviewerName: "" },
     // Explicit panel choices override density presets while the preference
     // still gives Balanced/Full a useful default presentation. Both the
     // effective values and overrides are scoped to the active video.
@@ -334,6 +334,7 @@
   function copySettings(settings) {
     var result = settings && typeof settings === "object" && !Array.isArray(settings) ? clone(settings) : {};
     result.rallyLabelerEnabled = Boolean(result.rallyLabelerEnabled);
+    result.rallyReviewerName = String(result.rallyReviewerName == null ? "" : result.rallyReviewerName).trim();
     return result;
   }
 
@@ -843,8 +844,13 @@
       }
       case "TOGGLE_PANEL_CONTROLS_EXPANDED": return Object.assign(current, { panelControlsExpanded: Boolean(action.value) });
       case "SET_SETTING": {
-        if (action.key !== "rallyLabelerEnabled") return current;
-        return initialExtensionState(Object.assign({}, current, { settings: Object.assign({}, current.settings, { rallyLabelerEnabled: Boolean(action.value) }) }));
+        if (action.key === "rallyLabelerEnabled") {
+          return initialExtensionState(Object.assign({}, current, { settings: Object.assign({}, current.settings, { rallyLabelerEnabled: Boolean(action.value) }) }));
+        }
+        if (action.key === "rallyReviewerName") {
+          return initialExtensionState(Object.assign({}, current, { settings: Object.assign({}, current.settings, { rallyReviewerName: String(action.value == null ? "" : action.value).trim() }) }));
+        }
+        return current;
       }
       case "SET_RALLY_REVIEW": {
         var rallyKey = action.videoKey != null ? String(action.videoKey) : current.videoKey;

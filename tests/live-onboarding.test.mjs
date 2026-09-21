@@ -2391,10 +2391,14 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(stopped, true, "focused comment fields stop page/widget shortcut propagation");
   assert.equal(session.emitKey("k", { target: commentField }), false, "focused rally text does not trigger extension shortcuts");
 
+  assert.match(editor.querySelector("[data-bso-rally-date]").value, /^\d{4}-\d{2}-\d{2}T/, "empty review dates autofill with the current time");
+  assert.equal(editor.querySelector("[data-bso-rally-verifier]").getAttribute("placeholder"), "Jin-Ho Lee");
+  assert.match(textOf(editor.querySelector(".bv-rally-metadata")), /Reviewed by/, "verifier is labeled in plain language");
+
   const blockedWrites = session.storageWrites.length;
   buttonWithText(editor, "Remove false positive").dispatchEvent({ type: "click" });
   assert.equal(session.storageWrites.length, blockedWrites, "empty removal evidence does not remove the interval");
-  assert.match(editor.querySelector("[data-bso-rally-editor-error]").textContent, /Fill comment, verifier, and date first/i, "the panel explains why remove did not run");
+  assert.match(editor.querySelector("[data-bso-rally-editor-error]").textContent, /comment explaining why this is a false positive/i, "the panel explains why remove did not run");
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "the proposed bar remains until removal evidence is complete");
 
   editor.querySelector("[data-bso-rally-comment]").value = "The visible serve begins after the provisional edge.";
@@ -2407,6 +2411,8 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 2, "Add missing rally creates a real bar");
   editor = panel.querySelector("[data-bso-rally-editor]");
+  assert.equal(editor.querySelector("[data-bso-rally-verifier]").value, "worker-test", "the last reviewed-by value is remembered for the next interval");
+  assert.match(editor.querySelector("[data-bso-rally-date]").value, /^\d{4}-\d{2}-\d{2}T/, "a new interval still autofills an empty review date");
   assert.ok(editor.querySelector("[data-bso-rally-set-start]"), "added missing rallies expose set-start from playhead");
   assert.ok(editor.querySelector("[data-bso-rally-set-end]"), "added missing rallies expose set-end from playhead");
   assert.ok(editor.querySelectorAll(".bv-rally-edge").length >= 0, "added missing rallies keep timeline edges editable after selection");
@@ -2435,8 +2441,8 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   editor = panel.querySelector("[data-bso-rally-editor]");
   assert.ok(editor.querySelector("[data-bso-rally-start-input]"), "restored intervals regain editable boundaries");
   assert.equal(editor.querySelector("[data-bso-rally-comment]").value, "", "restored intervals require fresh comments");
-  assert.equal(editor.querySelector("[data-bso-rally-verifier]").value, "", "restored intervals require a fresh verifier");
-  assert.equal(editor.querySelector("[data-bso-rally-date]").value, "", "restored intervals require a fresh date");
+  assert.equal(editor.querySelector("[data-bso-rally-verifier]").value, "worker-test", "restored intervals keep the remembered reviewed-by default");
+  assert.match(editor.querySelector("[data-bso-rally-date]").value, /^\d{4}-\d{2}-\d{2}T/, "restored intervals autofill a fresh review date when empty");
   editor.querySelector("[data-bso-rally-comment]").value = "Added in error; remove this false positive.";
   editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
   editor.querySelector("[data-bso-rally-date]").value = "2026-09-20";
