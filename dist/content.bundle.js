@@ -10604,13 +10604,9 @@
         rallyMetadataFields(interval)
       ]);
       var actions = ui.el("div", { className: "bv-rally-editor-actions" });
-      if (interval.action === "removal") {
-        actions.appendChild(ui.button("Restore", { variant: "secondary", size: "sm", onClick: function () { restoreRallyInterval(interval.id); } }));
-      } else {
-        if (interval.original) actions.appendChild(ui.button("Approve proposal", { variant: "secondary", size: "sm", onClick: function () { commitRallyReview(interval.id, "approve", editor); } }));
-        actions.appendChild(ui.button(interval.original ? "Save correction" : "Save addition", { variant: "primary", size: "sm", onClick: function () { commitRallyReview(interval.id, interval.original ? "correction" : "addition", editor); } }));
-        actions.appendChild(ui.button("Remove false positive", { variant: "danger", size: "sm", onClick: function () { commitRallyReview(interval.id, "removal", editor); } }));
-      }
+      if (interval.original) actions.appendChild(ui.button("Approve proposal", { variant: "secondary", size: "sm", onClick: function () { commitRallyReview(interval.id, "approve", editor); } }));
+      actions.appendChild(ui.button(interval.original ? "Save correction" : "Save addition", { variant: "primary", size: "sm", onClick: function () { commitRallyReview(interval.id, interval.original ? "correction" : "addition", editor); } }));
+      actions.appendChild(ui.button("Remove false positive", { variant: "danger", size: "sm", onClick: function () { commitRallyReview(interval.id, "removal", editor); } }));
       editor.appendChild(actions);
       return editor;
     }
