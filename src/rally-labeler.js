@@ -429,6 +429,9 @@
   function restoreInterval(document, id) {
     return replaceInterval(document, id, function (interval) {
       interval.action = interval.original ? "unresolved" : "addition";
+      interval.comment = "";
+      interval.verifier = "";
+      interval.verifiedAt = "";
       return interval;
     });
   }

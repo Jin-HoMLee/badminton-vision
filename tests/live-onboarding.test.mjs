@@ -2345,6 +2345,9 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 2, "explicit Restore brings the interval back");
   editor = panel.querySelector("[data-bso-rally-editor]");
   assert.ok(editor.querySelector("[data-bso-rally-start-input]"), "restored intervals regain editable boundaries");
+  assert.equal(editor.querySelector("[data-bso-rally-comment]").value, "", "restored intervals require fresh comments");
+  assert.equal(editor.querySelector("[data-bso-rally-verifier]").value, "", "restored intervals require a fresh verifier");
+  assert.equal(editor.querySelector("[data-bso-rally-date]").value, "", "restored intervals require a fresh date");
   editor.querySelector("[data-bso-rally-comment]").value = "Added in error; remove this false positive.";
   editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
   editor.querySelector("[data-bso-rally-date]").value = "2026-09-20";

@@ -6752,6 +6752,9 @@
     function restoreInterval(document, id) {
       return replaceInterval(document, id, function (interval) {
         interval.action = interval.original ? "unresolved" : "addition";
+        interval.comment = "";
+        interval.verifier = "";
+        interval.verifiedAt = "";
         return interval;
       });
     }
@@ -10298,7 +10301,6 @@
     function rallyLabelerEnabled() {
       return Boolean(rallyApi && state.settings && state.settings.rallyLabelerEnabled);
     }
-    function rallyToday() { return new Date().toISOString().slice(0, 10); }
     function rallyInput(type, value, attrs) {
       var input = ui.el("input", Object.assign({ type: type, value: value == null ? "" : String(value) }, attrs || {}));
       input.value = value == null ? "" : String(value);
@@ -10588,7 +10590,7 @@
       return ui.el("div", { className: "bv-rally-metadata" }, [
         rallyField("Comment / reason", rallyTextarea(item.comment, { "data-bso-rally-comment": "true", placeholder: "Why this approval or change is correct" })),
         rallyField("Verifier", rallyInput("text", item.verifier, { "data-bso-rally-verifier": "true", placeholder: "Name or handle" })),
-        rallyField("Review date", rallyInput("date", item.verifiedAt || rallyToday(), { "data-bso-rally-date": "true" }))
+        rallyField("Review date", rallyInput("date", item.verifiedAt, { "data-bso-rally-date": "true" }))
       ]);
     }
     function rallySelectedEditor(interval) {

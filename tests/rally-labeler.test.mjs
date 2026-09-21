@@ -110,6 +110,9 @@ test("removed intervals reject edits until explicit restoration", () => {
 
   const restored = model.restoreInterval(removed, "bwf-ws-2026:rally-002");
   assert.equal(restored.intervals[1].action, "unresolved");
+  assert.equal(restored.intervals[1].comment, "");
+  assert.equal(restored.intervals[1].verifier, "");
+  assert.equal(restored.intervals[1].verifiedAt, "");
   const edited = model.resizeInterval(restored, "bwf-ws-2026:rally-002", "start", 131);
   assert.equal(edited.intervals[1].action, "correction");
 });
