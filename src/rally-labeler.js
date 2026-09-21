@@ -324,7 +324,15 @@
     return normalizeDocument(next);
   }
 
+  function editableInterval(document, id) {
+    var interval = document.intervals.find(function (item) { return item.id === String(id); });
+    if (!interval) throw new TypeError("unknown interval id: " + id);
+    if (interval.action === "removal") throw new TypeError("removed interval must be restored before editing");
+    return interval;
+  }
+
   function setBounds(document, id, bounds, action) {
+    editableInterval(document, id);
     var windowBounds = document.source.reviewWindow;
     var normalized = normalizeBounds(bounds.startSec, bounds.endSec, "interval");
     if (normalized.startSec < windowBounds.startSec || normalized.endSec > windowBounds.endSec) throw new RangeError("interval falls outside the review window");
@@ -401,6 +409,7 @@
 
   function removeInterval(document, id, fields) {
     fields = fields || {};
+    editableInterval(document, id);
     return replaceInterval(document, id, function (interval) {
       interval.corrected = interval.corrected || interval.original;
       interval.action = "removal";
@@ -420,6 +429,7 @@
 
   function reviewInterval(document, id, fields) {
     fields = fields || {};
+    editableInterval(document, id);
     return replaceInterval(document, id, function (interval) {
       var action = normalizeAction(fields.action || interval.action, interval.original);
       if (action === "approve") {

@@ -101,6 +101,19 @@ test("addition and removal are first-class durable actions", () => {
   assert.equal(document.intervals.find((interval) => interval.id === added.id).action, "addition");
 });
 
+test("removed intervals reject edits until explicit restoration", () => {
+  const removed = model.removeInterval(fixture(), "bwf-ws-2026:rally-002", evidence);
+  assert.equal(removed.intervals[1].comment, evidence.comment);
+  assert.throws(() => model.resizeInterval(removed, "bwf-ws-2026:rally-002", "start", 131), /must be restored/);
+  assert.throws(() => model.moveInterval(removed, "bwf-ws-2026:rally-002", 1), /must be restored/);
+  assert.throws(() => model.pointerEdit(removed, "bwf-ws-2026:rally-002", "move", 20, model.createTimelineView(removed, 600, 1, 0)), /must be restored/);
+
+  const restored = model.restoreInterval(removed, "bwf-ws-2026:rally-002");
+  assert.equal(restored.intervals[1].action, "unresolved");
+  const edited = model.resizeInterval(restored, "bwf-ws-2026:rally-002", "start", 131);
+  assert.equal(edited.intervals[1].action, "correction");
+});
+
 test("completion is blocked by unresolved evidence and contradictory controls", () => {
   let document = fixture();
   let result = model.completion(document);

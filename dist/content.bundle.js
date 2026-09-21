@@ -6647,7 +6647,15 @@
       return normalizeDocument(next);
     }
 
+    function editableInterval(document, id) {
+      var interval = document.intervals.find(function (item) { return item.id === String(id); });
+      if (!interval) throw new TypeError("unknown interval id: " + id);
+      if (interval.action === "removal") throw new TypeError("removed interval must be restored before editing");
+      return interval;
+    }
+
     function setBounds(document, id, bounds, action) {
+      editableInterval(document, id);
       var windowBounds = document.source.reviewWindow;
       var normalized = normalizeBounds(bounds.startSec, bounds.endSec, "interval");
       if (normalized.startSec < windowBounds.startSec || normalized.endSec > windowBounds.endSec) throw new RangeError("interval falls outside the review window");
@@ -6724,6 +6732,7 @@
 
     function removeInterval(document, id, fields) {
       fields = fields || {};
+      editableInterval(document, id);
       return replaceInterval(document, id, function (interval) {
         interval.corrected = interval.corrected || interval.original;
         interval.action = "removal";
@@ -6743,6 +6752,7 @@
 
     function reviewInterval(document, id, fields) {
       fields = fields || {};
+      editableInterval(document, id);
       return replaceInterval(document, id, function (interval) {
         var action = normalizeAction(fields.action || interval.action, interval.original);
         if (action === "approve") {
@@ -10569,6 +10579,17 @@
     function rallySelectedEditor(interval) {
       if (!interval) return ui.el("p", { className: "bv-helper" }, ["Select an interval bar to inspect exact seconds and adjudicate it."]);
       var bounds = rallyApi.effectiveBounds(interval) || interval.corrected || interval.original;
+      if (interval.action === "removal") {
+        return ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
+          ui.el("div", { className: "bv-rally-editor-heading" }, [
+            ui.el("strong", {}, [interval.id]),
+            ui.badge("removal", "out", false),
+            ui.el("span", { className: "bv-mono", "data-bso-rally-exact": "true" }, [rallyApi.formatSeconds(bounds.startSec) + " → " + rallyApi.formatSeconds(bounds.endSec)])
+          ]),
+          ui.el("p", { className: "bv-helper" }, ["This removed interval is locked. Restore it before editing boundaries or review evidence."]),
+          ui.el("div", { className: "bv-rally-editor-actions" }, [ui.button("Restore", { variant: "secondary", size: "sm", onClick: function () { restoreRallyInterval(interval.id); } })])
+        ]);
+      }
       var editor = ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
         ui.el("div", { className: "bv-rally-editor-heading" }, [
           ui.el("strong", {}, [interval.id]),

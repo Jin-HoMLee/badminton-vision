@@ -2327,6 +2327,20 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "removing an added interval removes its bar");
   assert.ok(panel.querySelector(".bv-rally-tombstone"), "the durable removal remains inspectable and restorable");
+  editor = panel.querySelector("[data-bso-rally-editor]");
+  assert.equal(editor.querySelector("[data-bso-rally-start-input]"), null, "removed tombstones have no editable start input");
+  assert.equal(editor.querySelector("[data-bso-rally-end-input]"), null, "removed tombstones have no editable end input");
+  buttonWithText(editor, "Restore").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 2, "explicit Restore brings the interval back");
+  editor = panel.querySelector("[data-bso-rally-editor]");
+  assert.ok(editor.querySelector("[data-bso-rally-start-input]"), "restored intervals regain editable boundaries");
+  editor.querySelector("[data-bso-rally-comment]").value = "Added in error; remove this false positive.";
+  editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
+  editor.querySelector("[data-bso-rally-date]").value = "2026-09-20";
+  buttonWithText(editor, "Remove false positive").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "the interval can be removed again after restoration");
 
   buttonWithText(panel, "Add empty-set control").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');

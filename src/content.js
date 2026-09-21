@@ -2221,6 +2221,17 @@
   function rallySelectedEditor(interval) {
     if (!interval) return ui.el("p", { className: "bv-helper" }, ["Select an interval bar to inspect exact seconds and adjudicate it."]);
     var bounds = rallyApi.effectiveBounds(interval) || interval.corrected || interval.original;
+    if (interval.action === "removal") {
+      return ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
+        ui.el("div", { className: "bv-rally-editor-heading" }, [
+          ui.el("strong", {}, [interval.id]),
+          ui.badge("removal", "out", false),
+          ui.el("span", { className: "bv-mono", "data-bso-rally-exact": "true" }, [rallyApi.formatSeconds(bounds.startSec) + " → " + rallyApi.formatSeconds(bounds.endSec)])
+        ]),
+        ui.el("p", { className: "bv-helper" }, ["This removed interval is locked. Restore it before editing boundaries or review evidence."]),
+        ui.el("div", { className: "bv-rally-editor-actions" }, [ui.button("Restore", { variant: "secondary", size: "sm", onClick: function () { restoreRallyInterval(interval.id); } })])
+      ]);
+    }
     var editor = ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
       ui.el("div", { className: "bv-rally-editor-heading" }, [
         ui.el("strong", {}, [interval.id]),
