@@ -10336,6 +10336,19 @@
         verifiedAt: rallyReadValue(container, "data-bso-rally-date")
       };
     }
+    function showRallyValidationError(error) {
+      var message = error && error.message ? error.message : String(error);
+      rallyNotice = { ok: false, message: message };
+      var notice = root && root.querySelector && root.querySelector("[data-bso-rally-notice]");
+      if (notice) {
+        notice.textContent = message;
+        notice.className = "bv-helper error";
+        return;
+      }
+      var panel = root && root.querySelector && root.querySelector('[data-bso-panel="rallyLabeler"]');
+      var body = panel && panel.querySelector && panel.querySelector(".bv-panel-body");
+      if (body) body.appendChild(ui.el("p", { className: "bv-helper error", role: "status", "data-bso-rally-notice": "true" }, [message]));
+    }
     function setRallyDocument(documentValue, options) {
       options = options || {};
       if (!rallyApi || !documentValue) return false;
@@ -10353,6 +10366,15 @@
       } catch (error) {
         rallyNotice = { ok: false, message: error && error.message ? error.message : String(error) };
         return false;
+      }
+    }
+    function commitRallyUpdate(build, notice) {
+      try {
+        var next = build();
+        if (setRallyDocument(next, { notice: notice })) render();
+        else showRallyValidationError(rallyNotice && rallyNotice.message);
+      } catch (error) {
+        showRallyValidationError(error);
       }
     }
     function createRallyDocument() {
@@ -10410,8 +10432,7 @@
       if (!rallyDocument) return;
       var fields = rallyEvidence(container);
       fields.action = action;
-      var next = rallyApi.reviewInterval(rallyDocument, id, fields);
-      if (setRallyDocument(next, { notice: "Saved " + action + " evidence for " + id + "." })) render();
+      commitRallyUpdate(function () { return rallyApi.reviewInterval(rallyDocument, id, fields); }, "Saved " + action + " evidence for " + id + ".");
     }
     function restoreRallyInterval(id) {
       if (setRallyDocument(rallyApi.restoreInterval(rallyDocument, id), { notice: "Restored " + id + " for review." })) render();
@@ -10422,7 +10443,7 @@
     function commitRallyControl(id, controlState, container) {
       var fields = rallyEvidence(container);
       fields.state = controlState;
-      if (setRallyDocument(rallyApi.reviewControl(rallyDocument, id, fields), { notice: "Saved control confirmation for " + id + "." })) render();
+      commitRallyUpdate(function () { return rallyApi.reviewControl(rallyDocument, id, fields); }, "Saved control confirmation for " + id + ".");
     }
     function exportRallyJson(verifiedOnly) {
       if (!rallyDocument) return;

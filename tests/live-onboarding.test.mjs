@@ -2484,6 +2484,40 @@ test("rally JSON export/import round-trips canonical review evidence without med
   assert.equal(target.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals[0].verifiedAt, "2026-09-20T12:34:56Z", "saving preserves the full ISO UTC evidence");
 });
 
+test("invalid rally evidence stays editable and shows a validation notice", async () => {
+  const review = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: { id: "invalid-evidence", label: "Invalid evidence", videoKey: "youtube:real-match", videoUrl: "https://www.youtube.com/watch?v=real-match", reviewWindow: { startSec: 0, endSec: 30 } },
+    intervals: [{ id: "invalid-evidence:rally-001", sourceId: "invalid-evidence", original: { startSec: 4, endSec: 8 }, corrected: null, action: "unresolved", comment: "", verifier: "", verifiedAt: "" }],
+    controls: []
+  };
+  const session = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true }, rallyReviewsByVideo: { "youtube:real-match": review } } });
+  session.flushStorage();
+  let panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  let editor = panel.querySelector("[data-bso-rally-editor]");
+  editor.querySelector("[data-bso-rally-comment]").value = "Checked manually";
+  editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
+  editor.querySelector("[data-bso-rally-date]").value = "2026-02-31";
+  const writesBefore = session.storageWrites.length;
+  buttonWithText(editor, "Save correction").dispatchEvent({ type: "click" });
+  assert.equal(session.storageWrites.length, writesBefore, "invalid evidence is not persisted");
+  assert.equal(editor.querySelector("[data-bso-rally-date]").value, "2026-02-31", "the invalid draft remains editable");
+  assert.match(textOf(panel), /verifiedAt must be an ISO date or UTC timestamp/);
+
+  buttonWithText(panel, "Add empty-set control").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  const control = panel.querySelector("[data-bso-rally-control]");
+  control.querySelector("[data-bso-rally-comment]").value = "Checked manually";
+  control.querySelector("[data-bso-rally-verifier]").value = "worker-test";
+  control.querySelector("[data-bso-rally-date]").value = "2026-02-31";
+  const controlWritesBefore = session.storageWrites.length;
+  buttonWithText(control, "Not true").dispatchEvent({ type: "click" });
+  assert.equal(session.storageWrites.length, controlWritesBefore, "invalid control evidence is not persisted");
+  assert.equal(control.querySelector("[data-bso-rally-date]").value, "2026-02-31", "the invalid control draft remains editable");
+  assert.match(panel.querySelector("[data-bso-rally-notice]").textContent, /verifiedAt must be an ISO date or UTC timestamp/);
+});
+
 test("the settings panel stays available during setup and withholds only for a camera-cut reseed", async () => {
   const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
   live.flushStorage();
