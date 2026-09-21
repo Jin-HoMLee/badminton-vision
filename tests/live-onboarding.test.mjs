@@ -2273,6 +2273,7 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(session.runtimeStarts, 0);
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 1, "one proposed rally renders as one interval bar");
   assert.equal(panel.querySelectorAll(".bv-rally-edge").length, 2, "the bar's contained left/right edge zones are the only boundary affordances");
+  assert.equal(panel.querySelector("[data-bso-rally-lane-count]").getAttribute("data-bso-rally-lane-count"), "1", "non-overlapping rallies share one horizontal lane");
   assert.equal(panel.querySelector(".bv-panel-body").style.pointerEvents, "auto", "every visible rally-panel pixel captures clicks so they never reach YouTube");
   assert.equal(panel.querySelector("[data-bso-rally-scroll]").style.pointerEvents, "auto", "the timeline remains an interactive surface under the cursor");
   assert.ok(panel.querySelector(".bv-callout"), "the developer playback help callout is part of the panel hit surface");

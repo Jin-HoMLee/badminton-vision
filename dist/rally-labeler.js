@@ -556,6 +556,44 @@
     }
   }
 
+  function displayBounds(interval) {
+    if (!interval) return null;
+    if (interval.action === "removal") return clone(interval.corrected || interval.original);
+    return effectiveBounds(interval) || clone(interval.corrected || interval.original);
+  }
+
+  // Pack intervals onto the fewest horizontal lanes that avoid time overlap.
+  // Non-overlapping rallies share one lane; a second row opens only when two
+  // active ranges would collide. Removals keep their original range for packing.
+  function packTimelineLanes(document) {
+    var laneEnds = [];
+    var lanesById = Object.create(null);
+    var ordered = (document && Array.isArray(document.intervals) ? document.intervals.slice() : []).map(function (interval, index) {
+      return { interval: interval, index: index, bounds: displayBounds(interval) };
+    }).sort(function (a, b) {
+      var aStart = a.bounds ? a.bounds.startSec : Infinity;
+      var bStart = b.bounds ? b.bounds.startSec : Infinity;
+      if (aStart !== bStart) return aStart - bStart;
+      return a.index - b.index || String(a.interval.id).localeCompare(String(b.interval.id));
+    });
+    ordered.forEach(function (entry) {
+      var bounds = entry.bounds;
+      if (!bounds) {
+        lanesById[entry.interval.id] = 0;
+        return;
+      }
+      var lane = 0;
+      while (lane < laneEnds.length && laneEnds[lane] > bounds.startSec + 1e-9) lane += 1;
+      if (lane === laneEnds.length) laneEnds.push(bounds.endSec);
+      else laneEnds[lane] = bounds.endSec;
+      lanesById[entry.interval.id] = lane;
+    });
+    return {
+      laneCount: Math.max(1, laneEnds.length || 1),
+      lanesById: lanesById
+    };
+  }
+
   function createTimelineView(document, viewportWidth, zoom, scrollLeft) {
     var windowBounds = document.source.reviewWindow;
     var width = Math.max(1, Number(viewportWidth) || 1);
@@ -686,6 +724,8 @@
     setEdgeFromPlayhead: setEdgeFromPlayhead,
     clampPlayheadSeconds: clampPlayheadSeconds,
     isEditableKeyboardTarget: isEditableKeyboardTarget,
-    completeMetadata: completeMetadata
+    completeMetadata: completeMetadata,
+    displayBounds: displayBounds,
+    packTimelineLanes: packTimelineLanes
   };
 });

@@ -71,6 +71,19 @@ test("setEdgeFromPlayhead and clampPlayheadSeconds keep start before end", () =>
   assert.equal(model.clampPlayheadSeconds(document, 160.125), 160.125);
 });
 
+test("timeline packing keeps non-overlapping rallies on one horizontal lane", () => {
+  const packed = model.packTimelineLanes(fixture());
+  assert.equal(packed.laneCount, 1);
+  assert.equal(packed.lanesById["bwf-ws-2026:rally-001"], 0);
+  assert.equal(packed.lanesById["bwf-ws-2026:rally-002"], 0);
+
+  let overlapping = model.addInterval(fixture(), 112, 116);
+  overlapping = model.packTimelineLanes(overlapping);
+  assert.equal(overlapping.laneCount, 2, "only true time overlap opens a second lane");
+  assert.equal(overlapping.lanesById["bwf-ws-2026:rally-001"], 0);
+  assert.equal(overlapping.lanesById["bwf-ws-2026:addition-001"], 1);
+});
+
 test("editable keyboard targets are detected for focus-scoped shortcut isolation", () => {
   assert.equal(model.isEditableKeyboardTarget({ tagName: "TEXTAREA" }), true);
   assert.equal(model.isEditableKeyboardTarget({ tagName: "INPUT", type: "text" }), true);

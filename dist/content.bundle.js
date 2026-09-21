@@ -6879,6 +6879,44 @@
       }
     }
 
+    function displayBounds(interval) {
+      if (!interval) return null;
+      if (interval.action === "removal") return clone(interval.corrected || interval.original);
+      return effectiveBounds(interval) || clone(interval.corrected || interval.original);
+    }
+
+    // Pack intervals onto the fewest horizontal lanes that avoid time overlap.
+    // Non-overlapping rallies share one lane; a second row opens only when two
+    // active ranges would collide. Removals keep their original range for packing.
+    function packTimelineLanes(document) {
+      var laneEnds = [];
+      var lanesById = Object.create(null);
+      var ordered = (document && Array.isArray(document.intervals) ? document.intervals.slice() : []).map(function (interval, index) {
+        return { interval: interval, index: index, bounds: displayBounds(interval) };
+      }).sort(function (a, b) {
+        var aStart = a.bounds ? a.bounds.startSec : Infinity;
+        var bStart = b.bounds ? b.bounds.startSec : Infinity;
+        if (aStart !== bStart) return aStart - bStart;
+        return a.index - b.index || String(a.interval.id).localeCompare(String(b.interval.id));
+      });
+      ordered.forEach(function (entry) {
+        var bounds = entry.bounds;
+        if (!bounds) {
+          lanesById[entry.interval.id] = 0;
+          return;
+        }
+        var lane = 0;
+        while (lane < laneEnds.length && laneEnds[lane] > bounds.startSec + 1e-9) lane += 1;
+        if (lane === laneEnds.length) laneEnds.push(bounds.endSec);
+        else laneEnds[lane] = bounds.endSec;
+        lanesById[entry.interval.id] = lane;
+      });
+      return {
+        laneCount: Math.max(1, laneEnds.length || 1),
+        lanesById: lanesById
+      };
+    }
+
     function createTimelineView(document, viewportWidth, zoom, scrollLeft) {
       var windowBounds = document.source.reviewWindow;
       var width = Math.max(1, Number(viewportWidth) || 1);
@@ -7009,7 +7047,9 @@
       setEdgeFromPlayhead: setEdgeFromPlayhead,
       clampPlayheadSeconds: clampPlayheadSeconds,
       isEditableKeyboardTarget: isEditableKeyboardTarget,
-      completeMetadata: completeMetadata
+      completeMetadata: completeMetadata,
+      displayBounds: displayBounds,
+      packTimelineLanes: packTimelineLanes
     };
   });
 
@@ -10738,6 +10778,7 @@
     }
     function rallyDisplayBounds(interval) {
       if (!interval || !rallyApi) return null;
+      if (typeof rallyApi.displayBounds === "function") return rallyApi.displayBounds(interval);
       return rallyApi.effectiveBounds(interval) || interval.corrected || interval.original || null;
     }
     function updateRallyTimelineGeometry() {
@@ -11001,7 +11042,15 @@
       var windowBounds = rallyDocument.source.reviewWindow;
       var duration = windowBounds.endSec - windowBounds.startSec;
       var scroll = ui.el("div", { className: "bv-rally-timeline-scroll", tabindex: "0", role: "region", "aria-label": "Horizontally scrollable rally timeline", "data-bso-rally-scroll": "true", style: { pointerEvents: "auto" } });
-      var track = ui.el("div", { className: "bv-rally-timeline-track", style: { width: (rallyTimelineZoom * 100) + "%", height: Math.max(96, 42 + rallyDocument.intervals.length * 34) + "px" } });
+      var packing = typeof rallyApi.packTimelineLanes === "function"
+        ? rallyApi.packTimelineLanes(rallyDocument)
+        : { laneCount: 1, lanesById: Object.create(null) };
+      var laneCount = Math.max(1, Number(packing.laneCount) || 1);
+      var track = ui.el("div", {
+        className: "bv-rally-timeline-track",
+        "data-bso-rally-lane-count": String(laneCount),
+        style: { width: (rallyTimelineZoom * 100) + "%", height: Math.max(72, 34 + laneCount * 34) + "px" }
+      });
       var ruler = ui.el("div", { className: "bv-rally-ruler" });
       for (var tickIndex = 0; tickIndex <= 8; tickIndex += 1) {
         var tickSeconds = windowBounds.startSec + duration * tickIndex / 8;
@@ -11023,8 +11072,14 @@
         if (target && target.closest && (target.closest("[data-bso-rally-interval]") || target.closest("[data-bso-rally-playhead]") || target.closest(".bv-rally-tombstone"))) return;
         startRallyPlayheadGesture(event, scroll);
       });
-      rallyDocument.intervals.forEach(function (interval, index) {
-        var row = ui.el("div", { className: "bv-rally-timeline-row" + (interval.id === rallySelectedId ? " selected" : "") + (interval.action === "removal" ? " removed" : ""), style: { top: (34 + index * 34) + "px" } });
+      rallyDocument.intervals.forEach(function (interval) {
+        var lane = packing.lanesById && packing.lanesById[interval.id] != null ? Number(packing.lanesById[interval.id]) : 0;
+        if (!Number.isFinite(lane) || lane < 0) lane = 0;
+        var row = ui.el("div", {
+          className: "bv-rally-timeline-row" + (interval.id === rallySelectedId ? " selected" : "") + (interval.action === "removal" ? " removed" : ""),
+          "data-bso-rally-lane": String(lane),
+          style: { top: (34 + lane * 34) + "px" }
+        });
         var bounds = rallyDisplayBounds(interval);
         if (!bounds) {
           row.appendChild(ui.el("button", { className: "bv-rally-tombstone", type: "button", onClick: function () { selectRallyInterval(interval.id); } }, [interval.id + " · removed"]));

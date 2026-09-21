@@ -38,8 +38,10 @@ YouTube controls.
   center of the visible viewport.
 - **Scroll left/right** and the timeline's native horizontal scrollbar expose
   the expanded range.
-- Each active rally is exactly one interval bar. The contained left and right
-  edge hit zones edit start and end. There are no separate boundary markers.
+- Each active rally is exactly one interval bar. Bars are packed horizontally
+  on one lane in time order; a second row opens only when two ranges would
+  overlap. The contained left and right edge hit zones edit start and end.
+  There are no separate boundary markers.
 - Click/tap the bar body to select it and seek the blue playhead and YouTube
   player to that interval's start. Selection never changes review state. The
   bar body is not draggable. Only the start/end edge hit zones stretch or
