@@ -227,7 +227,13 @@
   }
 
   function inferredWindow(rawWindow, intervals, fallbackEnd) {
-    rawWindow = rawWindow || {};
+    if (rawWindow != null) {
+      if (!rawWindow || typeof rawWindow !== "object" || Array.isArray(rawWindow)) throw new TypeError("source.reviewWindow must be an object");
+      var declaredStart = parseSeconds(rawWindow.startSec != null ? rawWindow.startSec : rawWindow.start);
+      var declaredEnd = parseSeconds(rawWindow.endSec != null ? rawWindow.endSec : rawWindow.end);
+      return normalizeBounds(declaredStart, declaredEnd, "source.reviewWindow");
+    }
+    rawWindow = {};
     var start = parseSeconds(rawWindow.startSec != null ? rawWindow.startSec : rawWindow.start);
     var end = parseSeconds(rawWindow.endSec != null ? rawWindow.endSec : rawWindow.end);
     var bounds = intervals.map(function (interval) { return interval.corrected || interval.original; }).filter(Boolean);

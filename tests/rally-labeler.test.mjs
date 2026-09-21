@@ -202,3 +202,14 @@ test("normalization rejects invalid calendar dates in evidence", () => {
   assert.equal(parsed.ok, false);
   assert.match(parsed.error, /ISO date or UTC timestamp/);
 });
+
+test("normalization rejects invalid declared review windows without disabling defaults", () => {
+  assert.throws(() => model.normalizeDocument({
+    source: { id: "invalid-window", reviewWindow: { startSec: 100, endSec: 50 } },
+    intervals: [],
+    controls: []
+  }), /source\.reviewWindow must satisfy start < end/);
+
+  const inferred = model.normalizeDocument({ source: { id: "absent-window" }, intervals: [], controls: [] }, { fallbackEndSec: 30 });
+  assert.deepEqual(inferred.source.reviewWindow, { startSec: 0, endSec: 30 });
+});
