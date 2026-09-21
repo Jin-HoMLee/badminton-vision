@@ -67,7 +67,15 @@
   function normalizedDate(value) {
     var text = optionalText(value);
     if (!text) return "";
-    if (!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)?$/.test(text) || !Number.isFinite(Date.parse(text))) {
+    var match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{3}))?Z)?$/.exec(text);
+    var year = match && Number(match[1]);
+    var month = match && Number(match[2]);
+    var day = match && Number(match[3]);
+    var daysInMonth = year && month >= 1 && month <= 12
+      ? [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+      : 0;
+    var validTime = match && (!match[4] || (Number(match[4]) < 24 && Number(match[5]) < 60 && Number(match[6]) < 60));
+    if (!match || day < 1 || day > daysInMonth || !validTime) {
       throw new TypeError("verifiedAt must be an ISO date or UTC timestamp");
     }
     return text;

@@ -30,6 +30,7 @@ test("canonical normalization keeps stable source/interval identities and propos
   assert.equal(document.version, 1);
   assert.equal(document.source.id, "bwf-ws-2026");
   assert.equal(document.source.videoKey, "youtube:declared-match");
+  assert.equal(document.controls[0].sourceId, "bwf-ws-2026");
   assert.deepEqual(document.intervals[0].original, { startSec: 110, endSec: 114.5 });
   assert.equal(document.intervals[0].corrected, null);
   assert.equal(document.intervals[0].action, "unresolved");
@@ -177,4 +178,14 @@ test("URL-only imports bind only to the canonical active video identity", () => 
   })), { videoKey: "youtube:declared-match" });
   assert.equal(unparseable.ok, false);
   assert.match(unparseable.error, /absolute HTTP\(S\) URL/);
+});
+
+test("normalization rejects invalid calendar dates in evidence", () => {
+  const parsed = model.parse(JSON.stringify({
+    source: { id: "invalid-date", reviewWindow: { startSec: 0, endSec: 10 } },
+    intervals: [{ id: "invalid-date:rally-001", start: 2, end: 4, action: "approve", comment: "checked", verifier: "worker", verifiedAt: "2026-02-31" }],
+    controls: []
+  }));
+  assert.equal(parsed.ok, false);
+  assert.match(parsed.error, /ISO date or UTC timestamp/);
 });
