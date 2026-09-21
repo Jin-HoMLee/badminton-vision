@@ -209,6 +209,16 @@ test("false-positive removal keeps explicit comment evidence and allows tombston
   assert.equal(model.completion(document).complete, false);
 });
 
+test("an empty review requires an explicit confirmed empty-set control", () => {
+  let document = model.createDocument({ sourceId: "empty-source", videoKey: "youtube:empty", startSec: 0, endSec: 30 });
+  assert.equal(model.completion(document).complete, false);
+  document = model.addControl(document, "empty-set");
+  assert.equal(model.completion(document).complete, false, "an unresolved empty-set control still blocks completion");
+  const control = document.controls[0];
+  document = model.reviewControl(document, control.id, { state: "confirmed", ...evidence });
+  assert.equal(model.completion(document).complete, true, "explicitly confirming the empty set completes the empty review");
+});
+
 test("completion is blocked by unresolved evidence and contradictory controls", () => {
   let document = fixture();
   let result = model.completion(document);

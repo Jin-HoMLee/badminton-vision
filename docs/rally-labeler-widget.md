@@ -89,6 +89,13 @@ can see why it was removed. If those fields are empty, the panel keeps the
 interval and shows an inline error that names the exact empty fields. Removal
 evidence stays editable; the bar can be restored.
 
+When the developer widget is enabled on a fresh supported video, the
+workspace is created automatically after video metadata is available. It uses
+the active video's canonical identity and duration, starts with zero intervals,
+and remains incomplete until the reviewer explicitly confirms the empty set or
+adds/reviews a rally. JSON import still replaces that video-local document
+only after its identity check succeeds.
+
 The panel's user-resize bounds follow the rendered YouTube presentation
 container. Fullscreen removes the theater-mode width ceiling and permits a
 larger user-sized panel while preserving its current pixel size when valid;

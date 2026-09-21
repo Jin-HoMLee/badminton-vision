@@ -6849,6 +6849,13 @@
         else if (!completeMetadata(interval)) unresolved.push(interval.id + ":evidence");
       });
       var activeCount = document.intervals.filter(function (interval) { return Boolean(effectiveBounds(interval)); }).length;
+      // An empty interval collection is not self-approving. A reviewer must
+      // explicitly add and confirm the empty-set control before a fresh empty
+      // video can pass completion.
+      if (document.intervals.length === 0) {
+        var emptySetControl = document.controls.find(function (control) { return control.kind === "empty-set"; });
+        if (!emptySetControl || emptySetControl.state === "rejected") unresolved.push("empty-set:confirmation");
+      }
       document.controls.forEach(function (control) {
         if (control.state === "unresolved") unresolved.push(control.id + ":state");
         else if (!completeMetadata(control)) unresolved.push(control.id + ":evidence");
@@ -9609,7 +9616,11 @@
           // Duration becomes known once metadata loads; publish only on change.
           publishVideoInfo();
         };
-        videoGeometryListener = function () { positionToVideo(); publishVideoInfo(); };
+        videoGeometryListener = function () {
+          positionToVideo();
+          publishVideoInfo();
+          if (rallyLabelerEnabled() && ensureRallyDocument()) render();
+        };
         video.addEventListener("timeupdate", mediaTimeListener);
         video.addEventListener("loadedmetadata", videoGeometryListener);
         video.addEventListener("resize", videoGeometryListener);
@@ -10650,15 +10661,12 @@
         showRallyValidationError(error);
       }
     }
-    function createRallyDocument() {
-      if (!rallyApi) return;
+    function freshRallyDocument() {
+      if (!rallyApi) return null;
       var duration = video && Number(video.duration);
-      if (!Number.isFinite(duration) || duration <= 0) {
-        showRallyValidationError(new Error("Video duration is unavailable. Wait for metadata and try again."));
-        return;
-      }
+      if (!Number.isFinite(duration) || duration <= 0) return null;
       var info = currentVideoInfo();
-      var created = rallyApi.createDocument({
+      return rallyApi.createDocument({
         sourceId: activeVideoKey || currentVideoKey(),
         label: info && info.title || activeVideoKey || currentVideoKey(),
         videoKey: activeVideoKey || currentVideoKey(),
@@ -10666,6 +10674,21 @@
         startSec: 0,
         endSec: duration
       });
+    }
+    function ensureRallyDocument() {
+      if (!rallyLabelerEnabled() || rallyDocument) return false;
+      var created = freshRallyDocument();
+      if (!created) return false;
+      rallySelectedId = null;
+      return setRallyDocument(created, { history: false });
+    }
+    function createRallyDocument() {
+      if (!rallyApi) return;
+      var created = freshRallyDocument();
+      if (!created) {
+        showRallyValidationError(new Error("Video duration is unavailable. Wait for metadata and try again."));
+        return;
+      }
       rallySelectedId = null;
       if (setRallyDocument(created, { notice: "Created a video-local review window." })) render();
     }
@@ -11177,8 +11200,18 @@
       track.appendChild(playhead);
       track.addEventListener("pointerdown", function (event) {
         if (!event || event.button != null && event.button !== 0) return;
+        if (event.__bvRallyIntervalHandled) return;
         var target = event.target;
-        if (target && target.closest && (target.closest("[data-bso-rally-interval]") || target.closest("[data-bso-rally-playhead]") || target.closest(".bv-rally-tombstone"))) return;
+        var nested = function (selector) {
+          if (target && target.closest && target.closest(selector)) return true;
+          var node = target;
+          while (node && node !== track) {
+            if (node.matches && node.matches(selector)) return true;
+            node = node.parentNode;
+          }
+          return false;
+        };
+        if (nested("[data-bso-rally-interval]") || nested("[data-bso-rally-playhead]") || nested(".bv-rally-tombstone")) return;
         startRallyPlayheadGesture(event, scroll);
       });
       rallyDocument.intervals.forEach(function (interval) {
@@ -11211,11 +11244,13 @@
               // Stop the parent timeline's generic seek surface. The body is a
               // selector, never a playhead drag; only contained edge buttons
               // start resize gestures.
+              if (event) event.__bvRallyIntervalHandled = true;
               if (event && event.stopPropagation) event.stopPropagation();
             },
             onClick: function (event) {
               var target = event && event.target;
               if (target && target.closest && target.closest(".bv-rally-edge")) return;
+              if (event) event.__bvRallyIntervalHandled = true;
               if (event && event.stopPropagation) event.stopPropagation();
               selectRallyInterval(interval.id, { seekToStart: !removed });
             }
@@ -11867,6 +11902,11 @@
 
     function render() {
       if (!root) return;
+      // A newly enabled developer review starts as a durable empty document once
+      // video metadata is available, so the full workspace is usable before any
+      // JSON import. The empty interval set remains unresolved until explicit
+      // control confirmation is added; it is never treated as approval.
+      ensureRallyDocument();
       // Structural state updates replace the panel DOM. Never leave a pointer
       // gesture attached to a retired node or let it write stale geometry.
       captureRallyPanelScroll();

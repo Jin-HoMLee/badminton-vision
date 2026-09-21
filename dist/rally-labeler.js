@@ -526,6 +526,13 @@
       else if (!completeMetadata(interval)) unresolved.push(interval.id + ":evidence");
     });
     var activeCount = document.intervals.filter(function (interval) { return Boolean(effectiveBounds(interval)); }).length;
+    // An empty interval collection is not self-approving. A reviewer must
+    // explicitly add and confirm the empty-set control before a fresh empty
+    // video can pass completion.
+    if (document.intervals.length === 0) {
+      var emptySetControl = document.controls.find(function (control) { return control.kind === "empty-set"; });
+      if (!emptySetControl || emptySetControl.state === "rejected") unresolved.push("empty-set:confirmation");
+    }
     document.controls.forEach(function (control) {
       if (control.state === "unresolved") unresolved.push(control.id + ":state");
       else if (!completeMetadata(control)) unresolved.push(control.id + ":evidence");
