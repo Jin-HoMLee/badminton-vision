@@ -2461,6 +2461,14 @@
     });
     return node;
   }
+  function rallyActionBadgeTone(action) {
+    if (action === "removal") return "out";
+    if (action === "unresolved") return "warn";
+    if (action === "approve") return "in";
+    if (action === "addition") return "accent";
+    if (action === "correction") return "correction";
+    return "info";
+  }
   function rallyMetadataFields(item, options) {
     options = options || {};
     var commentPlaceholder = options.commentPlaceholder || "Why this approval, change, or removal is correct";
@@ -2487,7 +2495,7 @@
       var removalEditor = ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
         ui.el("div", { className: "bv-rally-editor-heading" }, [
           ui.el("strong", {}, [interval.id]),
-          ui.badge("removal", "out", false),
+          ui.badge("removal", rallyActionBadgeTone("removal"), false),
           ui.el("span", { className: "bv-mono", "data-bso-rally-exact": "true" }, [rallyApi.formatSeconds(bounds.startSec) + " → " + rallyApi.formatSeconds(bounds.endSec)])
         ]),
         ui.el("p", { className: "bv-helper" }, ["Boundaries stay locked on a removal. Record why this was a false positive, then restore only if the interval should become active again."]),
@@ -2502,7 +2510,7 @@
     var editor = ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
       ui.el("div", { className: "bv-rally-editor-heading" }, [
         ui.el("strong", {}, [interval.id]),
-        ui.badge(interval.action, interval.action === "removal" ? "out" : interval.action === "unresolved" ? "warn" : "info", false),
+        ui.badge(interval.action, rallyActionBadgeTone(interval.action), false),
         ui.el("span", { className: "bv-mono", "data-bso-rally-exact": "true" }, [rallyApi.formatSeconds(bounds.startSec) + " → " + rallyApi.formatSeconds(bounds.endSec)])
       ]),
       ui.el("p", { className: "bv-helper" }, ["Original proposal: " + (interval.original ? rallyApi.formatSeconds(interval.original.startSec) + " → " + rallyApi.formatSeconds(interval.original.endSec) : "none (manual addition)")]),
@@ -2588,12 +2596,11 @@
             if (target && target.closest && target.closest(".bv-rally-edge")) return;
             selectRallyInterval(interval.id, { seekToStart: !removed });
           },
+          // Body is click-to-seek only. Resize is edge-only so aiming stays sharp.
           onPointerdown: function (event) {
-            if (removed) {
-              if (event && event.preventDefault) event.preventDefault();
-              return;
-            }
-            startRallyGesture(event, interval.id, "move", scroll);
+            var target = event && event.target;
+            if (target && target.closest && target.closest(".bv-rally-edge")) return;
+            if (event && event.preventDefault) event.preventDefault();
           }
         }, [ui.el("span", { className: "bv-rally-interval-label" }, [removed ? interval.id + " · removed" : interval.id])]);
         if (!removed) {

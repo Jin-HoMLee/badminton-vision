@@ -2296,9 +2296,8 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   const playback = { paused: session.video.paused, muted: session.video.muted, rate: session.video.playbackRate, src: session.video.src };
 
   let bar = panel.querySelector("[data-bso-rally-interval]");
-  bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 31, button: 0, clientX: 120, currentTarget: bar });
-  session.emitWindow("pointerup", { pointerId: 31, clientX: 120 });
-  assert.equal(session.video.currentTime, 10, "tapping a labeled time bar seeks the player to that bar's start");
+  bar.dispatchEvent({ type: "click", target: bar });
+  assert.equal(session.video.currentTime, 10, "clicking a labeled time bar seeks the player to that bar's start");
   await new Promise((resolve) => setTimeout(resolve, 0));
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   session.video.dispatchEvent({ type: "timeupdate", target: session.video });
@@ -2306,6 +2305,7 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals[0].action, "unresolved", "selecting a bar does not mark it corrected");
   assert.match(panel.querySelector("[data-bso-rally-interval]").className, /unresolved/);
   assert.match(panel.querySelector("[data-bso-rally-interval]").className, /selected/);
+  assert.match(panel.querySelector("[data-bso-rally-editor]").querySelector(".bv-badge").className, /warn/, "editor badge matches pending timeline color");
 
   buttonWithText(panel, "Zoom in").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
@@ -2314,43 +2314,45 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   buttonWithText(panel, "Scroll right").dispatchEvent({ type: "click" });
   assert.ok(scroller.scrollLeft > 0, "the explicit scroll action advances the horizontal viewport");
 
-  // Drag the whole bar, pointer-resize the left edge, then use the keyboard on
-  // the right edge and exact numeric editing. All paths share one model.
+  // Body is click-to-seek only. Edge hit zones alone resize. A body pointer
+  // drag must not start a move or mark a correction.
   bar = panel.querySelector("[data-bso-rally-interval]");
-  const writesBeforeSecondaryPointer = session.storageWrites.length;
-  bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 6, button: 2, clientX: 100 });
+  const writesBeforeBodyDrag = session.storageWrites.length;
+  bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 6, button: 0, clientX: 100, currentTarget: bar });
   session.emitWindow("pointermove", { pointerId: 6, clientX: 140 });
   session.emitWindow("pointerup", { pointerId: 6, clientX: 140 });
-  assert.equal(bar.capturedPointerId, null, "a non-primary pointer cannot start a rally gesture");
-  assert.equal(session.storageWrites.length, writesBeforeSecondaryPointer, "a non-primary pointer cannot persist a rally edit");
-  bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 7, clientX: 100 });
+  assert.equal(session.storageWrites.length, writesBeforeBodyDrag, "bar body drag does not move or persist the interval");
+  assert.equal(session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals[0].action, "unresolved");
+
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  let startEdge = panel.querySelectorAll(".bv-rally-edge").find((edge) => edge.className.includes("start"));
+  const writesBeforeSecondaryPointer = session.storageWrites.length;
+  startEdge.dispatchEvent({ type: "pointerdown", target: startEdge, pointerId: 7, button: 2, clientX: 100, currentTarget: startEdge });
   session.emitWindow("pointermove", { pointerId: 7, clientX: 140 });
-  assert.equal(bar.capturedPointerId, 7, "the rally bar captures its active pointer");
+  session.emitWindow("pointerup", { pointerId: 7, clientX: 140 });
+  assert.equal(startEdge.capturedPointerId, null, "a non-primary pointer cannot start an edge gesture");
+  assert.equal(session.storageWrites.length, writesBeforeSecondaryPointer, "a non-primary pointer cannot persist a rally edit");
+  startEdge.dispatchEvent({ type: "pointerdown", target: startEdge, pointerId: 8, clientX: 100, currentTarget: startEdge });
+  session.emitWindow("pointermove", { pointerId: 8, clientX: 140 });
+  assert.equal(startEdge.capturedPointerId, 8, "the start edge captures its active pointer");
   session.onMessage({ type: "SET_PANELS", panels: { settings: true }, requestId: "rally-structural-rerender" });
-  assert.equal(bar.releasedPointerId, 7, "a structural rerender releases the retired rally pointer capture");
+  assert.equal(startEdge.releasedPointerId, 8, "a structural rerender releases the retired rally pointer capture");
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   assert.match(panel.querySelector("[data-bso-rally-interval]").getAttribute("aria-label"), /0:10\.000 to 0:20\.000/, "cancelling a drag restores the persisted bounds");
   const writesAfterRerender = session.storageWrites.length;
-  session.emitWindow("pointermove", { pointerId: 7, clientX: 140 });
-  session.emitWindow("pointerup", { pointerId: 7, clientX: 140 });
+  session.emitWindow("pointermove", { pointerId: 8, clientX: 140 });
+  session.emitWindow("pointerup", { pointerId: 8, clientX: 140 });
   assert.equal(session.storageWrites.length, writesAfterRerender, "a retired rally gesture cannot persist a stale edit");
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
-  bar = panel.querySelector("[data-bso-rally-interval]");
-  bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 8, clientX: 100 });
-  session.emitWindow("pointermove", { pointerId: 8, clientX: 120 });
-  session.emitWindow("pointerup", { pointerId: 8, clientX: 120 });
-  let afterMove = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals[0].corrected;
-  assert.ok(afterMove.startSec > 10);
-  assert.ok(Math.abs((afterMove.endSec - afterMove.startSec) - 10) < 1e-9, "bar drag preserves interval duration");
-  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
-  let startEdge = panel.querySelectorAll(".bv-rally-edge").find((edge) => edge.className.includes("start"));
-  startEdge.dispatchEvent({ type: "pointerdown", target: startEdge, pointerId: 9, clientX: 100 });
+  startEdge = panel.querySelectorAll(".bv-rally-edge").find((edge) => edge.className.includes("start"));
+  startEdge.dispatchEvent({ type: "pointerdown", target: startEdge, pointerId: 9, clientX: 100, currentTarget: startEdge });
   session.emitWindow("pointermove", { pointerId: 9, clientX: 140 });
   session.emitWindow("pointerup", { pointerId: 9, clientX: 140 });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   let endEdge = panel.querySelectorAll(".bv-rally-edge").find((edge) => edge.className.includes("end"));
   endEdge.dispatchEvent({ type: "keydown", target: endEdge, key: "ArrowRight", shiftKey: false });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.match(panel.querySelector("[data-bso-rally-editor]").querySelector(".bv-badge").className, /correction/, "editor badge matches corrected timeline color");
   const startInput = panel.querySelector("[data-bso-rally-start-input]");
   startInput.value = "0:12.345";
   startInput.dispatchEvent({ type: "change", target: startInput });
@@ -2606,10 +2608,10 @@ test("video teardown releases an active rally pointer capture", async () => {
     rallyReviewsByVideo: { "youtube:real-match": review }
   } });
   session.flushStorage();
-  const bar = session.overlayRoot().querySelector("[data-bso-rally-interval]");
-  bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 13, clientX: 100 });
+  const startEdge = session.overlayRoot().querySelectorAll(".bv-rally-edge").find((edge) => edge.className.includes("start"));
+  startEdge.dispatchEvent({ type: "pointerdown", target: startEdge, pointerId: 13, clientX: 100, currentTarget: startEdge });
   session.emitWindow("yt-navigate-start");
-  assert.equal(bar.releasedPointerId, 13);
+  assert.equal(startEdge.releasedPointerId, 13);
   const writesAfterTeardown = session.storageWrites.length;
   session.emitWindow("pointermove", { pointerId: 13, clientX: 160 });
   session.emitWindow("pointerup", { pointerId: 13, clientX: 160 });

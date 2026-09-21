@@ -163,6 +163,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-badge.out { color: var(--signal-out); background: var(--signal-out-tint); border-color: rgba(255,107,90,.4); }
 .bv-badge.warn { color: var(--signal-warn); background: var(--signal-warn-tint); border-color: rgba(255,176,32,.4); }
 .bv-badge.info { color: var(--signal-info); background: var(--signal-info-tint); border-color: rgba(98,182,255,.4); }
+.bv-badge.correction { color: #c4b5ff; background: rgba(139,124,255,.18); border-color: rgba(139,124,255,.45); }
 .bv-badge.unknown { color: var(--signal-unknown); background: var(--signal-unknown-tint); border-color: rgba(122,139,150,.4); }
 .bv-kbd {
   display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 var(--sp-2);
@@ -494,9 +495,11 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-ruler > span { position: absolute; top: 7px; transform: translateX(-50%); color: var(--text-faint); font: var(--type-mono); font-size: var(--fs-10); white-space: nowrap; }
 .bv-rally-ruler > span:first-child { transform: none; }
 .bv-rally-ruler > span:last-child { transform: translateX(-100%); }
-.bv-rally-playhead { position: absolute; z-index: 4; top: 30px; bottom: 0; width: 10px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; cursor: ew-resize; touch-action: none; pointer-events: auto; }
-.bv-rally-playhead::after { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 2px; background: var(--signal-info); pointer-events: none; }
-.bv-rally-playhead::before { content: ""; position: absolute; left: 1px; top: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid var(--signal-info); pointer-events: none; }
+/* Center the visible 2px line on the exact media second so it coincides with
+   interval start/end edges that use the same percentage left. */
+.bv-rally-playhead { position: absolute; z-index: 4; top: 30px; bottom: 0; width: 12px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; cursor: ew-resize; touch-action: none; pointer-events: auto; transform: translateX(-50%); }
+.bv-rally-playhead::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); background: var(--signal-info); pointer-events: none; }
+.bv-rally-playhead::before { content: ""; position: absolute; left: 50%; top: 0; transform: translateX(-50%); border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid var(--signal-info); pointer-events: none; }
 .bv-rally-playhead:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .bv-rally-timeline-row { position: absolute; left: 0; right: 0; height: 30px; border-bottom: 1px solid rgba(255,255,255,.025); }
 .bv-rally-timeline-row.selected { background: rgba(255,255,255,.04); }
@@ -513,9 +516,13 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-interval:focus-visible { box-shadow: inset 0 0 0 2px var(--ink-900), var(--focus-ring); }
 .bv-rally-interval.selected:focus-visible { box-shadow: 0 0 0 2px rgba(255,255,255,.88), 0 0 0 4px rgba(98,182,255,.55), var(--focus-ring); }
 .bv-rally-interval-label { position: absolute; inset: 2px 11px; overflow: hidden; font: var(--type-mono); font-size: var(--fs-10); line-height: 16px; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
-.bv-rally-edge { position: absolute; z-index: 2; top: 0; bottom: 0; width: min(10px, 50%); padding: 0; border: 0; background: transparent; touch-action: none; cursor: ew-resize; }
-.bv-rally-edge.start { left: 0; }
-.bv-rally-edge.end { right: 0; }
+/* Only the edge hit zones drag/resize. The bar body is click-to-seek only. */
+.bv-rally-edge { position: absolute; z-index: 2; top: -2px; bottom: -2px; width: 8px; padding: 0; border: 0; background: transparent; touch-action: none; cursor: ew-resize; }
+.bv-rally-edge.start { left: -4px; }
+.bv-rally-edge.end { right: -4px; }
+.bv-rally-edge::after { content: ""; position: absolute; top: 2px; bottom: 2px; width: 2px; background: rgba(255,255,255,.55); }
+.bv-rally-edge.start::after { left: 3px; }
+.bv-rally-edge.end::after { right: 3px; }
 .bv-rally-edge:focus-visible { outline: none; box-shadow: inset 2px 0 var(--text-primary); }
 .bv-rally-edge.end:focus-visible { box-shadow: inset -2px 0 var(--text-primary); }
 .bv-rally-tombstone { position: sticky; left: var(--sp-3); top: 4px; max-width: 260px; height: 22px; overflow: hidden; padding: 0 var(--sp-3); border: 1px dashed var(--signal-out); border-radius: var(--radius-xs); background: var(--signal-out-tint); color: var(--signal-out); font: var(--type-mono); font-size: var(--fs-10); text-overflow: ellipsis; white-space: nowrap; }

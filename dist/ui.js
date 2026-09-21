@@ -92,7 +92,7 @@
     return el("button", { className: "bv-icon-button " + (opts.size || "") + (opts.variant || "") + (opts.active ? " active" : ""), type: "button", "aria-label": label, title: label, disabled: opts.disabled, onClick: opts.onClick }, [icon(name, opts.iconSize || 14)]);
   }
 
-  var badgeTone = { neutral: "neutral", accent: "accent", in: "in", out: "out", warn: "warn", info: "info", unknown: "unknown" };
+  var badgeTone = { neutral: "neutral", accent: "accent", in: "in", out: "out", warn: "warn", info: "info", unknown: "unknown", correction: "correction" };
   function badge(text, tone, uppercase) { return el("span", { className: "bv-badge " + (badgeTone[tone] || "neutral"), style: uppercase === false ? { textTransform: "none", letterSpacing: "0" } : null }, [text]); }
   function kbd(text, accent) { return el("kbd", { className: "bv-kbd" + (accent ? " accent" : "") }, [text]); }
 
