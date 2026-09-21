@@ -27,10 +27,12 @@ or a general product rollout.
 
 The widget uses the content script's existing video discovery, replacement, SPA
 navigation, rendered-video anchoring, and media-time updates. The blue playhead
-observes the active `HTMLVideoElement.currentTime`. The widget has no operation
-that assigns `currentTime`, `paused`, `muted`, `playbackRate`, `src`, player
-geometry, or player styles. Play, pause, native seek, rate, theater, and
-fullscreen remain YouTube controls.
+tracks the active `HTMLVideoElement.currentTime`. Dragging that playhead (or an
+empty stretch of the timeline track) assigns `currentTime` so the YouTube video
+follows the help line. This is the only intentional playback write from the
+widget: it does not touch `paused`, `muted`, `playbackRate`, `src`, player
+geometry, or player styles. Play, pause, rate, theater, and fullscreen remain
+YouTube controls.
 
 - **Zoom in/out** expands or contracts the complete review window around the
   center of the visible viewport.
@@ -39,17 +41,27 @@ fullscreen remain YouTube controls.
 - Each active rally is exactly one interval bar. The contained left and right
   edge hit zones edit start and end. There are no separate boundary markers.
 - Drag the bar body to move an interval without changing its duration. Drag an
-  edge to resize it.
+  edge to stretch or shorten it. Edge drags snap/clip to the blue playhead when
+  they pass near it.
+- **Set start from playhead** / **Set end from playhead** copy the current
+  playhead time onto the selected interval (clamped and ordered so start stays
+  before end). Newly added missing rallies use the same editor and edge handles.
 - With an edge focused, `Left`/`Right` changes it by 0.1 seconds and
-  `Shift+Left`/`Shift+Right` changes it by 1 second. The exact numeric inputs
-  use 0.001-second steps.
+  `Shift+Left`/`Shift+Right` changes it by 1 second. Start/end text fields
+  accept human clocks (`h:mm:ss.sss`, `m:ss.sss`) as well as plain seconds; the
+  stored value remains a millisecond-rounded second number.
+- While a comment, verifier, date, or clock field inside the widget is focused,
+  widget keybinds and YouTube page shortcuts are suppressed for those keys.
+  Focus leaving the field restores both.
 - Every edit is clamped to the review window and enforces `start < end`.
   Changing seconds reopens comment/verifier/date evidence.
 
 **Add missing rally** creates a stable `source-id:addition-NNN` interval around
 the observed media time and persists it immediately. **Remove false positive**
-turns either a proposed or added interval into a durable removal tombstone; it
-can be restored. A removed item has no interval bar.
+turns either a proposed or added interval into a durable removal tombstone and
+requires the same non-empty comment/verifier/date evidence as an approval so
+later analysis can see why it was removed. A removed item has no interval bar,
+but its evidence fields stay editable; it can be restored.
 
 ## Canonical JSON contract
 

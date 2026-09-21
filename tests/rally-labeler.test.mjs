@@ -38,6 +38,47 @@ test("canonical normalization keeps stable source/interval identities and propos
   assert.equal(model.parseSeconds("1:54.500"), 114.5);
 });
 
+test("clock parse/format accepts hours:minutes:seconds and minutes:seconds", () => {
+  assert.equal(model.parseSeconds("1:02:03.250"), 3723.25);
+  assert.equal(model.parseSeconds("62:03.250"), null, "minutes overflow is rejected outside the hours form");
+  assert.equal(model.parseSeconds("1:02:03"), 3723);
+  assert.equal(model.parseSeconds("2:03.5"), 123.5);
+  assert.equal(model.parseSeconds("114.500"), 114.5);
+  assert.equal(model.formatSeconds(3723.25), "1:02:03.250");
+  assert.equal(model.formatSeconds(123.5), "2:03.500");
+});
+
+test("edge resize snaps to the playhead guide within the threshold", () => {
+  const document = fixture();
+  const view = model.createTimelineView(document, 600, 5, 0);
+  const snapped = model.pointerEdit(document, "bwf-ws-2026:rally-001", "end", 20, view, {
+    snapGuideSec: 115.2,
+    snapThresholdSec: 0.5
+  });
+  assert.deepEqual(model.effectiveBounds(snapped.intervals[0]), { startSec: 110, endSec: 115.2 });
+  assert.equal(model.snapSeconds(115.05, 115.2, 0.2), 115.2);
+  assert.equal(model.snapSeconds(114.0, 115.2, 0.2), 114.0);
+});
+
+test("setEdgeFromPlayhead and clampPlayheadSeconds keep start before end", () => {
+  let document = fixture();
+  document = model.setEdgeFromPlayhead(document, "bwf-ws-2026:rally-001", "start", 112.5);
+  assert.deepEqual(model.effectiveBounds(document.intervals[0]), { startSec: 112.5, endSec: 114.5 });
+  document = model.setEdgeFromPlayhead(document, "bwf-ws-2026:rally-001", "end", 113.25);
+  assert.deepEqual(model.effectiveBounds(document.intervals[0]), { startSec: 112.5, endSec: 113.25 });
+  assert.equal(model.clampPlayheadSeconds(document, 90), 100);
+  assert.equal(model.clampPlayheadSeconds(document, 240), 220);
+  assert.equal(model.clampPlayheadSeconds(document, 160.125), 160.125);
+});
+
+test("editable keyboard targets are detected for focus-scoped shortcut isolation", () => {
+  assert.equal(model.isEditableKeyboardTarget({ tagName: "TEXTAREA" }), true);
+  assert.equal(model.isEditableKeyboardTarget({ tagName: "INPUT", type: "text" }), true);
+  assert.equal(model.isEditableKeyboardTarget({ tagName: "INPUT", type: "button" }), false);
+  assert.equal(model.isEditableKeyboardTarget({ tagName: "BUTTON" }), false);
+  assert.equal(model.isEditableKeyboardTarget({ tagName: "DIV", isContentEditable: true }), true);
+});
+
 test("zoom preserves the anchored review second and explicit scrolling is clamped", () => {
   const document = fixture();
   const view = model.createTimelineView(document, 600, 1, 0);
@@ -126,21 +167,27 @@ test("removed intervals reject edits until explicit restoration", () => {
   assert.equal(edited.intervals[1].action, "correction");
 });
 
-test("adjudication state changes require fresh evidence", () => {
+test("false-positive removal keeps explicit comment evidence and allows tombstone updates", () => {
   let document = model.reviewInterval(fixture(), "bwf-ws-2026:rally-001", { action: "approve", ...evidence });
-  document = model.reviewInterval(document, "bwf-ws-2026:rally-001", { action: "removal", ...evidence });
-  const interval = document.intervals.find((item) => item.id === "bwf-ws-2026:rally-001");
-  assert.deepEqual({ comment: interval.comment, verifier: interval.verifier, verifiedAt: interval.verifiedAt }, { comment: "", verifier: "", verifiedAt: "" });
-  assert.equal(model.completion(document).complete, false);
+  const removalEvidence = {
+    comment: "Camera cut made this proposed rally a false positive.",
+    verifier: "developer@example.test",
+    verifiedAt: "2026-09-21"
+  };
+  document = model.removeInterval(document, "bwf-ws-2026:rally-001", removalEvidence);
+  let interval = document.intervals.find((item) => item.id === "bwf-ws-2026:rally-001");
+  assert.equal(interval.action, "removal");
+  assert.deepEqual({ comment: interval.comment, verifier: interval.verifier, verifiedAt: interval.verifiedAt }, removalEvidence);
+  assert.equal(model.effectiveBounds(interval), null);
 
-  const exportedRemoval = model.removeInterval(
-    model.reviewInterval(fixture(), "bwf-ws-2026:rally-001", { action: "approve", ...evidence }),
-    "bwf-ws-2026:rally-001",
-    evidence
-  );
-  const removedInterval = exportedRemoval.intervals.find((item) => item.id === "bwf-ws-2026:rally-001");
-  assert.deepEqual({ comment: removedInterval.comment, verifier: removedInterval.verifier, verifiedAt: removedInterval.verifiedAt }, { comment: "", verifier: "", verifiedAt: "" });
-  assert.equal(model.completion(exportedRemoval).complete, false);
+  const revised = {
+    comment: "Revised: replay showed the shuttle was already down.",
+    verifier: "developer@example.test",
+    verifiedAt: "2026-09-21"
+  };
+  document = model.removeInterval(document, "bwf-ws-2026:rally-001", revised);
+  interval = document.intervals.find((item) => item.id === "bwf-ws-2026:rally-001");
+  assert.deepEqual({ comment: interval.comment, verifier: interval.verifier, verifiedAt: interval.verifiedAt }, revised);
 
   document = model.reviewControl(document, "club-fixed-cam:empty", { state: "confirmed", ...evidence });
   document = model.reviewControl(document, "club-fixed-cam:empty", { state: "rejected", ...evidence });

@@ -430,18 +430,20 @@
 
   function removeInterval(document, id, fields) {
     fields = fields || {};
-    editableInterval(document, id);
+    var existing = document.intervals.find(function (item) { return item.id === String(id); });
+    if (!existing) throw new TypeError("unknown interval id: " + id);
     return replaceInterval(document, id, function (interval) {
       var previousAction = interval.action;
       interval.corrected = interval.corrected || interval.original;
-      var staleEvidence = previousAction !== "removal" && evidenceMatches(interval, fields);
       interval.action = "removal";
-      if (previousAction !== interval.action) clearEvidence(interval);
-      if (!staleEvidence) {
-        if (fields.comment != null) interval.comment = optionalText(fields.comment);
-        if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
-        if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
-      }
+      // Removals keep explicit comment/verifier/date so a false-positive reason
+      // remains available for later analysis. Empty field bags still clear prior
+      // approval evidence so a bare remove cannot silently reuse it. An already
+      // removed tombstone can receive evidence updates without restoration.
+      if (previousAction !== "removal") clearEvidence(interval);
+      if (fields.comment != null) interval.comment = optionalText(fields.comment);
+      if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
+      if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
       return interval;
     });
   }
@@ -471,14 +473,13 @@
         interval.corrected = interval.corrected || interval.original;
       }
       var sameAction = interval.action === action;
-      var staleEvidence = !sameAction && evidenceMatches(interval, fields);
       if (!sameAction) clearEvidence(interval);
       interval.action = action;
-      if (!staleEvidence) {
-        if (fields.comment != null) interval.comment = optionalText(fields.comment);
-        if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
-        if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
-      }
+      // Explicit form commits always write through. Callers that need a clean
+      // slate omit fields or pass empty strings after an action change.
+      if (fields.comment != null) interval.comment = optionalText(fields.comment);
+      if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
+      if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
       return interval;
     });
   }
@@ -594,15 +595,59 @@
     return createTimelineView(document, view.viewportWidth, view.zoom, view.scrollLeft + Number(deltaPixels || 0));
   }
 
-  function pointerEdit(document, id, mode, deltaPixels, view) {
+  function snapSeconds(value, guideSeconds, thresholdSeconds) {
+    var seconds = roundSeconds(value);
+    var guide = roundSeconds(guideSeconds);
+    var threshold = Number(thresholdSeconds);
+    if (seconds == null) return null;
+    if (guide == null || !Number.isFinite(threshold) || threshold < 0) return seconds;
+    return Math.abs(seconds - guide) <= threshold + 1e-12 ? guide : seconds;
+  }
+
+  function pointerEdit(document, id, mode, deltaPixels, view, options) {
+    options = options || {};
     var deltaSeconds = Number(deltaPixels || 0) / view.pixelsPerSecond;
     var interval = document.intervals.find(function (item) { return item.id === String(id); });
     if (!interval) throw new TypeError("unknown interval id: " + id);
     var bounds = effectiveBounds(interval) || interval.corrected || interval.original;
     if (mode === "move") return moveInterval(document, id, deltaSeconds);
-    if (mode === "start") return resizeInterval(document, id, "start", bounds.startSec + deltaSeconds);
-    if (mode === "end") return resizeInterval(document, id, "end", bounds.endSec + deltaSeconds);
-    throw new TypeError("pointer edit mode must be move, start, or end");
+    var edgeSeconds = mode === "start"
+      ? bounds.startSec + deltaSeconds
+      : mode === "end"
+        ? bounds.endSec + deltaSeconds
+        : null;
+    if (edgeSeconds == null) throw new TypeError("pointer edit mode must be move, start, or end");
+    var threshold = options.snapThresholdSec;
+    if (threshold == null && options.snapThresholdPx != null && view && view.pixelsPerSecond) {
+      threshold = Number(options.snapThresholdPx) / view.pixelsPerSecond;
+    }
+    if (threshold == null) threshold = view && view.pixelsPerSecond ? 8 / view.pixelsPerSecond : 0.1;
+    edgeSeconds = snapSeconds(edgeSeconds, options.snapGuideSec, threshold);
+    return resizeInterval(document, id, mode, edgeSeconds);
+  }
+
+  function setEdgeFromPlayhead(document, id, edge, playheadSeconds) {
+    var seconds = roundSeconds(playheadSeconds);
+    if (seconds == null) throw new TypeError("playhead seconds must be finite");
+    return resizeInterval(document, id, edge, seconds);
+  }
+
+  function clampPlayheadSeconds(document, seconds) {
+    var value = roundSeconds(seconds);
+    if (value == null) return null;
+    if (!document || !document.source || !document.source.reviewWindow) return value;
+    return roundSeconds(clamp(value, document.source.reviewWindow.startSec, document.source.reviewWindow.endSec));
+  }
+
+  function isEditableKeyboardTarget(target) {
+    if (!target) return false;
+    if (target.isContentEditable) return true;
+    var tag = target.tagName ? String(target.tagName).toLowerCase() : "";
+    if (tag === "textarea") return true;
+    if (tag === "select") return true;
+    if (tag !== "input") return false;
+    var type = String(target.type || "text").toLowerCase();
+    return type !== "button" && type !== "submit" && type !== "reset" && type !== "checkbox" && type !== "radio" && type !== "file" && type !== "range" && type !== "color" && type !== "image";
   }
 
   return {
@@ -636,6 +681,11 @@
     pixelsToSeconds: pixelsToSeconds,
     zoomTimeline: zoomTimeline,
     scrollTimeline: scrollTimeline,
-    pointerEdit: pointerEdit
+    pointerEdit: pointerEdit,
+    snapSeconds: snapSeconds,
+    setEdgeFromPlayhead: setEdgeFromPlayhead,
+    clampPlayheadSeconds: clampPlayheadSeconds,
+    isEditableKeyboardTarget: isEditableKeyboardTarget,
+    completeMetadata: completeMetadata
   };
 });

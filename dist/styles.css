@@ -473,8 +473,10 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-ruler > span { position: absolute; top: 7px; transform: translateX(-50%); color: var(--text-faint); font: var(--type-mono); font-size: var(--fs-10); white-space: nowrap; }
 .bv-rally-ruler > span:first-child { transform: none; }
 .bv-rally-ruler > span:last-child { transform: translateX(-100%); }
-.bv-rally-playhead { position: absolute; z-index: 4; top: 30px; bottom: 0; width: 1px; background: var(--signal-info); pointer-events: none; }
-.bv-rally-playhead::before { content: ""; position: absolute; left: -3px; top: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid var(--signal-info); }
+.bv-rally-playhead { position: absolute; z-index: 4; top: 30px; bottom: 0; width: 10px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; cursor: ew-resize; touch-action: none; pointer-events: auto; }
+.bv-rally-playhead::after { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 2px; background: var(--signal-info); pointer-events: none; }
+.bv-rally-playhead::before { content: ""; position: absolute; left: 1px; top: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid var(--signal-info); pointer-events: none; }
+.bv-rally-playhead:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .bv-rally-timeline-row { position: absolute; left: 0; right: 0; height: 30px; border-bottom: 1px solid rgba(255,255,255,.025); }
 .bv-rally-timeline-row.selected { background: rgba(98,182,255,.06); }
 .bv-rally-interval { position: absolute; top: 4px; box-sizing: border-box; min-width: 3px; height: 22px; overflow: hidden; border: 1px solid var(--lime-500); border-radius: var(--radius-xs); background: rgba(200,240,74,.18); color: var(--text-primary); cursor: grab; touch-action: none; user-select: none; }

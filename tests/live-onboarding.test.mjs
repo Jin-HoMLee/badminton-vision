@@ -2237,7 +2237,7 @@ test("the settings panel mounts without inference and renders version, note, and
   assert.equal(session.storageWrites.at(-1).bvState.panelsByVideo["youtube:real-match"].settings, false, "the hide is stored for this video");
 });
 
-test("developer rally widget edits, zooms, scrolls, adds, removes, and persists without touching playback", async () => {
+test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks only via the playhead", async () => {
   const review = {
     schema: "badminton-vision.rally-review",
     version: 1,
@@ -2277,14 +2277,14 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   assert.equal(panel.querySelector("[data-bso-rally-scroll]").style.pointerEvents, "auto", "the timeline remains an interactive surface");
   assert.equal(panel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "false");
 
-  // Native media time drives the read-only playhead; no extension action
-  // changes the player's playback fields.
+  // Native media time drives the playhead; only an explicit playhead/timeline
+  // drag may assign currentTime. Pause/mute/rate stay untouched.
   session.video.currentTime = 18.25;
   session.video.dispatchEvent({ type: "timeupdate", target: session.video });
   let playhead = panel.querySelector("[data-bso-rally-playhead]");
   assert.equal(playhead.getAttribute("data-bso-media-seconds"), "18.25");
   assert.equal(panel.querySelector("[data-bso-rally-clock]").textContent, "0:18.250");
-  const playback = { paused: session.video.paused, muted: session.video.muted, rate: session.video.playbackRate };
+  const playback = { paused: session.video.paused, muted: session.video.muted, rate: session.video.playbackRate, src: session.video.src };
 
   buttonWithText(panel, "Zoom in").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
@@ -2331,7 +2331,7 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   endEdge.dispatchEvent({ type: "keydown", target: endEdge, key: "ArrowRight", shiftKey: false });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   const startInput = panel.querySelector("[data-bso-rally-start-input]");
-  startInput.value = "12.345";
+  startInput.value = "0:12.345";
   startInput.dispatchEvent({ type: "change", target: startInput });
   let savedReview = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
   assert.equal(savedReview.intervals[0].original.startSec, 10, "the original proposed edge is immutable");
@@ -2340,6 +2340,48 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
 
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   let editor = panel.querySelector("[data-bso-rally-editor]");
+  assert.equal(editor.querySelector("[data-bso-rally-start-input]").getAttribute("type"), "text", "start accepts human clock strings");
+  session.video.currentTime = 14.5;
+  session.video.dispatchEvent({ type: "timeupdate", target: session.video });
+  buttonWithText(editor, "Set end from playhead").dispatchEvent({ type: "click" });
+  savedReview = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.equal(savedReview.intervals[0].corrected.endSec, 14.5, "set end copies the blue playhead time");
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  editor = panel.querySelector("[data-bso-rally-editor]");
+  buttonWithText(editor, "Set start from playhead").dispatchEvent({ type: "click" });
+  savedReview = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.ok(savedReview.intervals[0].corrected.startSec < savedReview.intervals[0].corrected.endSec, "set start clamps before end");
+
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  playhead = panel.querySelector("[data-bso-rally-playhead]");
+  const scrollerBox = { left: 0, width: 600 };
+  panel.querySelector("[data-bso-rally-scroll]").getBoundingClientRect = () => scrollerBox;
+  panel.querySelector("[data-bso-rally-scroll]").clientWidth = 600;
+  playhead.dispatchEvent({ type: "pointerdown", target: playhead, pointerId: 21, button: 0, clientX: 300, currentTarget: playhead });
+  session.emitWindow("pointermove", { pointerId: 21, clientX: 450 });
+  session.emitWindow("pointerup", { pointerId: 21, clientX: 450 });
+  assert.ok(session.video.currentTime > 18.25, "dragging the blue playhead seeks the YouTube video");
+  assert.equal(session.video.paused, playback.paused);
+  assert.equal(session.video.muted, playback.muted);
+  assert.equal(session.video.playbackRate, playback.rate);
+  assert.equal(session.video.src, playback.src);
+
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  editor = panel.querySelector("[data-bso-rally-editor]");
+  const commentField = editor.querySelector("[data-bso-rally-comment]");
+  let stopped = false;
+  const isolated = {
+    type: "keydown",
+    key: "k",
+    target: commentField,
+    preventDefault() {},
+    stopPropagation() { stopped = true; },
+    stopImmediatePropagation() { stopped = true; }
+  };
+  session.emitWindow("keydown", isolated);
+  assert.equal(stopped, true, "focused comment fields stop page/widget shortcut propagation");
+  assert.equal(session.emitKey("k", { target: commentField }), false, "focused rally text does not trigger extension shortcuts");
+
   editor.querySelector("[data-bso-rally-comment]").value = "The visible serve begins after the provisional edge.";
   editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
   editor.querySelector("[data-bso-rally-date]").value = "2026-09-20";
@@ -2350,6 +2392,9 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 2, "Add missing rally creates a real bar");
   editor = panel.querySelector("[data-bso-rally-editor]");
+  assert.ok(editor.querySelector("[data-bso-rally-set-start]"), "added missing rallies expose set-start from playhead");
+  assert.ok(editor.querySelector("[data-bso-rally-set-end]"), "added missing rallies expose set-end from playhead");
+  assert.ok(editor.querySelectorAll(".bv-rally-edge").length >= 0, "added missing rallies keep timeline edges editable after selection");
   editor.querySelector("[data-bso-rally-comment]").value = "A second rally is visible at this media time.";
   editor.querySelector("[data-bso-rally-verifier]").value = "worker-test";
   editor.querySelector("[data-bso-rally-date]").value = "2026-09-20";
@@ -2367,6 +2412,8 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   editor = panel.querySelector("[data-bso-rally-editor]");
   assert.equal(editor.querySelector("[data-bso-rally-start-input]"), null, "removed tombstones have no editable start input");
   assert.equal(editor.querySelector("[data-bso-rally-end-input]"), null, "removed tombstones have no editable end input");
+  assert.equal(editor.querySelector("[data-bso-rally-comment]").value, "Added in error; remove this false positive.", "false-positive removals keep their explanation");
+  assert.ok(buttonWithText(editor, "Save removal evidence"), "removal evidence remains editable on the tombstone");
   buttonWithText(editor, "Restore").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 2, "explicit Restore brings the interval back");
@@ -2394,6 +2441,7 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   assert.equal(session.video.paused, playback.paused);
   assert.equal(session.video.muted, playback.muted);
   assert.equal(session.video.playbackRate, playback.rate);
+  assert.equal(session.video.src, playback.src);
 
   const persisted = JSON.parse(JSON.stringify(session.storageWrites.at(-1).bvState));
   const restored = await createSession({ storedState: persisted });

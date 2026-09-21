@@ -6753,18 +6753,20 @@
 
     function removeInterval(document, id, fields) {
       fields = fields || {};
-      editableInterval(document, id);
+      var existing = document.intervals.find(function (item) { return item.id === String(id); });
+      if (!existing) throw new TypeError("unknown interval id: " + id);
       return replaceInterval(document, id, function (interval) {
         var previousAction = interval.action;
         interval.corrected = interval.corrected || interval.original;
-        var staleEvidence = previousAction !== "removal" && evidenceMatches(interval, fields);
         interval.action = "removal";
-        if (previousAction !== interval.action) clearEvidence(interval);
-        if (!staleEvidence) {
-          if (fields.comment != null) interval.comment = optionalText(fields.comment);
-          if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
-          if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
-        }
+        // Removals keep explicit comment/verifier/date so a false-positive reason
+        // remains available for later analysis. Empty field bags still clear prior
+        // approval evidence so a bare remove cannot silently reuse it. An already
+        // removed tombstone can receive evidence updates without restoration.
+        if (previousAction !== "removal") clearEvidence(interval);
+        if (fields.comment != null) interval.comment = optionalText(fields.comment);
+        if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
+        if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
         return interval;
       });
     }
@@ -6794,14 +6796,13 @@
           interval.corrected = interval.corrected || interval.original;
         }
         var sameAction = interval.action === action;
-        var staleEvidence = !sameAction && evidenceMatches(interval, fields);
         if (!sameAction) clearEvidence(interval);
         interval.action = action;
-        if (!staleEvidence) {
-          if (fields.comment != null) interval.comment = optionalText(fields.comment);
-          if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
-          if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
-        }
+        // Explicit form commits always write through. Callers that need a clean
+        // slate omit fields or pass empty strings after an action change.
+        if (fields.comment != null) interval.comment = optionalText(fields.comment);
+        if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
+        if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
         return interval;
       });
     }
@@ -6917,15 +6918,59 @@
       return createTimelineView(document, view.viewportWidth, view.zoom, view.scrollLeft + Number(deltaPixels || 0));
     }
 
-    function pointerEdit(document, id, mode, deltaPixels, view) {
+    function snapSeconds(value, guideSeconds, thresholdSeconds) {
+      var seconds = roundSeconds(value);
+      var guide = roundSeconds(guideSeconds);
+      var threshold = Number(thresholdSeconds);
+      if (seconds == null) return null;
+      if (guide == null || !Number.isFinite(threshold) || threshold < 0) return seconds;
+      return Math.abs(seconds - guide) <= threshold + 1e-12 ? guide : seconds;
+    }
+
+    function pointerEdit(document, id, mode, deltaPixels, view, options) {
+      options = options || {};
       var deltaSeconds = Number(deltaPixels || 0) / view.pixelsPerSecond;
       var interval = document.intervals.find(function (item) { return item.id === String(id); });
       if (!interval) throw new TypeError("unknown interval id: " + id);
       var bounds = effectiveBounds(interval) || interval.corrected || interval.original;
       if (mode === "move") return moveInterval(document, id, deltaSeconds);
-      if (mode === "start") return resizeInterval(document, id, "start", bounds.startSec + deltaSeconds);
-      if (mode === "end") return resizeInterval(document, id, "end", bounds.endSec + deltaSeconds);
-      throw new TypeError("pointer edit mode must be move, start, or end");
+      var edgeSeconds = mode === "start"
+        ? bounds.startSec + deltaSeconds
+        : mode === "end"
+          ? bounds.endSec + deltaSeconds
+          : null;
+      if (edgeSeconds == null) throw new TypeError("pointer edit mode must be move, start, or end");
+      var threshold = options.snapThresholdSec;
+      if (threshold == null && options.snapThresholdPx != null && view && view.pixelsPerSecond) {
+        threshold = Number(options.snapThresholdPx) / view.pixelsPerSecond;
+      }
+      if (threshold == null) threshold = view && view.pixelsPerSecond ? 8 / view.pixelsPerSecond : 0.1;
+      edgeSeconds = snapSeconds(edgeSeconds, options.snapGuideSec, threshold);
+      return resizeInterval(document, id, mode, edgeSeconds);
+    }
+
+    function setEdgeFromPlayhead(document, id, edge, playheadSeconds) {
+      var seconds = roundSeconds(playheadSeconds);
+      if (seconds == null) throw new TypeError("playhead seconds must be finite");
+      return resizeInterval(document, id, edge, seconds);
+    }
+
+    function clampPlayheadSeconds(document, seconds) {
+      var value = roundSeconds(seconds);
+      if (value == null) return null;
+      if (!document || !document.source || !document.source.reviewWindow) return value;
+      return roundSeconds(clamp(value, document.source.reviewWindow.startSec, document.source.reviewWindow.endSec));
+    }
+
+    function isEditableKeyboardTarget(target) {
+      if (!target) return false;
+      if (target.isContentEditable) return true;
+      var tag = target.tagName ? String(target.tagName).toLowerCase() : "";
+      if (tag === "textarea") return true;
+      if (tag === "select") return true;
+      if (tag !== "input") return false;
+      var type = String(target.type || "text").toLowerCase();
+      return type !== "button" && type !== "submit" && type !== "reset" && type !== "checkbox" && type !== "radio" && type !== "file" && type !== "range" && type !== "color" && type !== "image";
     }
 
     return {
@@ -6959,7 +7004,12 @@
       pixelsToSeconds: pixelsToSeconds,
       zoomTimeline: zoomTimeline,
       scrollTimeline: scrollTimeline,
-      pointerEdit: pointerEdit
+      pointerEdit: pointerEdit,
+      snapSeconds: snapSeconds,
+      setEdgeFromPlayhead: setEdgeFromPlayhead,
+      clampPlayheadSeconds: clampPlayheadSeconds,
+      isEditableKeyboardTarget: isEditableKeyboardTarget,
+      completeMetadata: completeMetadata
     };
   });
 
@@ -8396,7 +8446,9 @@
 /* src/content.js */
   /*
    * YouTube sibling overlay. It reads the active video and anchors to its client
-   * rectangle; it never calls a playback mutator or writes to the video element.
+   * rectangle. Outside the developer rally-boundary widget it never calls a
+   * playback mutator or writes to the video element; that widget alone may assign
+   * currentTime when the reviewer drags its playhead or uses set-start/set-end.
    */
   (function () {
     // All MV3 page actions enter through this one bundled content script. Keep
@@ -10427,13 +10479,41 @@
       if (!rallyDocument) return;
       var seconds = rallyApi.parseSeconds(value);
       if (seconds == null) {
-        rallyNotice = { ok: false, message: "Enter seconds as a number or mm:ss.sss." };
+        rallyNotice = { ok: false, message: "Enter a clock time such as 1:23:45.000, 12:34.500, or plain seconds." };
         render();
         return;
       }
       var next = rallyApi.resizeInterval(rallyDocument, id, edge, seconds);
       if (setRallyDocument(next)) render();
       else render();
+    }
+    function setRallyEdgeFromPlayhead(id, edge) {
+      if (!rallyDocument || !rallyApi) return;
+      var seconds = currentMediaTimestamp();
+      if (seconds == null) {
+        showRallyValidationError(new Error("Media time is unavailable."));
+        return;
+      }
+      try {
+        var next = rallyApi.setEdgeFromPlayhead(rallyDocument, id, edge, seconds);
+        if (setRallyDocument(next, { notice: "Set " + edge + " from the playhead." })) render();
+        else showRallyValidationError(rallyNotice && rallyNotice.message);
+      } catch (error) {
+        showRallyValidationError(error);
+      }
+    }
+    function seekVideoToSeconds(seconds) {
+      if (!video || !rallyApi) return false;
+      var next = rallyDocument ? rallyApi.clampPlayheadSeconds(rallyDocument, seconds) : rallyApi.roundSeconds(seconds);
+      if (next == null || !Number.isFinite(next)) return false;
+      try {
+        video.currentTime = next;
+        mediaTime = next;
+        refreshRallyPlayhead();
+        return true;
+      } catch (_) {
+        return false;
+      }
     }
     function addMissingRally() {
       if (!rallyDocument) return;
@@ -10454,7 +10534,22 @@
       if (!rallyDocument) return;
       var fields = rallyEvidence(container);
       fields.action = action;
-      commitRallyUpdate(function () { return rallyApi.reviewInterval(rallyDocument, id, fields); }, "Saved " + action + " evidence for " + id + ".");
+      if (action === "removal" && !(fields.comment && fields.verifier && fields.verifiedAt)) {
+        showRallyValidationError(new Error("False-positive removals need a comment, verifier, and date explaining why the rally was removed."));
+        return;
+      }
+      commitRallyUpdate(function () {
+        var next = action === "removal"
+          ? rallyApi.removeInterval(rallyDocument, id, fields)
+          : rallyApi.reviewInterval(rallyDocument, id, fields);
+        if (action === "removal") {
+          var removed = next.intervals.find(function (interval) { return interval.id === String(id); });
+          if (!removed || !rallyApi.completeMetadata(removed)) {
+            throw new Error("False-positive removals need a comment, verifier, and date explaining why the rally was removed.");
+          }
+        }
+        return next;
+      }, "Saved " + action + " evidence for " + id + ".");
     }
     function restoreRallyInterval(id) {
       if (setRallyDocument(rallyApi.restoreInterval(rallyDocument, id), { notice: "Restored " + id + " for review." })) render();
@@ -10557,8 +10652,8 @@
       if (selectedBounds) {
         var startInput = root.querySelector("[data-bso-rally-start-input]");
         var endInput = root.querySelector("[data-bso-rally-end-input]");
-        if (startInput) startInput.value = selectedBounds.startSec.toFixed(3);
-        if (endInput) endInput.value = selectedBounds.endSec.toFixed(3);
+        if (startInput && document.activeElement !== startInput) startInput.value = rallyApi.formatSeconds(selectedBounds.startSec);
+        if (endInput && document.activeElement !== endInput) endInput.value = rallyApi.formatSeconds(selectedBounds.endSec);
         var exact = root.querySelector("[data-bso-rally-exact]");
         if (exact) exact.textContent = rallyApi.formatSeconds(selectedBounds.startSec) + " → " + rallyApi.formatSeconds(selectedBounds.endSec);
       }
@@ -10578,19 +10673,29 @@
       playhead.setAttribute("data-bso-media-seconds", String(rallyApi.roundSeconds(seconds)));
       return true;
     }
+    function rallyTimelineViewForScroller(scroller) {
+      var viewportWidth = Number(scroller && scroller.clientWidth) || 640;
+      var scrollLeft = Number(scroller && scroller.scrollLeft) || rallyTimelineScroll;
+      return rallyApi.createTimelineView(rallyDocument, viewportWidth, rallyTimelineZoom, scrollLeft);
+    }
     function startRallyGesture(event, id, mode, scroller) {
       if (!rallyDocument || !event) return;
       if (event.button != null && event.button !== 0) return;
       if (event.preventDefault) event.preventDefault();
       if (event.stopPropagation) event.stopPropagation();
-      var viewportWidth = Number(scroller && scroller.clientWidth) || 640;
-      var scrollLeft = Number(scroller && scroller.scrollLeft) || rallyTimelineScroll;
-      var view = rallyApi.createTimelineView(rallyDocument, viewportWidth, rallyTimelineZoom, scrollLeft);
-      rallyGesture = { id: String(id), mode: mode, pointerId: event.pointerId, startX: Number(event.clientX) || 0, base: rallyDocument, view: view, target: event.currentTarget || event.target };
-      rallySelectedId = String(id);
+      var view = rallyTimelineViewForScroller(scroller);
+      rallyGesture = { id: id != null ? String(id) : null, mode: mode, pointerId: event.pointerId, startX: Number(event.clientX) || 0, base: rallyDocument, view: view, target: event.currentTarget || event.target, scroller: scroller };
+      if (id != null) rallySelectedId = String(id);
       if (rallyGesture.target && rallyGesture.pointerId != null && typeof rallyGesture.target.setPointerCapture === "function") {
         try { rallyGesture.target.setPointerCapture(rallyGesture.pointerId); } catch (_) {}
       }
+    }
+    function startRallyPlayheadGesture(event, scroller) {
+      if (!rallyDocument || !event) return;
+      if (event.button != null && event.button !== 0) return;
+      startRallyGesture(event, null, "playhead", scroller);
+      var localX = (Number(event.clientX) || 0) - (scroller && scroller.getBoundingClientRect ? scroller.getBoundingClientRect().left : 0) + (Number(scroller && scroller.scrollLeft) || 0);
+      seekVideoToSeconds(rallyApi.pixelsToSeconds(rallyGesture.view, localX));
     }
     function releaseRallyGesture(restoreBase) {
       var gesture = rallyGesture;
@@ -10608,7 +10713,21 @@
     function rallyPointerMove(event) {
       if (!rallyGesture || event && event.pointerId != null && rallyGesture.pointerId != null && event.pointerId !== rallyGesture.pointerId) return;
       try {
-        rallyDocument = rallyApi.pointerEdit(rallyGesture.base, rallyGesture.id, rallyGesture.mode, (Number(event && event.clientX) || 0) - rallyGesture.startX, rallyGesture.view);
+        if (rallyGesture.mode === "playhead") {
+          var scroller = rallyGesture.scroller;
+          var localX = (Number(event && event.clientX) || 0) - (scroller && scroller.getBoundingClientRect ? scroller.getBoundingClientRect().left : 0) + (Number(scroller && scroller.scrollLeft) || 0);
+          seekVideoToSeconds(rallyApi.pixelsToSeconds(rallyGesture.view, localX));
+          return;
+        }
+        var snapGuide = currentMediaTimestamp();
+        rallyDocument = rallyApi.pointerEdit(
+          rallyGesture.base,
+          rallyGesture.id,
+          rallyGesture.mode,
+          (Number(event && event.clientX) || 0) - rallyGesture.startX,
+          rallyGesture.view,
+          { snapGuideSec: snapGuide, snapThresholdPx: 8 }
+        );
         updateRallyTimelineGeometry();
       } catch (error) {
         rallyNotice = { ok: false, message: error && error.message ? error.message : String(error) };
@@ -10618,6 +10737,14 @@
       if (!rallyGesture || event && event.pointerId != null && rallyGesture.pointerId != null && event.pointerId !== rallyGesture.pointerId) return;
       var gesture = releaseRallyGesture(cancelled);
       if (!gesture) return;
+      if (gesture.mode === "playhead") {
+        if (!cancelled && event) {
+          var scroller = gesture.scroller;
+          var localX = (Number(event.clientX) || 0) - (scroller && scroller.getBoundingClientRect ? scroller.getBoundingClientRect().left : 0) + (Number(scroller && scroller.scrollLeft) || 0);
+          seekVideoToSeconds(rallyApi.pixelsToSeconds(gesture.view, localX));
+        }
+        return;
+      }
       if (!cancelled) setRallyDocument(rallyDocument, { notice: "Updated " + gesture.id + " from the interval bar." });
       render();
     }
@@ -10652,9 +10779,24 @@
       rallyTimelineScroll = next.scrollLeft;
       if (scroller) scroller.scrollLeft = rallyTimelineScroll;
     }
-    function rallyMetadataFields(item) {
+    function isolateRallyEditableKeys(event) {
+      if (!event || !rallyApi || !rallyApi.isEditableKeyboardTarget(event.target)) return;
+      if (event.stopPropagation) event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+    }
+    function attachRallyKeyIsolation(node) {
+      if (!node || typeof node.addEventListener !== "function") return node;
+      ["keydown", "keyup", "keypress"].forEach(function (type) {
+        node.addEventListener(type, isolateRallyEditableKeys, true);
+        node.addEventListener(type, isolateRallyEditableKeys, false);
+      });
+      return node;
+    }
+    function rallyMetadataFields(item, options) {
+      options = options || {};
+      var commentPlaceholder = options.commentPlaceholder || "Why this approval, change, or removal is correct";
       return ui.el("div", { className: "bv-rally-metadata" }, [
-        rallyField("Comment / reason", rallyTextarea(item.comment, { "data-bso-rally-comment": "true", placeholder: "Why this approval or change is correct" })),
+        rallyField("Comment / reason", rallyTextarea(item.comment, { "data-bso-rally-comment": "true", placeholder: commentPlaceholder })),
         rallyField("Verifier", rallyInput("text", item.verifier, { "data-bso-rally-verifier": "true", placeholder: "Name or handle" })),
         rallyField("Review date", rallyInput("text", item.verifiedAt, { "data-bso-rally-date": "true", placeholder: "YYYY-MM-DD or UTC timestamp", autocomplete: "off" }))
       ]);
@@ -10663,15 +10805,20 @@
       if (!interval) return ui.el("p", { className: "bv-helper" }, ["Select an interval bar to inspect exact seconds and adjudicate it."]);
       var bounds = rallyApi.effectiveBounds(interval) || interval.corrected || interval.original;
       if (interval.action === "removal") {
-        return ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
+        var removalEditor = ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
           ui.el("div", { className: "bv-rally-editor-heading" }, [
             ui.el("strong", {}, [interval.id]),
             ui.badge("removal", "out", false),
             ui.el("span", { className: "bv-mono", "data-bso-rally-exact": "true" }, [rallyApi.formatSeconds(bounds.startSec) + " → " + rallyApi.formatSeconds(bounds.endSec)])
           ]),
-          ui.el("p", { className: "bv-helper" }, ["This removed interval is locked. Restore it before editing boundaries or review evidence."]),
-          ui.el("div", { className: "bv-rally-editor-actions" }, [ui.button("Restore", { variant: "secondary", size: "sm", onClick: function () { restoreRallyInterval(interval.id); } })])
+          ui.el("p", { className: "bv-helper" }, ["Boundaries stay locked on a removal. Record why this was a false positive, then restore only if the interval should become active again."]),
+          rallyMetadataFields(interval, { commentPlaceholder: "Why this labeled rally is a false positive" })
         ]);
+        removalEditor.appendChild(ui.el("div", { className: "bv-rally-editor-actions" }, [
+          ui.button("Save removal evidence", { variant: "primary", size: "sm", onClick: function () { commitRallyReview(interval.id, "removal", removalEditor); } }),
+          ui.button("Restore", { variant: "secondary", size: "sm", onClick: function () { restoreRallyInterval(interval.id); } })
+        ]));
+        return attachRallyKeyIsolation(removalEditor);
       }
       var editor = ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
         ui.el("div", { className: "bv-rally-editor-heading" }, [
@@ -10681,9 +10828,16 @@
         ]),
         ui.el("p", { className: "bv-helper" }, ["Original proposal: " + (interval.original ? rallyApi.formatSeconds(interval.original.startSec) + " → " + rallyApi.formatSeconds(interval.original.endSec) : "none (manual addition)")]),
         ui.el("div", { className: "bv-rally-edge-inputs" }, [
-          rallyField("Start seconds", rallyInput("number", bounds.startSec.toFixed(3), { min: rallyDocument.source.reviewWindow.startSec, max: bounds.endSec - rallyApi.MIN_INTERVAL_SECONDS, step: ".001", "data-bso-rally-start-input": "true", onChange: function (event) { updateRallyEdge(interval.id, "start", event.target.value); } })),
-          rallyField("End seconds", rallyInput("number", bounds.endSec.toFixed(3), { min: bounds.startSec + rallyApi.MIN_INTERVAL_SECONDS, max: rallyDocument.source.reviewWindow.endSec, step: ".001", "data-bso-rally-end-input": "true", onChange: function (event) { updateRallyEdge(interval.id, "end", event.target.value); } }))
+          rallyField("Start", rallyInput("text", rallyApi.formatSeconds(bounds.startSec), { inputmode: "decimal", autocomplete: "off", spellcheck: "false", "data-bso-rally-start-input": "true", placeholder: "h:mm:ss.sss or seconds", onChange: function (event) { updateRallyEdge(interval.id, "start", event.target.value); } })),
+          rallyField("End", rallyInput("text", rallyApi.formatSeconds(bounds.endSec), { inputmode: "decimal", autocomplete: "off", spellcheck: "false", "data-bso-rally-end-input": "true", placeholder: "h:mm:ss.sss or seconds", onChange: function (event) { updateRallyEdge(interval.id, "end", event.target.value); } }))
         ]),
+        (function () {
+          var setStart = ui.button("Set start from playhead", { variant: "ghost", size: "sm", onClick: function () { setRallyEdgeFromPlayhead(interval.id, "start"); } });
+          var setEnd = ui.button("Set end from playhead", { variant: "ghost", size: "sm", onClick: function () { setRallyEdgeFromPlayhead(interval.id, "end"); } });
+          setStart.setAttribute("data-bso-rally-set-start", "true");
+          setEnd.setAttribute("data-bso-rally-set-end", "true");
+          return ui.el("div", { className: "bv-rally-toolbar" }, [setStart, setEnd]);
+        }()),
         rallyMetadataFields(interval)
       ]);
       var actions = ui.el("div", { className: "bv-rally-editor-actions" });
@@ -10691,7 +10845,7 @@
       actions.appendChild(ui.button(interval.original ? "Save correction" : "Save addition", { variant: "primary", size: "sm", onClick: function () { commitRallyReview(interval.id, interval.original ? "correction" : "addition", editor); } }));
       actions.appendChild(ui.button("Remove false positive", { variant: "danger", size: "sm", onClick: function () { commitRallyReview(interval.id, "removal", editor); } }));
       editor.appendChild(actions);
-      return editor;
+      return attachRallyKeyIsolation(editor);
     }
     function rallyControlCard(control) {
       var card = ui.el("section", { className: "bv-rally-control", "data-bso-rally-control": control.id }, [
@@ -10702,7 +10856,7 @@
         ui.button("Confirm", { variant: "primary", size: "sm", onClick: function () { commitRallyControl(control.id, "confirmed", card); } }),
         ui.button("Not true", { variant: "secondary", size: "sm", onClick: function () { commitRallyControl(control.id, "rejected", card); } })
       ]));
-      return card;
+      return attachRallyKeyIsolation(card);
     }
     function rallyTimeline() {
       var windowBounds = rallyDocument.source.reviewWindow;
@@ -10715,7 +10869,21 @@
         ruler.appendChild(ui.el("span", { style: { left: (tickIndex / 8 * 100) + "%" } }, [rallyApi.formatSeconds(tickSeconds)]));
       }
       track.appendChild(ruler);
-      track.appendChild(ui.el("i", { className: "bv-rally-playhead", "data-bso-rally-playhead": "true", "aria-hidden": "true" }));
+      var playhead = ui.el("button", {
+        className: "bv-rally-playhead",
+        type: "button",
+        "data-bso-rally-playhead": "true",
+        "aria-label": "Drag playhead to seek video",
+        title: "Drag to seek the YouTube playhead within the review window",
+        onPointerdown: function (event) { startRallyPlayheadGesture(event, scroll); }
+      });
+      track.appendChild(playhead);
+      track.addEventListener("pointerdown", function (event) {
+        if (!event || event.button != null && event.button !== 0) return;
+        var target = event.target;
+        if (target && target.closest && (target.closest("[data-bso-rally-interval]") || target.closest("[data-bso-rally-playhead]") || target.closest(".bv-rally-tombstone"))) return;
+        startRallyPlayheadGesture(event, scroll);
+      });
       rallyDocument.intervals.forEach(function (interval, index) {
         var row = ui.el("div", { className: "bv-rally-timeline-row" + (interval.id === rallySelectedId ? " selected" : "") + (interval.action === "removal" ? " removed" : ""), style: { top: (34 + index * 34) + "px" } });
         var bounds = rallyApi.effectiveBounds(interval);
@@ -10773,7 +10941,7 @@
       }, []);
       var body = panel.querySelector(".bv-panel-body");
       if (!body) return panel;
-      body.appendChild(ui.callout("info", "Read-only playback boundary", "Use the native YouTube player to play, pause, or seek. This developer widget only observes currentTime and never changes playback, media, or player styles."));
+      body.appendChild(ui.callout("info", "Developer playback help", "Drag the blue playhead (or the empty timeline) to seek the YouTube video. Edge drags snap to that playhead. Set start/set end copy it onto the selected interval. Play, pause, rate, and player chrome stay on YouTube."));
       var importButton = ui.button("Import review JSON", { variant: "secondary", size: "sm", icon: "upload", onClick: importRallyJson });
       if (!rallyDocument) {
         body.appendChild(ui.el("div", { className: "bv-rally-empty" }, [
@@ -10833,7 +11001,7 @@
           return ui.el("li", {}, [ui.el("a", { href: link.href, target: "_blank", rel: "noreferrer", title: link.description || link.label }, [link.label, ui.icon("external", 12)])]);
         }))
       ]);
-      var developerToggle = ui.toggle("Rally boundary review", "Developer-only interval editor; off by default and playback read-only", rallyLabelerEnabled(), function (next) {
+      var developerToggle = ui.toggle("Rally boundary review", "Developer-only interval editor; off by default. Playhead drag seeks currentTime only inside this widget.", rallyLabelerEnabled(), function (next) {
         state = window.BVState.reduceExtensionState(state, { type: "SET_SETTING", key: "rallyLabelerEnabled", value: next });
         if (next) {
           clearRallyGesture(true);
@@ -11263,6 +11431,13 @@
     }
     function handleKeyboardShortcuts(event) {
       var key = String(event.key || "").toLowerCase();
+      // While a rally comment/clock field is focused, swallow page and widget
+      // shortcuts so typing cannot drive YouTube or edge nudges. Leaving the
+      // field restores both on the next keydown.
+      if (rallyLabelerEnabled() && rallyApi && rallyApi.isEditableKeyboardTarget(event.target)) {
+        isolateRallyEditableKeys(event);
+        return;
+      }
       // Escape is a global dismiss affordance, including while a shot button is
       // focused. Other shortcuts yield to native controls so Enter/Space do not
       // accidentally save a draft when activating a picker button.
