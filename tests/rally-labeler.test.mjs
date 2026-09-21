@@ -73,6 +73,15 @@ test("pointer move and edge resize enforce review bounds and start < end", () =>
   assert.throws(() => model.normalizeDocument({ source: { id: "bad", reviewWindow: { start: 0, end: 5 } }, intervals: [{ id: "bad:1", start: 2, end: 2 }] }), /start < end/);
 });
 
+test("zero-delta pointer edits preserve action and evidence", () => {
+  const reviewed = model.reviewInterval(fixture(), "bwf-ws-2026:rally-001", { action: "approve", ...evidence });
+  const view = model.createTimelineView(reviewed, 600, 1, 0);
+  const moved = model.pointerEdit(reviewed, "bwf-ws-2026:rally-001", "move", 0, view);
+  const interval = moved.intervals[0];
+  assert.equal(interval.action, "approve");
+  assert.deepEqual({ comment: interval.comment, verifier: interval.verifier, verifiedAt: interval.verifiedAt }, evidence);
+});
+
 test("keyboard/numeric edge updates use the same invariant-preserving model", () => {
   let document = fixture();
   document = model.resizeInterval(document, document.intervals[0].id, "start", 109.125);

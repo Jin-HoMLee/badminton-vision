@@ -350,13 +350,13 @@
     if (normalized.startSec < windowBounds.startSec || normalized.endSec > windowBounds.endSec) throw new RangeError("interval falls outside the review window");
     return replaceInterval(document, id, function (interval) {
       var previous = interval.corrected || interval.original;
-      var nextAction = action || (interval.original ? "correction" : "addition");
-      var changed = !previous || previous.startSec !== normalized.startSec || previous.endSec !== normalized.endSec || interval.action !== nextAction;
+      var boundsChanged = !previous || previous.startSec !== normalized.startSec || previous.endSec !== normalized.endSec;
+      var nextAction = boundsChanged ? action || (interval.original ? "correction" : "addition") : interval.action;
       interval.corrected = normalized;
       interval.action = nextAction;
       // A prior approval/addition comment is not evidence for newly changed
       // seconds. Editing either edge reopens the evidence fields explicitly.
-      if (changed) {
+      if (boundsChanged) {
         interval.comment = "";
         interval.verifier = "";
         interval.verifiedAt = "";
