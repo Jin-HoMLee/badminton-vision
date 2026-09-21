@@ -70,6 +70,15 @@
     item.verifiedAt = "";
   }
 
+  function evidenceMatches(item, fields) {
+    return fields && Object.prototype.hasOwnProperty.call(fields, "comment") &&
+      Object.prototype.hasOwnProperty.call(fields, "verifier") &&
+      Object.prototype.hasOwnProperty.call(fields, "verifiedAt") &&
+      optionalText(fields.comment) === optionalText(item.comment) &&
+      optionalText(fields.verifier) === optionalText(item.verifier) &&
+      optionalText(fields.verifiedAt) === optionalText(item.verifiedAt);
+  }
+
   function normalizedDate(value) {
     var text = optionalText(value);
     if (!text) return "";
@@ -458,11 +467,15 @@
       } else if (action === "removal") {
         interval.corrected = interval.corrected || interval.original;
       }
-      if (interval.action !== action) clearEvidence(interval);
+      var sameAction = interval.action === action;
+      var staleEvidence = !sameAction && evidenceMatches(interval, fields);
+      if (!sameAction) clearEvidence(interval);
       interval.action = action;
-      if (fields.comment != null) interval.comment = optionalText(fields.comment);
-      if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
-      if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
+      if (!staleEvidence) {
+        if (fields.comment != null) interval.comment = optionalText(fields.comment);
+        if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
+        if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
+      }
       return interval;
     });
   }
@@ -486,10 +499,14 @@
     var control = next.controls[index];
     var previousState = control.state;
     if (fields.state != null) control.state = fields.state;
-    if (previousState !== control.state) clearEvidence(control);
-    if (fields.comment != null) control.comment = fields.comment;
-    if (fields.verifier != null) control.verifier = fields.verifier;
-    if (fields.verifiedAt != null) control.verifiedAt = fields.verifiedAt;
+    var sameState = previousState === control.state;
+    var staleEvidence = !sameState && evidenceMatches(control, fields);
+    if (!sameState) clearEvidence(control);
+    if (!staleEvidence) {
+      if (fields.comment != null) control.comment = fields.comment;
+      if (fields.verifier != null) control.verifier = fields.verifier;
+      if (fields.verifiedAt != null) control.verifiedAt = fields.verifiedAt;
+    }
     return normalizeDocument(next);
   }
 

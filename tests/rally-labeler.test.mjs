@@ -128,14 +128,16 @@ test("removed intervals reject edits until explicit restoration", () => {
 
 test("adjudication state changes require fresh evidence", () => {
   let document = model.reviewInterval(fixture(), "bwf-ws-2026:rally-001", { action: "approve", ...evidence });
-  document = model.removeInterval(document, "bwf-ws-2026:rally-001");
+  document = model.reviewInterval(document, "bwf-ws-2026:rally-001", { action: "removal", ...evidence });
   const interval = document.intervals.find((item) => item.id === "bwf-ws-2026:rally-001");
   assert.deepEqual({ comment: interval.comment, verifier: interval.verifier, verifiedAt: interval.verifiedAt }, { comment: "", verifier: "", verifiedAt: "" });
+  assert.equal(model.completion(document).complete, false);
 
   document = model.reviewControl(document, "club-fixed-cam:empty", { state: "confirmed", ...evidence });
-  document = model.reviewControl(document, "club-fixed-cam:empty", { state: "rejected" });
+  document = model.reviewControl(document, "club-fixed-cam:empty", { state: "rejected", ...evidence });
   const control = document.controls.find((item) => item.id === "club-fixed-cam:empty");
   assert.deepEqual({ comment: control.comment, verifier: control.verifier, verifiedAt: control.verifiedAt }, { comment: "", verifier: "", verifiedAt: "" });
+  assert.equal(model.completion(document).complete, false);
 });
 
 test("completion is blocked by unresolved evidence and contradictory controls", () => {
