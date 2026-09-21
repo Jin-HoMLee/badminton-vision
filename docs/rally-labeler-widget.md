@@ -103,8 +103,10 @@ zoom and layout rerenders recompute the boundary state. Set start/end use
 separate interval/playhead icons, while the collapsed playback-help affordance
 is a compact question-mark button with the accessible name `Show help`.
 Review actions reuse the approved, corrected, and removed semantic tokens used
-by their resulting timeline bars, with text and icons retained as non-color
-cues.
+by their resulting timeline bars as subordinate leading-border/icon cues. The
+neon priority fill remains reserved for the single primary action; neutral
+secondary action surfaces never imply a timeline outcome. Text and icons stay
+present as non-color cues.
 
 The panel's user-resize bounds follow the rendered YouTube presentation
 container. Fullscreen removes the theater-mode width ceiling and permits a

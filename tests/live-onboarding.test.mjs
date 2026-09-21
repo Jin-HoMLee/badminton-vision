@@ -2360,9 +2360,12 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.match(panel.querySelector("[data-bso-rally-interval]").className, /selected/);
   assert.match(panel.querySelector("[data-bso-rally-editor]").querySelector(".bv-badge").className, /warn/, "editor badge matches pending timeline color");
   const reviewActions = panel.querySelector("[data-bso-rally-editor]").querySelector(".bv-rally-editor-actions").querySelectorAll("button");
-  assert.match(reviewActions[0].className, /approve/, "Approve proposal uses the approved semantic action style");
-  assert.match(reviewActions[1].className, /correction/, "Save correction uses the corrected semantic action style");
-  assert.match(reviewActions[2].className, /removal/, "Remove false positive uses the removed semantic action style");
+  assert.match(reviewActions[0].className, /bv-rally-action approve/, "Approve proposal uses the approved subordinate cue");
+  assert.match(reviewActions[1].className, /bv-rally-action correction/, "Save correction uses the corrected subordinate cue");
+  assert.match(reviewActions[2].className, /bv-rally-action removal/, "Remove false positive uses the removed subordinate cue");
+  assert.doesNotMatch(reviewActions[0].className, /primary/, "approval does not borrow priority treatment");
+  assert.match(reviewActions[1].className, /primary/, "save correction remains the single primary action");
+  assert.doesNotMatch(reviewActions[2].className, /primary/, "removal does not borrow priority treatment");
   assert.equal(reviewActions[0].querySelector("[data-bso-icon]").getAttribute("data-bso-icon"), "check", "approval retains a non-color cue");
   assert.equal(reviewActions[1].querySelector("[data-bso-icon]").getAttribute("data-bso-icon"), "pencil", "correction retains a non-color cue");
   assert.equal(reviewActions[2].querySelector("[data-bso-icon]").getAttribute("data-bso-icon"), "x", "removal retains a non-color cue");

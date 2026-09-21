@@ -29,6 +29,8 @@
   --rally-remove-color: var(--signal-out);
   --rally-remove-tint: var(--signal-out-tint);
   --rally-remove-border: rgba(255,107,90,.4);
+  --action-primary-fill: var(--accent);
+  --action-primary-text: var(--text-on-accent);
 }
 
 :host {
@@ -153,13 +155,17 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 }
 .bv-button.sm { height: var(--control-height-sm); padding: 0 var(--sp-4); font: var(--type-ui-sm); }
 .bv-button.lg { height: var(--control-height-lg); padding: 0 var(--sp-6); }
-.bv-button.primary { color: var(--text-on-accent); border-color: var(--accent); background: var(--accent); }
+.bv-button.primary { color: var(--action-primary-text); border-color: var(--action-primary-fill); background: var(--action-primary-fill); }
 .bv-button.secondary { color: var(--text-primary); background: var(--surface-raised); }
 .bv-button.ghost { color: var(--text-muted); border-color: transparent; background: transparent; }
 .bv-button.danger { color: var(--signal-out); border-color: rgba(255,107,90,.4); background: var(--signal-out-tint); }
-.bv-button.approve { color: var(--rally-approve-color); border-color: var(--rally-approve-border); background: var(--rally-approve-tint); }
-.bv-button.correction { color: var(--rally-correction-color); border-color: var(--rally-correction-border); background: var(--rally-correction-tint); }
-.bv-button.removal { color: var(--rally-remove-color); border-color: var(--rally-remove-border); background: var(--rally-remove-tint); }
+.bv-rally-action { color: var(--text-primary); border-color: var(--border-subtle); background: var(--surface-raised); border-inline-start-width: 3px; }
+.bv-rally-action.approve { border-inline-start-color: var(--rally-approve-color); }
+.bv-rally-action.correction { border-inline-start-color: var(--rally-correction-color); }
+.bv-rally-action.removal { border-inline-start-color: var(--rally-remove-color); }
+.bv-rally-action.approve [data-bso-icon] { color: var(--rally-approve-color); }
+.bv-rally-action.correction [data-bso-icon] { color: var(--rally-correction-color); }
+.bv-rally-action.removal [data-bso-icon] { color: var(--rally-remove-color); }
 .bv-button:disabled { opacity: .42; cursor: not-allowed; }
 .bv-button.full { width: 100%; }
 .bv-icon-button {

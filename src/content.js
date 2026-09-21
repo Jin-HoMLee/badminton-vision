@@ -2652,9 +2652,17 @@
       rallyMetadataFields(interval)
     ]);
     var actions = ui.el("div", { className: "bv-rally-editor-actions" });
-    if (interval.original) actions.appendChild(ui.button("Approve proposal", { variant: "approve", size: "sm", icon: "check", title: "Approve proposal; the interval becomes approved", onClick: function () { commitRallyReview(interval.id, "approve", editor); } }));
-    actions.appendChild(ui.button(interval.original ? "Save correction" : "Save addition", { variant: interval.original ? "correction" : "primary", size: "sm", icon: interval.original ? "pencil" : "check", title: interval.original ? "Save correction; the interval becomes corrected" : "Save the new rally interval", onClick: function () { commitRallyReview(interval.id, interval.original ? "correction" : "addition", editor); } }));
-    actions.appendChild(ui.button("Remove false positive", { variant: "removal", size: "sm", icon: "x", title: "Remove false positive; the interval becomes removed", onClick: function () { commitRallyReview(interval.id, "removal", editor); } }));
+    if (interval.original) {
+      var approveAction = ui.button("Approve proposal", { variant: "secondary", size: "sm", icon: "check", title: "Approve proposal; the interval becomes approved", onClick: function () { commitRallyReview(interval.id, "approve", editor); } });
+      approveAction.className += " bv-rally-action approve";
+      actions.appendChild(approveAction);
+    }
+    var saveAction = ui.button(interval.original ? "Save correction" : "Save addition", { variant: "primary", size: "sm", icon: interval.original ? "pencil" : "check", title: interval.original ? "Save correction; the interval becomes corrected" : "Save the new rally interval", onClick: function () { commitRallyReview(interval.id, interval.original ? "correction" : "addition", editor); } });
+    if (interval.original) saveAction.className += " bv-rally-action correction";
+    actions.appendChild(saveAction);
+    var removeAction = ui.button("Remove false positive", { variant: "secondary", size: "sm", icon: "x", title: "Remove false positive; the interval becomes removed", onClick: function () { commitRallyReview(interval.id, "removal", editor); } });
+    removeAction.className += " bv-rally-action removal";
+    actions.appendChild(removeAction);
     editor.appendChild(actions);
     return attachRallyKeyIsolation(editor);
   }
