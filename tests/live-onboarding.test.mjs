@@ -2405,6 +2405,55 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   assert.equal(restoredPanel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "true");
 });
 
+test("short rally bars keep both resize edges interactive", async () => {
+  const review = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: {
+      id: "short-bar-source",
+      label: "Short bar source",
+      videoKey: "youtube:real-match",
+      videoUrl: "https://www.youtube.com/watch?v=real-match",
+      reviewWindow: { startSec: 0, endSec: 180 }
+    },
+    intervals: [{
+      id: "short-bar-source:rally-001",
+      sourceId: "short-bar-source",
+      original: { startSec: 30, endSec: 33 },
+      corrected: null,
+      action: "unresolved",
+      comment: "",
+      verifier: "",
+      verifiedAt: ""
+    }],
+    controls: []
+  };
+  const session = await createSession({ storedState: {
+    videoKey: "youtube:real-match",
+    settings: { rallyLabelerEnabled: true },
+    rallyReviewsByVideo: { "youtube:real-match": review }
+  } });
+  session.flushStorage();
+  let panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  let startEdge = panel.querySelectorAll(".bv-rally-edge").find((edge) => edge.className.includes("start"));
+  let endEdge = panel.querySelectorAll(".bv-rally-edge").find((edge) => edge.className.includes("end"));
+  assert.ok(startEdge && endEdge);
+
+  startEdge.dispatchEvent({ type: "pointerdown", target: startEdge, pointerId: 31, clientX: 100 });
+  session.emitWindow("pointermove", { pointerId: 31, clientX: 105 });
+  session.emitWindow("pointerup", { pointerId: 31, clientX: 105 });
+  let corrected = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals[0].corrected;
+  assert.ok(corrected.startSec > 30 && corrected.startSec < corrected.endSec);
+
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  endEdge = panel.querySelectorAll(".bv-rally-edge").find((edge) => edge.className.includes("end"));
+  endEdge.dispatchEvent({ type: "pointerdown", target: endEdge, pointerId: 32, clientX: 100 });
+  session.emitWindow("pointermove", { pointerId: 32, clientX: 105 });
+  session.emitWindow("pointerup", { pointerId: 32, clientX: 105 });
+  corrected = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"].intervals[0].corrected;
+  assert.ok(corrected.endSec > corrected.startSec);
+});
+
 test("runtime presentation leaves the rally clock owned by media time", async () => {
   const review = {
     schema: "badminton-vision.rally-review",
