@@ -2184,6 +2184,7 @@
   }
   function startRallyGesture(event, id, mode, scroller) {
     if (!rallyDocument || !event) return;
+    if (event.button != null && event.button !== 0) return;
     if (event.preventDefault) event.preventDefault();
     if (event.stopPropagation) event.stopPropagation();
     var viewportWidth = Number(scroller && scroller.clientWidth) || 640;

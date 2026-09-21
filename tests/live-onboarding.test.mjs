@@ -2296,6 +2296,12 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and persists 
   // Drag the whole bar, pointer-resize the left edge, then use the keyboard on
   // the right edge and exact numeric editing. All paths share one model.
   let bar = panel.querySelector("[data-bso-rally-interval]");
+  const writesBeforeSecondaryPointer = session.storageWrites.length;
+  bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 6, button: 2, clientX: 100 });
+  session.emitWindow("pointermove", { pointerId: 6, clientX: 140 });
+  session.emitWindow("pointerup", { pointerId: 6, clientX: 140 });
+  assert.equal(bar.capturedPointerId, null, "a non-primary pointer cannot start a rally gesture");
+  assert.equal(session.storageWrites.length, writesBeforeSecondaryPointer, "a non-primary pointer cannot persist a rally edit");
   bar.dispatchEvent({ type: "pointerdown", target: bar, pointerId: 7, clientX: 100 });
   session.emitWindow("pointermove", { pointerId: 7, clientX: 140 });
   assert.equal(bar.capturedPointerId, 7, "the rally bar captures its active pointer");
