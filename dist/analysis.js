@@ -205,7 +205,7 @@
     { key: "direction", label: "Direction", aliases: ["direction", "Direction"] }
   ];
   var UNKNOWN_LABELS = { "": true, unknown: true, unclassified: true, "not classified": true, "n/a": true, na: true, none: true, null: true };
-  var NON_MANUAL_SOURCES = { auto: true, automatic: true, model: true, inference: true, predicted: true, suggestion: true, suggested: true, fixture: true, demo: true, "fixture-probe": true, "fixture-probe-v1": true };
+  var NON_MANUAL_SOURCES = { auto: true, automatic: true, model: true, inference: true, predicted: true, suggestion: true, suggested: true, estimated: true, fixture: true, demo: true, "fixture-probe": true, "fixture-probe-v1": true };
 
   function cloneAnalysisValue(value) {
     if (value == null || typeof value !== "object") return value;

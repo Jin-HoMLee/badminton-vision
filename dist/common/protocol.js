@@ -64,6 +64,7 @@
       },
       shuttle: { state: 'unknown', confidence: null },
       strokeEvents: [],
+      match: { state: 'unknown', confidence: null, reason: 'match-state-not-available' },
       rally: { state: 'unknown', confidence: null, reason: 'rally-segmentation-not-available' },
       rallyEnd: { state: 'unknown', confidence: null, reason: 'rally-end-evidence-not-available' },
       winner: { state: 'unknown', confidence: null, reason: 'winner-evidence-not-available' },

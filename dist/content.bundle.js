@@ -69,6 +69,7 @@
         },
         shuttle: { state: 'unknown', confidence: null },
         strokeEvents: [],
+        match: { state: 'unknown', confidence: null, reason: 'match-state-not-available' },
         rally: { state: 'unknown', confidence: null, reason: 'rally-segmentation-not-available' },
         rallyEnd: { state: 'unknown', confidence: null, reason: 'rally-end-evidence-not-available' },
         winner: { state: 'unknown', confidence: null, reason: 'winner-evidence-not-available' },
@@ -2722,7 +2723,7 @@
       { key: "direction", label: "Direction", aliases: ["direction", "Direction"] }
     ];
     var UNKNOWN_LABELS = { "": true, unknown: true, unclassified: true, "not classified": true, "n/a": true, na: true, none: true, null: true };
-    var NON_MANUAL_SOURCES = { auto: true, automatic: true, model: true, inference: true, predicted: true, suggestion: true, suggested: true, fixture: true, demo: true, "fixture-probe": true, "fixture-probe-v1": true };
+    var NON_MANUAL_SOURCES = { auto: true, automatic: true, model: true, inference: true, predicted: true, suggestion: true, suggested: true, estimated: true, fixture: true, demo: true, "fixture-probe": true, "fixture-probe-v1": true };
 
     function cloneAnalysisValue(value) {
       if (value == null || typeof value !== "object") return value;
@@ -3405,7 +3406,7 @@
     'Drive',
     'Block',
   ]);
-  const EVENT_SOURCES = Object.freeze(['auto', 'manual', 'corrected', 'unknown']);
+  const EVENT_SOURCES = Object.freeze(['auto', 'manual', 'corrected', 'estimated', 'unknown']);
   const EVENT_STATUSES = Object.freeze(['suggested', 'accepted', 'corrected', 'partial', 'unknown', 'unclassified']);
   const OUTCOME_LABELS = Object.freeze(['winner', 'forced_error', 'unforced_error', 'unclassified']);
   const LINE_CALL_LABELS = Object.freeze(['in', 'out', 'unknown']);
@@ -5053,8 +5054,8 @@
         lose_reason: attributed.lose_reason,
         score_context: context.score_context,
         aggregate_confidence: aggregateRallyConfidence(events),
-        source: 'auto',
-        evidence_state: evidenceState,
+        source: options.source ?? 'auto',
+        evidence_state: options.evidence_state ?? evidenceState,
         partial_reasons: partialReasons,
         termination: context.termination,
         boundary_media_time: context.boundary_media_time,
@@ -5106,6 +5107,20 @@
       return snapshot();
     }
 
+    function reset(reason = 'session-reset') {
+      rallyCounter = 0;
+      eventCounter = 0;
+      segmentCounter = 0;
+      active = null;
+      finalized = false;
+      contexts.length = 0;
+      eventRecords.clear();
+      duplicates.length = 0;
+      cameraCuts.length = 0;
+      unassignedEvidence.length = 0;
+      return snapshot();
+    }
+
     return Object.freeze({
       ingest,
       consume: ingest,
@@ -5120,6 +5135,7 @@
       closeRally(input) { endRally(input); return snapshot(); },
       cameraCut(input) { const cut = cameraCut(input); return finishRecord({ ...cut }); },
       finalize,
+      reset,
       snapshot,
       getState: snapshot,
     });
@@ -5140,6 +5156,341 @@
   const buildRallyAnalysis = analyzeRallyEvents;
   const buildRallyTimeline = analyzeRallyEvents;
   const createRallyAnalyzer = createRallyStateMachine;
+
+  // ---------------------------------------------------------------------------
+  // Phase-1 camera-grammar state machines
+  //
+  // These are pure, dependency-free state machines that consume the per-frame
+  // evidence the offscreen analyzer already produces - scene-change score,
+  // persistent player tracks, racket/shuttle corroboration and a coarse motion
+  // signal - and emit (a) a hysteretic match state and (b) estimated rally
+  // boundaries fed into createRallyStateMachine above. They form no court-view
+  // opinion and never invent strokes, landings, line calls or winners.
+  // ---------------------------------------------------------------------------
+
+  const MATCH_STATES = Object.freeze(['SEARCHING', 'MATCH DETECTED', 'LOW CONFIDENCE']);
+
+  function positiveSeconds(value, name, fallback) {
+    const resolved = value == null ? fallback : value;
+    assertFiniteNumber(resolved, name, { min: 0.05 });
+    return resolved;
+  }
+
+  function matchEvidenceOf(input = {}) {
+    return {
+      mediaTime: mediaTimeOf(input),
+      playerCount: Math.max(0, Math.floor(Number(input.player_count ?? input.playerCount ?? 0) || 0)),
+      racketDetected: Boolean(input.racket_detected ?? input.racketDetected),
+      shuttleTracked: Boolean(input.shuttle_tracked ?? input.shuttleTracked),
+      sceneChange: Boolean(input.scene_change ?? input.sceneChange),
+    };
+  }
+
+  /**
+   * Hysteretic badminton-match state machine.
+   *
+   * Persistent `players >= 1` is the stable base signal that moves the machine
+   * out of SEARCHING; `players >= 2` raises confidence. Racket and shuttle
+   * observations corroborate (they upgrade LOW CONFIDENCE to MATCH DETECTED and
+   * raise the confidence score) but never gate entry into, or continuity of, the
+   * base player-presence regime: entry from SEARCHING is driven by players
+   * alone, and once corroboration has been observed it is sticky so a later
+   * racket/shuttle outage cannot drop the match state.
+   *
+   * Input per frame: `{ media_time, player_count, racket_detected,
+   * shuttle_tracked, scene_change }`.
+   */
+  function createMatchStateMachine(options = {}) {
+    assertObject(options, 'MatchStateMachineOptions');
+    const confirmSeconds = positiveSeconds(options.confirm_seconds ?? options.confirmSeconds, 'confirm_seconds', 2);
+    const confidencePlayerCount = Math.max(2, Math.floor(Number(options.confidence_players ?? options.confidencePlayers ?? 2) || 2));
+    const poseDropoutHoldSeconds = positiveSeconds(options.pose_dropout_hold_seconds ?? options.poseDropoutHoldSeconds, 'pose_dropout_hold_seconds', 2);
+    const viewInterruptionHoldSeconds = positiveSeconds(options.view_interruption_hold_seconds ?? options.viewInterruptionHoldSeconds, 'view_interruption_hold_seconds', 4);
+    const abandonSeconds = positiveSeconds(options.abandon_seconds ?? options.abandonSeconds, 'abandon_seconds', 60);
+
+    let state = 'SEARCHING';
+    let corroborated = false;
+    let lastCorroborationTime = null;
+    let lastConfidencePlayersTime = null;
+    let playersPresentSince = null;
+    let playersAbsentSince = null;
+    let lastSceneChangeTime = null;
+    let enteredMatchAt = null;
+    let lastReason = 'searching';
+    let current = matchEvidenceOf({ media_time: 0 });
+    let lastMediaTime = null;
+
+    function transition(nextState, reason) {
+      state = nextState;
+      lastReason = reason;
+      if (nextState === 'MATCH DETECTED' && enteredMatchAt === null) enteredMatchAt = lastMediaTime;
+      return snapshot();
+    }
+
+    function confidence() {
+      if (state === 'SEARCHING') return 0;
+      if (state === 'LOW CONFIDENCE') return current.playerCount >= 1 ? 0.4 : 0.25;
+      let value = 0.6;
+      if (corroborated) value += 0.15;
+      if (lastConfidencePlayersTime !== null && lastMediaTime !== null &&
+          lastMediaTime - lastConfidencePlayersTime <= confirmSeconds + 2) value += 0.25;
+      return Math.max(0, Math.min(1, value));
+    }
+
+    function snapshot() {
+      return finishRecord({
+        state,
+        confidence: confidence(),
+        reason: lastReason,
+        corroborated,
+        corroboration: {
+          racket: current.racketDetected,
+          shuttle: current.shuttleTracked,
+          last_corroboration_time: lastCorroborationTime,
+        },
+        players: current.playerCount,
+        scene_change: current.sceneChange,
+        entered_match_at: enteredMatchAt,
+        media_time: lastMediaTime,
+        config: {
+          confirm_seconds: confirmSeconds,
+          confidence_players: confidencePlayerCount,
+          pose_dropout_hold_seconds: poseDropoutHoldSeconds,
+          view_interruption_hold_seconds: viewInterruptionHoldSeconds,
+          abandon_seconds: abandonSeconds,
+        },
+      });
+    }
+
+    function update(input = {}) {
+      assertObject(input, 'Match observation');
+      current = matchEvidenceOf(input);
+      const mediaTime = current.mediaTime;
+      if (mediaTime === null) throw new AnalysisError('match observation requires a media time', 'match-media-time-missing');
+      if (lastMediaTime !== null && mediaTime < lastMediaTime) reset('media-time-reset');
+      lastMediaTime = mediaTime;
+
+      if (current.racketDetected || current.shuttleTracked) {
+        corroborated = true;
+        lastCorroborationTime = mediaTime;
+      }
+      if (current.sceneChange) lastSceneChangeTime = mediaTime;
+      const hasPlayers = current.playerCount >= 1;
+      if (current.playerCount >= confidencePlayerCount) lastConfidencePlayersTime = mediaTime;
+
+      if (hasPlayers) {
+        if (playersPresentSince === null) playersPresentSince = mediaTime;
+        playersAbsentSince = null;
+      } else {
+        if (playersAbsentSince === null) playersAbsentSince = mediaTime;
+        playersPresentSince = null;
+      }
+
+      const sustainedPlayers = playersPresentSince !== null && (mediaTime - playersPresentSince) >= confirmSeconds;
+      const absentSeconds = playersAbsentSince !== null ? (mediaTime - playersAbsentSince) : 0;
+
+      if (state === 'SEARCHING') {
+        if (sustainedPlayers) {
+          if (corroborated) transition('MATCH DETECTED', 'sustained-players-with-badminton-corroboration');
+          else transition('LOW CONFIDENCE', 'sustained-players-sport-unconfirmed');
+        }
+      } else if (state === 'LOW CONFIDENCE') {
+        if (hasPlayers && corroborated) transition('MATCH DETECTED', 'badminton-corroboration-while-players-present');
+        else if (absentSeconds >= abandonSeconds) transition('SEARCHING', 'players-absent-beyond-abandon-window');
+      } else if (state === 'MATCH DETECTED') {
+        const interruption = lastSceneChangeTime !== null && playersAbsentSince !== null && lastSceneChangeTime >= playersAbsentSince;
+        const hold = interruption ? viewInterruptionHoldSeconds : poseDropoutHoldSeconds;
+        if (absentSeconds >= hold) transition('LOW CONFIDENCE', interruption ? 'view-interruption-beyond-hold' : 'players-absent-beyond-pose-dropout-hold');
+      }
+      return snapshot();
+    }
+
+    function reset(reason = 'session-reset') {
+      state = 'SEARCHING';
+      corroborated = false;
+      lastCorroborationTime = null;
+      lastConfidencePlayersTime = null;
+      playersPresentSince = null;
+      playersAbsentSince = null;
+      lastSceneChangeTime = null;
+      enteredMatchAt = null;
+      lastReason = reason;
+      current = matchEvidenceOf({ media_time: 0 });
+      lastMediaTime = null;
+      return snapshot();
+    }
+
+    return Object.freeze({ update, reset, snapshot, getState: snapshot, MATCH_STATES });
+  }
+
+  function rallyEvidenceOf(input = {}) {
+    return {
+      mediaTime: mediaTimeOf(input),
+      playerCount: Math.max(0, Math.floor(Number(input.player_count ?? input.playerCount ?? 0) || 0)),
+      motion: Boolean(input.motion === true),
+      motionScore: Number.isFinite(Number(input.motion_score ?? input.motionScore)) ? Number(input.motion_score ?? input.motionScore) : 0,
+      sceneChange: Boolean(input.scene_change ?? input.sceneChange),
+      matchActive: Boolean(input.match_active ?? input.matchActive),
+    };
+  }
+
+  /**
+   * Phase-1 rally-state machine, gated on active match state.
+   *
+   * Consumes per-frame scene-transition, player-persistence and motion evidence
+   * and emits `rally_start` / `rally_end` observations into the existing
+   * `createRallyStateMachine` so the emitted rallies reuse the analysis core's
+   * record model rather than a parallel event model. Every emitted rally is
+   * marked `source: "estimated"` and `evidence_state: "suggested"`; rally start
+   * is back-dated to the first sustained in-play frame (the analysis core orders
+   * by media time, not ingestion time, so late finalization is safe).
+   *
+   * Input per frame: `{ media_time, match_active, player_count, motion,
+   * motion_score, scene_change }`.
+   */
+  function createPhase1RallyStateMachine(options = {}) {
+    assertObject(options, 'Phase1RallyStateMachineOptions');
+    const minPlayers = Math.max(2, Math.floor(Number(options.min_players ?? options.minPlayers ?? 2) || 2));
+    const rallyConfirmSeconds = positiveSeconds(options.rally_confirm_seconds ?? options.rallyConfirmSeconds, 'rally_confirm_seconds', 2);
+    const motionWindowSeconds = positiveSeconds(options.motion_window_seconds ?? options.motionWindowSeconds, 'motion_window_seconds', 2);
+    const motionThreshold = options.motion_threshold ?? options.motionThreshold ?? 0.5;
+    const interruptionHoldSeconds = positiveSeconds(options.interruption_hold_seconds ?? options.interruptionHoldSeconds, 'interruption_hold_seconds', 6);
+    const rallyEndInactivitySeconds = positiveSeconds(options.rally_end_inactivity_seconds ?? options.rallyEndInactivitySeconds, 'rally_end_inactivity_seconds', 6);
+    const poseDropoutHoldSeconds = positiveSeconds(options.pose_dropout_hold_seconds ?? options.poseDropoutHoldSeconds, 'pose_dropout_hold_seconds', 2);
+
+    const recordMachine = createRallyStateMachine({
+      rally_id_prefix: options.rally_id_prefix ?? 'estimated-rally',
+      source: 'estimated',
+      evidence_state: 'suggested',
+    });
+
+    let phase = 'idle';
+    let armingFirstPlayTime = null;
+    let armingLastPlayTime = null;
+    let activeRallyId = null;
+    let activeStartTime = null;
+    let lastPlayTime = null;
+    let lastSceneChangeTime = null;
+    let lastMotionTime = null;
+    let lastMediaTime = null;
+    let lastEndedRally = null;
+    let current = rallyEvidenceOf({ media_time: 0 });
+
+    function sustainedMotion(mediaTime) {
+      return lastMotionTime !== null && (mediaTime - lastMotionTime) <= motionWindowSeconds;
+    }
+
+    function inPlay(evidence, mediaTime) {
+      return evidence.matchActive && evidence.playerCount >= minPlayers && sustainedMotion(mediaTime);
+    }
+
+    function startRally(startTime) {
+      recordMachine.startRally({ type: 'rally_start', media_time: startTime });
+      phase = 'active';
+      activeStartTime = startTime;
+      lastPlayTime = startTime;
+      activeRallyId = recordMachine.snapshot().active_rally_id;
+      return snapshot();
+    }
+
+    function endRally(endTime, termination) {
+      recordMachine.endRally({ type: 'rally_end', media_time: endTime, rally_id: activeRallyId });
+      const records = recordMachine.snapshot().rallies;
+      lastEndedRally = records.find((rally) => rally.rally_id === activeRallyId) || null;
+      phase = 'idle';
+      activeRallyId = null;
+      activeStartTime = null;
+      lastPlayTime = null;
+      return snapshot();
+    }
+
+    function snapshot() {
+      const records = recordMachine.snapshot();
+      const activeRecord = activeRallyId ? records.rallies.find((rally) => rally.rally_id === activeRallyId) : null;
+      return finishRecord({
+        phase,
+        active_rally_id: activeRallyId,
+        active_start_time: activeStartTime,
+        active_end_time: activeRecord && activeRecord.end_media_time !== null ? activeRecord.end_media_time : null,
+        last_ended_rally: lastEndedRally,
+        rallies: records.rallies,
+        camera_cuts: records.camera_cuts,
+        last_play_time: lastPlayTime,
+        last_scene_change_time: lastSceneChangeTime,
+        player_count: current.playerCount,
+        motion: current.motion,
+        scene_change: current.sceneChange,
+        media_time: lastMediaTime,
+        config: {
+          min_players: minPlayers,
+          rally_confirm_seconds: rallyConfirmSeconds,
+          motion_window_seconds: motionWindowSeconds,
+          motion_threshold: motionThreshold,
+          pose_dropout_hold_seconds: poseDropoutHoldSeconds,
+          interruption_hold_seconds: interruptionHoldSeconds,
+          rally_end_inactivity_seconds: rallyEndInactivitySeconds,
+        },
+      });
+    }
+
+    function update(input = {}) {
+      assertObject(input, 'Rally observation');
+      current = rallyEvidenceOf(input);
+      const mediaTime = current.mediaTime;
+      if (mediaTime === null) throw new AnalysisError('rally observation requires a media time', 'rally-media-time-missing');
+      if (lastMediaTime !== null && mediaTime < lastMediaTime) reset('media-time-reset');
+      lastMediaTime = mediaTime;
+
+      if (current.sceneChange) lastSceneChangeTime = mediaTime;
+      const motionActive = current.motion || current.motionScore >= motionThreshold;
+      if (motionActive) lastMotionTime = mediaTime;
+      const playing = inPlay(current, mediaTime);
+
+      if (phase === 'idle') {
+        if (playing) {
+          phase = 'arming';
+          armingFirstPlayTime = mediaTime;
+          armingLastPlayTime = mediaTime;
+        }
+      } else if (phase === 'arming') {
+        if (playing) {
+          armingLastPlayTime = mediaTime;
+          if (mediaTime - armingFirstPlayTime >= rallyConfirmSeconds) startRally(armingFirstPlayTime);
+        } else if (mediaTime - armingLastPlayTime >= interruptionHoldSeconds) {
+          phase = 'idle';
+          armingFirstPlayTime = null;
+          armingLastPlayTime = null;
+        }
+      } else if (phase === 'active') {
+        if (playing) {
+          lastPlayTime = mediaTime;
+        } else if (lastPlayTime !== null) {
+          const interruption = lastSceneChangeTime !== null && lastSceneChangeTime >= lastPlayTime;
+          const threshold = Math.max(poseDropoutHoldSeconds, interruption ? interruptionHoldSeconds : rallyEndInactivitySeconds);
+          if (mediaTime - lastPlayTime >= threshold) endRally(lastPlayTime, interruption ? 'interruption' : 'inactivity');
+        }
+      }
+      return snapshot();
+    }
+
+    function reset(reason = 'session-reset') {
+      phase = 'idle';
+      armingFirstPlayTime = null;
+      armingLastPlayTime = null;
+      activeRallyId = null;
+      activeStartTime = null;
+      lastPlayTime = null;
+      lastSceneChangeTime = null;
+      lastMotionTime = null;
+      lastEndedRally = null;
+      current = rallyEvidenceOf({ media_time: 0 });
+      lastMediaTime = null;
+      recordMachine.reset('session-reset');
+      return snapshot();
+    }
+
+    return Object.freeze({ update, reset, snapshot, getState: snapshot });
+  }
 
   function normalizeRallyForHighlight(rally) {
     return rally && rally.rally_id ? createRallyRecord(rally) : rally;
@@ -5395,6 +5746,9 @@
     processRallyEvents,
     buildRallyAnalysis: analyzeRallyEvents,
     buildRallyTimeline: analyzeRallyEvents,
+    MATCH_STATES,
+    createMatchStateMachine,
+    createPhase1RallyStateMachine,
     createCoarseShotFeatures,
     COARSE_RULE_THRESHOLDS,
     classifyCoarseShot,
@@ -8773,6 +9127,7 @@
       host.setAttribute("data-bso-runtime-analyzer", runtimeView.analyzer || "none");
       host.setAttribute("data-bso-inference", String(Boolean(runtimeView.inference)));
       host.setAttribute("data-bso-analysis-state", result && result.state ? result.state : "unknown");
+      host.setAttribute("data-bso-match-state", result && result.match && result.match.state ? result.match.state : "unknown");
       host.setAttribute("data-bso-player-state", result && result.tracking && result.tracking.state || "unknown");
       host.setAttribute("data-bso-shuttle-state", result && result.shuttle && result.shuttle.state || "unknown");
       host.setAttribute("data-bso-player-count", String(runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length));
@@ -8833,7 +9188,8 @@
           strokeEvents: Array.isArray(result.strokeEvents) ? result.strokeEvents : [],
           rally: result.rally || { state: "unknown" },
           rallyEnd: result.rallyEnd || { state: "unknown" },
-          winner: result.winner || { state: "unknown" }
+          winner: result.winner || { state: "unknown" },
+          match: result.match || { state: "unknown" }
         } : null,
         playerCount: playerCount,
         playerState: result && result.tracking ? result.tracking.state : "unknown",

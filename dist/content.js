@@ -222,6 +222,7 @@
     host.setAttribute("data-bso-runtime-analyzer", runtimeView.analyzer || "none");
     host.setAttribute("data-bso-inference", String(Boolean(runtimeView.inference)));
     host.setAttribute("data-bso-analysis-state", result && result.state ? result.state : "unknown");
+    host.setAttribute("data-bso-match-state", result && result.match && result.match.state ? result.match.state : "unknown");
     host.setAttribute("data-bso-player-state", result && result.tracking && result.tracking.state || "unknown");
     host.setAttribute("data-bso-shuttle-state", result && result.shuttle && result.shuttle.state || "unknown");
     host.setAttribute("data-bso-player-count", String(runtimePlayers().filter(function (player) { return player && player.bbox && player.state !== "unknown"; }).length));
@@ -282,7 +283,8 @@
         strokeEvents: Array.isArray(result.strokeEvents) ? result.strokeEvents : [],
         rally: result.rally || { state: "unknown" },
         rallyEnd: result.rallyEnd || { state: "unknown" },
-        winner: result.winner || { state: "unknown" }
+        winner: result.winner || { state: "unknown" },
+        match: result.match || { state: "unknown" }
       } : null,
       playerCount: playerCount,
       playerState: result && result.tracking ? result.tracking.state : "unknown",
