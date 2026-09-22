@@ -348,7 +348,21 @@ test("overlay geometry, treatment, and hit targets cannot fall back when mounted
   assert.match(css, /\.bv-label-panel \.bv-panel-body\s*\{\s*pointer-events:\s*auto\s*;/);
   // The seed layer's capture surface ends at the player control strip.
   assert.match(css, /\.bv-seed-layer\s*\{[^}]*clip-path:\s*inset\(0 0 var\(--overlay-controls-reserve\) 0\)/s);
-  assert.match(css, /\.bv-overlay-root \.bv-panel\s*\{[^}]*background:\s*var\(--ink-900\)[^}]*border-color:\s*var\(--border-subtle\)[^}]*box-shadow:/s);
+  assert.match(css, /--overlay-panel-surface:\s*rgba\(6,9,11,.86\)/);
+  assert.match(css, /\.bv-overlay-root \.bv-panel\s*\{[^}]*background:\s*var\(--overlay-panel-surface\)[^}]*border-color:\s*var\(--border-subtle\)[^}]*box-shadow:/s);
+  assert.doesNotMatch(css, /\.bv-overlay-root \.bv-panel[^}]*backdrop-filter\s*:/s, "panel translucency does not introduce blur");
+  assert.match(css, /\.bv-rally-timeline-toolbar\s*\{[^}]*flex-wrap:\s*wrap[^}]*overflow:\s*visible/s, "rally controls reflow without an inner scrollbar");
+  assert.doesNotMatch(css, /\.bv-rally-timeline-toolbar\s*\{[^}]*overflow-x:\s*auto/s, "rally controls never create horizontal scrolling");
+  assert.match(css, /\.bv-rally-timeline-toolbar \.bv-button\.compact[^}]*width:\s*var\(--control-height-sm\)/s, "narrow timelines use compact icon controls");
+  assert.match(css, /\.bv-rally-action\.approve[^}]*border-inline-start-color:\s*var\(--rally-approve-color\)/s, "approval actions use a subordinate approved state cue");
+  assert.match(css, /\.bv-rally-action\.correction[^}]*border-inline-start-color:\s*var\(--rally-correction-color\)/s, "correction actions use a subordinate corrected state cue");
+  assert.match(css, /\.bv-rally-action\.removal[^}]*border-inline-start-color:\s*var\(--rally-remove-color\)/s, "removal actions use a subordinate removed state cue");
+  assert.match(css, /\.bv-button\.primary[^}]*var\(--action-primary-fill\)/s, "only primary actions use the shared priority fill token");
+  assert.match(css, /\.bv-button\.primary:hover:not\(:disabled\)[^}]*background:\s*var\(--action-primary-fill\)[^}]*filter:\s*none/s, "primary hover preserves the neon surface");
+  assert.match(css, /\.bv-button\.primary \[data-bso-icon\]\s*\{[^}]*color:\s*var\(--action-primary-text\)/s, "primary icons use the shared high-contrast foreground");
+  assert.match(css, /\.bv-button\.primary:focus-visible[^}]*box-shadow:\s*var\(--focus-ring\)/s, "primary focus keeps a visible focus ring");
+  assert.match(css, /\.bv-button\.primary:active:not\(:disabled\)[^}]*box-shadow:/s, "primary active uses elevation rather than a dark fill");
+  assert.match(css, /\.bv-button\.primary:disabled[^}]*opacity:\s*\.42/s, "primary disabled state remains visibly disabled without changing semantic fill");
 });
 
 test("overlay panels reserve the native player strip and every panel collapses from its header", async () => {

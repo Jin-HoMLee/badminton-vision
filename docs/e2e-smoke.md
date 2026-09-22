@@ -266,27 +266,34 @@ Exercise the real path with `chrome-devtools-axi` native mouse/key actions, not
 page-injected synthetic pointer events:
 
 1. Let playback advance, use YouTube's native seek bar, change playback rate,
-   and verify the widget clock/playhead follows `video.currentTime`.
+   and verify the widget clock/playhead follows `video.currentTime`. Drag the
+   blue playhead (or empty timeline track) and confirm the YouTube video seeks
+   to that time. This widget-only `currentTime` write is intentional; play,
+   pause, rate, mute, source, and player chrome stay on YouTube.
 2. Toggle theater and fullscreen and verify the same widget/review remains
    anchored and usable. Audio must stay muted for the entire worker run.
 3. Trigger a YouTube SPA navigation to another declared source and back, then
    exercise a DOM/video-element replacement. Verify source reviews stay under
    their own video keys and the original review returns.
-4. Zoom and horizontally scroll. Drag a whole interval, resize both bar edges,
-   use an edge's arrow-key path, and enter exact numeric seconds. Confirm
-   `start < end` and that original proposal seconds remain unchanged.
-5. Add a missing rally, remove both an added interval and a proposed false
-   positive, enter comment/verifier/date evidence, and resolve imported
-   empty/inactive controls. Reload the page and verify all edits/tombstones and
-   the completion gate persist.
-6. Export canonical JSON, import it into a fresh state for the same video, and
+4. Zoom and horizontally scroll. Drag a whole interval, resize both bar edges
+   (including snap/clip to the playhead), use an edge's arrow-key path, type
+   clock times (`h:mm:ss` / `m:ss`), and use **Set start/end from playhead**.
+   Confirm `start < end` and that original proposal seconds remain unchanged.
+5. Focus a comment field and type keys that YouTube normally binds (for
+   example Space/J/K/L). Shortcuts must not fire while the field is focused and
+   must resume after blur.
+6. Add a missing rally, remove both an added interval and a proposed false
+   positive with comment/verifier/date evidence on the removal itself, and
+   resolve imported empty/inactive controls. Reload the page and verify all
+   edits/tombstones and the completion gate persist.
+7. Export canonical JSON, import it into a fresh state for the same video, and
    compare `BVRallyLabeler.serialize` output after normalization. Verify the
    download directory contains JSON only—no video, audio, image, or frame file.
 
-The extension may observe naturally advancing or natively sought
-`currentTime`; it must not initiate those changes. Compare `muted`,
-`playbackRate`, and `src` around widget-only edits. They must stay unchanged.
-`paused` may change only when the acceptance operator used YouTube's native
-play/pause control. Record theater/fullscreen and SPA/replacement results along
-with the dedicated profile path, debugging port, declared URL, and exported
-JSON hash.
+Outside the rally playhead/timeline seek path above, the extension may observe
+naturally advancing or natively sought `currentTime` but must not initiate other
+playback changes. Compare `muted`, `playbackRate`, and `src` around widget-only
+edits. They must stay unchanged. `paused` may change only when the acceptance
+operator used YouTube's native play/pause control. Record theater/fullscreen and
+SPA/replacement results along with the dedicated profile path, debugging port,
+declared URL, and exported JSON hash.

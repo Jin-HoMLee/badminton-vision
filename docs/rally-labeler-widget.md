@@ -27,29 +27,120 @@ or a general product rollout.
 
 The widget uses the content script's existing video discovery, replacement, SPA
 navigation, rendered-video anchoring, and media-time updates. The blue playhead
-observes the active `HTMLVideoElement.currentTime`. The widget has no operation
-that assigns `currentTime`, `paused`, `muted`, `playbackRate`, `src`, player
-geometry, or player styles. Play, pause, native seek, rate, theater, and
-fullscreen remain YouTube controls.
+tracks the active `HTMLVideoElement.currentTime`. Dragging that playhead (or an
+empty stretch of the timeline track) assigns `currentTime` so the YouTube video
+follows the help line. This is the only intentional playback write from the
+widget: it does not touch `paused`, `muted`, `playbackRate`, `src`, player
+geometry, or player styles. Play, pause, rate, theater, and fullscreen remain
+YouTube controls.
 
 - **Zoom in/out** expands or contracts the complete review window around the
   center of the visible viewport.
-- **Scroll left/right** and the timeline's native horizontal scrollbar expose
-  the expanded range.
-- Each active rally is exactly one interval bar. The contained left and right
-  edge hit zones edit start and end. There are no separate boundary markers.
-- Drag the bar body to move an interval without changing its duration. Drag an
-  edge to resize it.
+- A single compact toolbar directly above the timeline contains **Zoom out**,
+  scale, **Zoom in**, **Scroll left/right**, **Undo/Redo**, and the right-aligned
+  **Set start/end from playhead** actions. Every action has a visible button
+  treatment, familiar icon, accessible label, tooltip, and disabled state where
+  it cannot currently apply. **Add missing rally** is available in that same
+  toolbar.
+- The timeline's native horizontal scrollbar exposes the expanded range.
+- **Undo** and **Redo** reverse saved interval boundary changes, additions,
+  removals/restores, and review evidence/state changes. They write the restored
+  document immediately; disabled buttons indicate an empty history stack.
+- Each active rally is exactly one interval bar. Bars are packed horizontally
+  on one lane in time order; a second row opens only when two ranges would
+  overlap. The contained left and right edge hit zones edit start and end.
+  There are no separate boundary markers.
+- Click/tap the bar body to select it and seek the blue playhead and YouTube
+  player to that interval's start. Selection never changes review state. The
+  bar body is not draggable. Only the start/end edge hit zones stretch or
+  shorten the interval; edge drags snap/clip to the blue playhead when they
+  pass near it.
+- Timeline colors and the editor badges below use the same coding: orange
+  dashed = pending review, green = approved, lime = added, purple =
+  corrected, red labeled removed = false-positive removal kept at its original
+  start/end. The selected bar gets a bright ring only; selection is not a
+  correction. The playhead line is centered on the exact media second so it
+  coincides with interval edges at the same time.
+- **Set start from playhead** / **Set end from playhead** copy the current
+  playhead time onto the selected interval (clamped and ordered so start stays
+  before end). Newly added missing rallies use the same editor and edge handles.
 - With an edge focused, `Left`/`Right` changes it by 0.1 seconds and
-  `Shift+Left`/`Shift+Right` changes it by 1 second. The exact numeric inputs
-  use 0.001-second steps.
+  `Shift+Left`/`Shift+Right` changes it by 1 second. The compact Start/End
+  fields are the one authoritative editable current range. They accept human
+  clocks (`h:mm:ss.sss`, `m:ss.sss`) as well as plain seconds; the stored value
+  remains a millisecond-rounded second number. The original proposal is shown
+  once as compact provenance only when the current range differs.
+- While a comment, reviewed-by, date, or clock field inside the widget is focused,
+  widget keybinds and YouTube page shortcuts are suppressed for those keys.
+  Focus leaving the field restores both.
+- **Reviewed by** is the human recording the decision. It uses a plain-language
+  label and remembers the last non-empty value (for example `Jin-Ho Lee`) so it
+  does not need retyping on every interval. **Review date** autofills with the
+  current UTC timestamp whenever the field is empty on open or save.
 - Every edit is clamped to the review window and enforces `start < end`.
   Changing seconds reopens comment/verifier/date evidence.
 
 **Add missing rally** creates a stable `source-id:addition-NNN` interval around
 the observed media time and persists it immediately. **Remove false positive**
-turns either a proposed or added interval into a durable removal tombstone; it
-can be restored. A removed item has no interval bar.
+turns either a proposed or added interval into a durable removal kept at the
+same start/end on the timeline (red, labeled removed) and requires the same
+non-empty comment/Reviewed by/date evidence as an approval so later analysis
+can see why it was removed. If those fields are empty, the panel keeps the
+interval and shows an inline error that names the exact empty fields. Removal
+evidence stays editable; the bar can be restored.
+
+When the developer widget is enabled on a fresh supported video, the
+workspace is created automatically after video metadata is available. It uses
+the active video's canonical identity and duration, starts with zero intervals,
+and remains incomplete until the reviewer explicitly confirms the empty set or
+adds/reviews a rally. JSON import still replaces that video-local document
+only after its identity check succeeds.
+
+Imported reviews keep every interval as a visible, selectable timeline
+record, including short late-window records: bars have a small visual minimum
+and their narrower edge hit zones leave a center body target. The viewport's
+bounded pan controls then expose records beyond the first fit-width view without
+changing media time or selection.
+
+The timeline navigation buttons are disabled when the review fits the viewport,
+and become bounded earlier/later pan controls only after zoom creates real
+horizontal pan state. Panning does not change media time or interval selection;
+zoom and layout rerenders recompute the boundary state. Set start/end use
+separate interval/playhead icons, while the collapsed playback-help affordance
+is a compact question-mark button with the accessible name `Show help`.
+Review actions reuse the approved, corrected, and removed semantic tokens used
+by their resulting timeline bars as subordinate leading-border/icon cues. The
+neon priority fill remains reserved for the single primary action; neutral
+secondary action surfaces never imply a timeline outcome. Text and icons stay
+present as non-color cues.
+
+The panel's user-resize bounds follow the rendered YouTube presentation
+container. Fullscreen removes the theater-mode width ceiling and permits a
+larger user-sized panel while preserving its current pixel size when valid;
+leaving fullscreen clamps it back inside the normal player margins and above
+the native control strip. Layout and fullscreen/resize transitions recompute
+these bounds without forcing the panel to full width.
+
+Hit testing treats every visible pixel of the rally panel as a hit target: the
+Developer playback help callout, black/empty body background, buttons, fields,
+and timeline controls. Clicks never reach YouTube while the cursor is over the
+panel; within the panel, the foreground control under the cursor still receives
+the event first. The panel body scroll position is preserved across selection
+changes, button clicks, and other re-renders so the view does not jump back to
+the top. Developer playback help is placed after the primary review content
+near the bottom of the panel; it can be dismissed and restored with **Show
+playback help** in that same lower area. Overlay panels use one restrained
+translucent surface token so
+video details remain faintly visible behind them without blur; text, fields,
+controls, focus states, and boundaries remain opaque/readable, and transparency
+never changes pointer hit-testing. The **Validation cases** section contains
+optional expected outcomes, kept distinct from rally intervals: **Expected no
+rally · fixed-camera badminton** and **Expected non-badminton content ·
+basketball**. Each case can be added or removed with the same toggle action;
+**Confirm expected result** and **Not true** preserve explicit evidence state.
+The canonical JSON keeps the stable `empty-set` and `inactive` kinds for
+compatibility. A basketball/non-badminton case does not acquire a phantom
+no-rally requirement merely because it contains zero rally intervals.
 
 ## Canonical JSON contract
 
@@ -85,7 +176,7 @@ finite non-negative JSON numbers rounded to milliseconds.
       "id": "club-fixed-cam:empty",
       "sourceId": "bwf-ws-2026",
       "kind": "empty-set",
-      "label": "No rallies in the review window",
+      "label": "Expected no rally · fixed-camera badminton",
       "state": "rejected",
       "comment": "Rallies are visible in this source.",
       "verifier": "reviewer-handle",
@@ -108,9 +199,11 @@ finite non-negative JSON numbers rounded to milliseconds.
   active bar.
 - Interval `action` is `unresolved`, `approve`, `correction`, `addition`, or
   `removal`.
-- Control `kind` is `empty-set` or `inactive`; `state` is `unresolved`,
-  `confirmed`, or `rejected`. `rejected` explicitly records that the proposed
-  negative control is not true; it is not an unresolved omission.
+- A validation-case `kind` remains `empty-set` or `inactive` for canonical
+  compatibility; the UI presents these as expected no-rally/fixed-camera
+  badminton and expected non-badminton/basketball outcomes. `state` is
+  `unresolved`, `confirmed`, or `rejected`. `rejected` explicitly records that
+  the proposed expected outcome is not true; it is not an unresolved omission.
 - `verifiedAt` is `YYYY-MM-DD` or an ISO UTC timestamp.
 
 The importer also accepts the corpus-oriented shorthand below and normalizes it
@@ -132,9 +225,20 @@ input omitted one:
 Import followed by export always passes through `normalizeDocument`; exporting
 that result again is byte-stable under `serialize`. **Export draft JSON** is
 available while work remains. **Export verified JSON** is disabled until every
-interval and supplied control has an action/state plus non-empty comment,
-verifier, and date, and until no confirmed empty/inactive control contradicts
-an active interval.
+interval and supplied validation case has an action/state plus required
+verifier/date evidence (approval comments are optional; correction/removal
+comments remain required), and until no confirmed empty/inactive case
+contradicts an active interval.
+
+If a browser extension reload invalidates the content context during a save,
+the widget keeps the in-page evidence visible and reports an actionable
+reconnect/reload message instead of surfacing an uncaught context error. No
+review data is silently treated as saved in that state.
+
+When completion is blocked, the panel lists each unresolved rally label or
+validation case by identity, time range/review window, and exact missing
+requirement. Each entry is a focusable action that returns to the relevant
+editor when it still exists.
 
 The review store and JSON contain timestamps and text evidence only. The widget
 never stores or exports video, audio, image data, decoded frames, or model

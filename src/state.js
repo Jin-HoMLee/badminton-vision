@@ -334,6 +334,9 @@
   function copySettings(settings) {
     var result = settings && typeof settings === "object" && !Array.isArray(settings) ? clone(settings) : {};
     result.rallyLabelerEnabled = Boolean(result.rallyLabelerEnabled);
+    if (Object.prototype.hasOwnProperty.call(result, "rallyReviewerName")) {
+      result.rallyReviewerName = String(result.rallyReviewerName == null ? "" : result.rallyReviewerName).trim();
+    }
     return result;
   }
 
@@ -843,8 +846,13 @@
       }
       case "TOGGLE_PANEL_CONTROLS_EXPANDED": return Object.assign(current, { panelControlsExpanded: Boolean(action.value) });
       case "SET_SETTING": {
-        if (action.key !== "rallyLabelerEnabled") return current;
-        return initialExtensionState(Object.assign({}, current, { settings: Object.assign({}, current.settings, { rallyLabelerEnabled: Boolean(action.value) }) }));
+        if (action.key === "rallyLabelerEnabled") {
+          return initialExtensionState(Object.assign({}, current, { settings: Object.assign({}, current.settings, { rallyLabelerEnabled: Boolean(action.value) }) }));
+        }
+        if (action.key === "rallyReviewerName") {
+          return initialExtensionState(Object.assign({}, current, { settings: Object.assign({}, current.settings, { rallyReviewerName: String(action.value == null ? "" : action.value).trim() }) }));
+        }
+        return current;
       }
       case "SET_RALLY_REVIEW": {
         var rallyKey = action.videoKey != null ? String(action.videoKey) : current.videoKey;

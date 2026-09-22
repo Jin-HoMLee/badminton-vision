@@ -181,7 +181,7 @@
       id: id,
       sourceId: sourceId,
       kind: kind,
-      label: optionalText(raw.label) || (kind === "empty-set" ? "No rallies in the review window" : "Rally state stays inactive"),
+      label: optionalText(raw.label) || (kind === "empty-set" ? "Expected no rally · fixed-camera badminton" : "Expected non-badminton content · basketball"),
       state: state,
       comment: optionalText(raw.comment != null ? raw.comment : raw.reason),
       verifier: optionalText(raw.verifier),
@@ -430,18 +430,21 @@
 
   function removeInterval(document, id, fields) {
     fields = fields || {};
-    editableInterval(document, id);
+    if (!optionalText(fields.comment)) throw new TypeError("comment is required before removing a false positive");
+    var existing = document.intervals.find(function (item) { return item.id === String(id); });
+    if (!existing) throw new TypeError("unknown interval id: " + id);
     return replaceInterval(document, id, function (interval) {
       var previousAction = interval.action;
       interval.corrected = interval.corrected || interval.original;
-      var staleEvidence = previousAction !== "removal" && evidenceMatches(interval, fields);
       interval.action = "removal";
-      if (previousAction !== interval.action) clearEvidence(interval);
-      if (!staleEvidence) {
-        if (fields.comment != null) interval.comment = optionalText(fields.comment);
-        if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
-        if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
-      }
+      // Removals keep explicit comment/verifier/date so a false-positive reason
+      // remains available for later analysis. Empty field bags still clear prior
+      // approval evidence so a bare remove cannot silently reuse it. An already
+      // removed tombstone can receive evidence updates without restoration.
+      if (previousAction !== "removal") clearEvidence(interval);
+      if (fields.comment != null) interval.comment = optionalText(fields.comment);
+      if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
+      if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
       return interval;
     });
   }
@@ -454,11 +457,21 @@
     });
   }
 
+  function removeControl(document, id) {
+    if (!document.controls.some(function (control) { return control.id === String(id); })) throw new TypeError("unknown control id: " + id);
+    var next = clone(document);
+    next.controls = next.controls.filter(function (control) { return control.id !== String(id); });
+    return normalizeDocument(next);
+  }
+
   function reviewInterval(document, id, fields) {
     fields = fields || {};
     editableInterval(document, id);
     return replaceInterval(document, id, function (interval) {
       var action = normalizeAction(fields.action || interval.action, interval.original);
+      if ((action === "correction" || action === "removal") && !optionalText(fields.comment)) {
+        throw new TypeError("comment is required before saving a " + (action === "correction" ? "correction" : "false-positive removal"));
+      }
       if (action === "approve") {
         if (!interval.original) throw new TypeError("an added interval cannot be approved as an original proposal");
         interval.corrected = clone(interval.original);
@@ -471,14 +484,13 @@
         interval.corrected = interval.corrected || interval.original;
       }
       var sameAction = interval.action === action;
-      var staleEvidence = !sameAction && evidenceMatches(interval, fields);
       if (!sameAction) clearEvidence(interval);
       interval.action = action;
-      if (!staleEvidence) {
-        if (fields.comment != null) interval.comment = optionalText(fields.comment);
-        if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
-        if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
-      }
+      // Explicit form commits always write through. Callers that need a clean
+      // slate omit fields or pass empty strings after an action change.
+      if (fields.comment != null) interval.comment = optionalText(fields.comment);
+      if (fields.verifier != null) interval.verifier = optionalText(fields.verifier);
+      if (fields.verifiedAt != null) interval.verifiedAt = normalizedDate(fields.verifiedAt);
       return interval;
     });
   }
@@ -513,8 +525,18 @@
     return normalizeDocument(next);
   }
 
+  function missingMetadataFields(item) {
+    var missing = [];
+    var action = item && item.action;
+    // Approval records may intentionally have no explanatory comment; the
+    // reviewer/date pair still proves who made the decision and when.
+    if (action !== "approve" && !optionalText(item && item.comment)) missing.push("comment");
+    if (!optionalText(item && item.verifier)) missing.push("Reviewed by");
+    if (!optionalText(item && item.verifiedAt)) missing.push("review date");
+    return missing;
+  }
   function completeMetadata(item) {
-    return Boolean(optionalText(item.comment) && optionalText(item.verifier) && optionalText(item.verifiedAt));
+    return missingMetadataFields(item).length === 0;
   }
 
   function completion(document) {
@@ -522,12 +544,26 @@
     var contradictions = [];
     document.intervals.forEach(function (interval) {
       if (interval.action === "unresolved") unresolved.push(interval.id + ":action");
-      else if (!completeMetadata(interval)) unresolved.push(interval.id + ":evidence");
+      else {
+        var missing = missingMetadataFields(interval);
+        if (missing.length) unresolved.push(interval.id + ":" + missing.join(", "));
+      }
     });
     var activeCount = document.intervals.filter(function (interval) { return Boolean(effectiveBounds(interval)); }).length;
+    // A fresh empty review needs an explicit no-rally confirmation. An
+    // expected non-badminton case is a different validation path and must not
+    // acquire a phantom empty-set requirement merely because it has no rally
+    // intervals.
+    if (document.intervals.length === 0 && !document.controls.some(function (control) { return control.kind === "inactive"; })) {
+      var emptySetControl = document.controls.find(function (control) { return control.kind === "empty-set"; });
+      if (!emptySetControl || emptySetControl.state === "rejected") unresolved.push("empty-set:confirmation");
+    }
     document.controls.forEach(function (control) {
       if (control.state === "unresolved") unresolved.push(control.id + ":state");
-      else if (!completeMetadata(control)) unresolved.push(control.id + ":evidence");
+      else {
+        var missingControl = missingMetadataFields(control);
+        if (missingControl.length) unresolved.push(control.id + ":" + missingControl.join(", "));
+      }
       if (control.state === "confirmed" && activeCount > 0 && (control.kind === "empty-set" || control.kind === "inactive")) {
         contradictions.push(control.id + ":active-intervals");
       }
@@ -553,6 +589,44 @@
     } catch (error) {
       return { ok: false, error: error && error.message ? error.message : String(error) };
     }
+  }
+
+  function displayBounds(interval) {
+    if (!interval) return null;
+    if (interval.action === "removal") return clone(interval.corrected || interval.original);
+    return effectiveBounds(interval) || clone(interval.corrected || interval.original);
+  }
+
+  // Pack intervals onto the fewest horizontal lanes that avoid time overlap.
+  // Non-overlapping rallies share one lane; a second row opens only when two
+  // active ranges would collide. Removals keep their original range for packing.
+  function packTimelineLanes(document) {
+    var laneEnds = [];
+    var lanesById = Object.create(null);
+    var ordered = (document && Array.isArray(document.intervals) ? document.intervals.slice() : []).map(function (interval, index) {
+      return { interval: interval, index: index, bounds: displayBounds(interval) };
+    }).sort(function (a, b) {
+      var aStart = a.bounds ? a.bounds.startSec : Infinity;
+      var bStart = b.bounds ? b.bounds.startSec : Infinity;
+      if (aStart !== bStart) return aStart - bStart;
+      return a.index - b.index || String(a.interval.id).localeCompare(String(b.interval.id));
+    });
+    ordered.forEach(function (entry) {
+      var bounds = entry.bounds;
+      if (!bounds) {
+        lanesById[entry.interval.id] = 0;
+        return;
+      }
+      var lane = 0;
+      while (lane < laneEnds.length && laneEnds[lane] > bounds.startSec + 1e-9) lane += 1;
+      if (lane === laneEnds.length) laneEnds.push(bounds.endSec);
+      else laneEnds[lane] = bounds.endSec;
+      lanesById[entry.interval.id] = lane;
+    });
+    return {
+      laneCount: Math.max(1, laneEnds.length || 1),
+      lanesById: lanesById
+    };
   }
 
   function createTimelineView(document, viewportWidth, zoom, scrollLeft) {
@@ -594,15 +668,59 @@
     return createTimelineView(document, view.viewportWidth, view.zoom, view.scrollLeft + Number(deltaPixels || 0));
   }
 
-  function pointerEdit(document, id, mode, deltaPixels, view) {
+  function snapSeconds(value, guideSeconds, thresholdSeconds) {
+    var seconds = roundSeconds(value);
+    var guide = roundSeconds(guideSeconds);
+    var threshold = Number(thresholdSeconds);
+    if (seconds == null) return null;
+    if (guide == null || !Number.isFinite(threshold) || threshold < 0) return seconds;
+    return Math.abs(seconds - guide) <= threshold + 1e-12 ? guide : seconds;
+  }
+
+  function pointerEdit(document, id, mode, deltaPixels, view, options) {
+    options = options || {};
     var deltaSeconds = Number(deltaPixels || 0) / view.pixelsPerSecond;
     var interval = document.intervals.find(function (item) { return item.id === String(id); });
     if (!interval) throw new TypeError("unknown interval id: " + id);
     var bounds = effectiveBounds(interval) || interval.corrected || interval.original;
     if (mode === "move") return moveInterval(document, id, deltaSeconds);
-    if (mode === "start") return resizeInterval(document, id, "start", bounds.startSec + deltaSeconds);
-    if (mode === "end") return resizeInterval(document, id, "end", bounds.endSec + deltaSeconds);
-    throw new TypeError("pointer edit mode must be move, start, or end");
+    var edgeSeconds = mode === "start"
+      ? bounds.startSec + deltaSeconds
+      : mode === "end"
+        ? bounds.endSec + deltaSeconds
+        : null;
+    if (edgeSeconds == null) throw new TypeError("pointer edit mode must be move, start, or end");
+    var threshold = options.snapThresholdSec;
+    if (threshold == null && options.snapThresholdPx != null && view && view.pixelsPerSecond) {
+      threshold = Number(options.snapThresholdPx) / view.pixelsPerSecond;
+    }
+    if (threshold == null) threshold = view && view.pixelsPerSecond ? 8 / view.pixelsPerSecond : 0.1;
+    edgeSeconds = snapSeconds(edgeSeconds, options.snapGuideSec, threshold);
+    return resizeInterval(document, id, mode, edgeSeconds);
+  }
+
+  function setEdgeFromPlayhead(document, id, edge, playheadSeconds) {
+    var seconds = roundSeconds(playheadSeconds);
+    if (seconds == null) throw new TypeError("playhead seconds must be finite");
+    return resizeInterval(document, id, edge, seconds);
+  }
+
+  function clampPlayheadSeconds(document, seconds) {
+    var value = roundSeconds(seconds);
+    if (value == null) return null;
+    if (!document || !document.source || !document.source.reviewWindow) return value;
+    return roundSeconds(clamp(value, document.source.reviewWindow.startSec, document.source.reviewWindow.endSec));
+  }
+
+  function isEditableKeyboardTarget(target) {
+    if (!target) return false;
+    if (target.isContentEditable) return true;
+    var tag = target.tagName ? String(target.tagName).toLowerCase() : "";
+    if (tag === "textarea") return true;
+    if (tag === "select") return true;
+    if (tag !== "input") return false;
+    var type = String(target.type || "text").toLowerCase();
+    return type !== "button" && type !== "submit" && type !== "reset" && type !== "checkbox" && type !== "radio" && type !== "file" && type !== "range" && type !== "color" && type !== "image";
   }
 
   return {
@@ -627,8 +745,10 @@
     restoreInterval: restoreInterval,
     reviewInterval: reviewInterval,
     addControl: addControl,
+    removeControl: removeControl,
     reviewControl: reviewControl,
     completion: completion,
+    missingMetadataFields: missingMetadataFields,
     serialize: serialize,
     parse: parse,
     createTimelineView: createTimelineView,
@@ -636,6 +756,13 @@
     pixelsToSeconds: pixelsToSeconds,
     zoomTimeline: zoomTimeline,
     scrollTimeline: scrollTimeline,
-    pointerEdit: pointerEdit
+    pointerEdit: pointerEdit,
+    snapSeconds: snapSeconds,
+    setEdgeFromPlayhead: setEdgeFromPlayhead,
+    clampPlayheadSeconds: clampPlayheadSeconds,
+    isEditableKeyboardTarget: isEditableKeyboardTarget,
+    completeMetadata: completeMetadata,
+    displayBounds: displayBounds,
+    packTimelineLanes: packTimelineLanes
   };
 });

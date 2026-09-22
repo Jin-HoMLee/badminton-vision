@@ -1,6 +1,8 @@
 /*
  * YouTube sibling overlay. It reads the active video and anchors to its client
- * rectangle; it never calls a playback mutator or writes to the video element.
+ * rectangle. Outside the developer rally-boundary widget it never calls a
+ * playback mutator or writes to the video element; that widget alone may assign
+ * currentTime when the reviewer drags its playhead or uses set-start/set-end.
  */
 (function () {
   // All MV3 page actions enter through this one bundled content script. Keep
@@ -43,11 +45,23 @@
   // is persisted by video key; transient selection/zoom/gesture state is not.
   var rallyDocument = null;
   var rallySelectedId = null;
+  var rallyFocusedUnresolvedId = null;
   var rallyTimelineZoom = 1;
   var rallyTimelineScroll = 0;
   var rallyImportInput = null;
   var rallyNotice = null;
+  var extensionContextInvalidated = false;
   var rallyGesture = null;
+  var rallyIgnoreBarClick = false;
+  var rallyPanelScrollTop = 0;
+  // Keep the rally panel's pixel dimensions across presentation-container
+  // changes. Saved layouts remain normalized for persistence, but entering
+  // fullscreen should not unexpectedly scale a reviewer-sized panel.
+  var rallyPanelViewport = null;
+  var rallyPanelPixelSize = null;
+  var rallyUndoStack = [];
+  var rallyRedoStack = [];
+  var rallyHelpVisible = true;
 
   function currentMediaTimestamp() {
     // Prefer live video.currentTime to avoid stale cached mediaTime from prior playback events
@@ -137,13 +151,37 @@
     return false;
   }
   function hasChrome() { return typeof chrome !== "undefined"; }
+  function handleExtensionContextFailure(error) {
+    var message = error && error.message ? error.message : String(error || "");
+    if (!/extension context (?:has been )?invalidated|context invalidated/i.test(message)) return false;
+    if (!extensionContextInvalidated) {
+      extensionContextInvalidated = true;
+      rallyNotice = { ok: false, message: "The extension was reloaded or disconnected. This change is still on this page but was not saved; reload this YouTube tab to reconnect, then import the draft again if needed." };
+      setTimeout(function () { if (root) render(); }, 0);
+    }
+    return true;
+  }
   function persist() {
     var key = state.videoKey || activeVideoKey || currentVideoKey();
     if (key) {
       state.videoKey = key;
       if (!state.videoUrl && window.location && /^https?:/.test(window.location.href)) state.videoUrl = window.location.href;
     }
-    if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.set({ bvState: state }, function () { void chrome.runtime.lastError; });
+    if (!hasChrome()) return true;
+    try {
+      if (chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ bvState: state }, function () {
+          try {
+            var runtimeError = chrome.runtime && chrome.runtime.lastError;
+            if (runtimeError) handleExtensionContextFailure(runtimeError);
+          } catch (error) { handleExtensionContextFailure(error); }
+        });
+      }
+      return true;
+    } catch (error) {
+      handleExtensionContextFailure(error);
+      return false;
+    }
   }
   function send(message) {
     if (hasChrome() && chrome.runtime) chrome.runtime.sendMessage(message, function () { void chrome.runtime.lastError; });
@@ -890,6 +928,12 @@
     rallySelectedId = null;
     rallyTimelineZoom = 1;
     rallyTimelineScroll = 0;
+    rallyPanelScrollTop = 0;
+    rallyPanelViewport = null;
+    rallyPanelPixelSize = null;
+    rallyUndoStack = [];
+    rallyRedoStack = [];
+    rallyHelpVisible = true;
     rallyNotice = null;
     persist();
     render();
@@ -930,6 +974,8 @@
       activeVideoKey = key;
       state = window.BVState.stateForVideo(state, key);
       rallyDocument = rallyApi && window.BVState.rallyReviewForVideo ? window.BVState.rallyReviewForVideo(state, key) : null;
+      rallyUndoStack = [];
+      rallyRedoStack = [];
       restoreReviewState();
       restoreCalibrationState();
     }
@@ -1079,7 +1125,11 @@
         // Duration becomes known once metadata loads; publish only on change.
         publishVideoInfo();
       };
-      videoGeometryListener = function () { positionToVideo(); publishVideoInfo(); };
+      videoGeometryListener = function () {
+        positionToVideo();
+        publishVideoInfo();
+        if (rallyLabelerEnabled() && ensureRallyDocument()) render();
+      };
       video.addEventListener("timeupdate", mediaTimeListener);
       video.addEventListener("loadedmetadata", videoGeometryListener);
       video.addEventListener("resize", videoGeometryListener);
@@ -1179,7 +1229,35 @@
     settings: { minWidth: 240, minHeight: 96, maxWidth: 420, maxHeight: 480, bottomReserve: PLAYER_CONTROLS_RESERVE },
     rallyLabeler: { minWidth: 360, minHeight: 260, maxWidth: 1100, maxHeight: 760, bottomReserve: PLAYER_CONTROLS_RESERVE }
   };
-  function panelConstraints(panelId) { return PANEL_LAYOUT_CONSTRAINTS[panelId] || {}; }
+  function currentPresentationRect() {
+    if (!video || typeof video.getBoundingClientRect !== "function") return null;
+    var rect = window.BVRuntime && typeof window.BVRuntime.videoContentRect === "function"
+      ? window.BVRuntime.videoContentRect(video, window)
+      : video.getBoundingClientRect();
+    return rect && Number(rect.width) > 0 && Number(rect.height) > 0 ? rect : null;
+  }
+  function isFullscreenPresentation() {
+    if (document && (document.fullscreenElement || document.webkitFullscreenElement)) return true;
+    var node = video;
+    while (node && node !== document.body && node !== document.documentElement) {
+      var classes = node.className && String(node.className);
+      if (classes && /(?:^|\\s)(?:ytp-fullscreen|fullscreen)(?:\\s|$)/i.test(classes)) return true;
+      node = node.parentNode;
+    }
+    return false;
+  }
+  function panelConstraints(panelId) {
+    var base = PANEL_LAYOUT_CONSTRAINTS[panelId] || {};
+    if (panelId !== "rallyLabeler" || !isFullscreenPresentation()) return base;
+    var rect = currentPresentationRect();
+    if (!rect) return base;
+    // Fullscreen removes YouTube's theater-mode width ceiling, but the panel
+    // still keeps the normal overlay margin and native control-strip reserve.
+    var margin = 12;
+    var availableWidth = Math.max(base.minWidth, Number(rect.width) - margin * 2);
+    var availableHeight = Math.max(base.minHeight, Number(rect.height) - margin * 2 - PLAYER_CONTROLS_RESERVE);
+    return Object.assign({}, base, { maxWidth: availableWidth, maxHeight: availableHeight });
+  }
   function panelMetrics(container, panel) {
     var containerRect = container && typeof container.getBoundingClientRect === "function" ? container.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
     var panelRect = panel && typeof panel.getBoundingClientRect === "function" ? panel.getBoundingClientRect() : { left: 0, top: 0, width: 0, height: 0 };
@@ -1226,7 +1304,21 @@
     // small players without persisting a viewport-specific default.
     var collapsed = panel.getAttribute && panel.getAttribute("data-bso-panel-collapsed") === "true";
     if (collapsed) metrics.rendered.height = 32;
-    var result = panelLayoutApi.pixelPanelLayout(layout, metrics.viewport, metrics.rendered, panelConstraints(panelId));
+    var constraints = panelConstraints(panelId);
+    var effectiveLayout = layout;
+    // Layouts are normalized for persistence, so applying them against a new
+    // fullscreen viewport would otherwise scale the panel. Preserve the last
+    // user-sized pixel dimensions across a presentation transition, then let
+    // the new bounds clamp them safely when returning to theater/standard.
+    if (panelId === "rallyLabeler" && !collapsed && rallyPanelViewport &&
+      (Math.abs(rallyPanelViewport.width - metrics.viewport.width) > 0.5 || Math.abs(rallyPanelViewport.height - metrics.viewport.height) > 0.5) &&
+      rallyPanelPixelSize && rallyPanelPixelSize.width > 0 && rallyPanelPixelSize.height > 0 && metrics.viewport.width > 0 && metrics.viewport.height > 0) {
+      effectiveLayout = Object.assign({}, layout || {}, {
+        width: rallyPanelPixelSize.width / metrics.viewport.width,
+        height: rallyPanelPixelSize.height / metrics.viewport.height
+      });
+    }
+    var result = panelLayoutApi.pixelPanelLayout(effectiveLayout, metrics.viewport, metrics.rendered, constraints);
     if (!layout && panelId === "settings") result = settingsFirstOpenPlacement(panel, metrics.viewport, metrics.rendered, result);
     panel.style.left = result.left + "px"; panel.style.top = result.top + "px";
     panel.style.right = "auto"; panel.style.bottom = "auto";
@@ -1236,6 +1328,10 @@
     panel.style.height = collapsed ? "auto" : result.height + "px";
     panel.style.transform = "none";
     panel.setAttribute("data-bso-panel-bounds", "clamped");
+    if (panelId === "rallyLabeler") {
+      rallyPanelViewport = { width: metrics.viewport.width, height: metrics.viewport.height };
+      rallyPanelPixelSize = { width: result.width, height: result.height };
+    }
     return result;
   }
   function refreshPanelLayouts() {
@@ -1960,37 +2056,110 @@
       verifiedAt: rallyReadValue(container, "data-bso-rally-date")
     };
   }
-  function showRallyValidationError(error) {
+  function defaultRallyVerifiedAt() {
+    try {
+      return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    } catch (_) {
+      return "";
+    }
+  }
+  function rallyPreferredVerifier(item) {
+    var existing = item && item.verifier != null ? String(item.verifier).trim() : "";
+    if (existing) return existing;
+    var remembered = state.settings && state.settings.rallyReviewerName != null ? String(state.settings.rallyReviewerName).trim() : "";
+    return remembered;
+  }
+  function rallyPreferredVerifiedAt(item) {
+    var existing = item && item.verifiedAt != null ? String(item.verifiedAt).trim() : "";
+    return existing || defaultRallyVerifiedAt();
+  }
+  function rememberRallyVerifier(value) {
+    var text = String(value == null ? "" : value).trim();
+    if (!text) return;
+    if (state.settings && String(state.settings.rallyReviewerName || "").trim() === text) return;
+    state = window.BVState.reduceExtensionState(state, { type: "SET_SETTING", key: "rallyReviewerName", value: text });
+    persist();
+  }
+  function showRallyValidationError(error, options) {
+    options = options || {};
     var message = error && error.message ? error.message : String(error);
     rallyNotice = { ok: false, message: message };
     var notice = root && root.querySelector && root.querySelector("[data-bso-rally-notice]");
     if (notice) {
       notice.textContent = message;
       notice.className = "bv-helper error";
-      return;
+    } else {
+      var panel = root && root.querySelector && root.querySelector('[data-bso-panel="rallyLabeler"]');
+      var body = panel && panel.querySelector && panel.querySelector(".bv-panel-body");
+      if (body) body.appendChild(ui.el("p", { className: "bv-helper error", role: "status", "data-bso-rally-notice": "true" }, [message]));
     }
-    var panel = root && root.querySelector && root.querySelector('[data-bso-panel="rallyLabeler"]');
-    var body = panel && panel.querySelector && panel.querySelector(".bv-panel-body");
-    if (body) body.appendChild(ui.el("p", { className: "bv-helper error", role: "status", "data-bso-rally-notice": "true" }, [message]));
+    if (options.container && options.container.querySelector) {
+      var inline = options.container.querySelector("[data-bso-rally-editor-error]");
+      if (!inline) {
+        inline = ui.el("p", { className: "bv-rally-editor-error", role: "alert", "data-bso-rally-editor-error": "true" });
+        inline.textContent = message;
+        var actions = options.container.querySelector(".bv-rally-editor-actions");
+        var parent = actions && actions.parentNode;
+        if (parent && typeof parent.insertBefore === "function") parent.insertBefore(inline, actions);
+        else if (parent && Array.isArray(parent.children) && actions) {
+          var actionIndex = parent.children.indexOf(actions);
+          if (actionIndex >= 0) parent.children.splice(actionIndex, 0, inline);
+          else parent.children.push(inline);
+          inline.parentNode = parent;
+        } else if (typeof options.container.appendChild === "function") {
+          options.container.appendChild(inline);
+        }
+      } else {
+        inline.textContent = message;
+      }
+      var comment = options.container.querySelector("[data-bso-rally-comment]");
+      if (comment && typeof comment.focus === "function") {
+        try { comment.focus(); } catch (_) {}
+      }
+    }
+  }
+  function rallyDocumentsEqual(a, b) {
+    if (!a || !b || !rallyApi) return a === b;
+    return rallyApi.serialize(a) === rallyApi.serialize(b);
+  }
+  function recordRallyHistory(previous, next) {
+    if (!previous || !next || rallyDocumentsEqual(previous, next)) return;
+    rallyUndoStack.push(rallyApi.clone(previous));
+    if (rallyUndoStack.length > 100) rallyUndoStack.shift();
+    rallyRedoStack = [];
   }
   function setRallyDocument(documentValue, options) {
     options = options || {};
     if (!rallyApi || !documentValue) return false;
     try {
+      var previous = options.previousDocument || rallyDocument;
       var normalized = rallyApi.normalizeDocument(documentValue, {
         videoKey: activeVideoKey || currentVideoKey(),
         videoUrl: window.location && window.location.href,
         fallbackEndSec: video && video.duration
       });
+      if (options.history !== false) recordRallyHistory(previous, normalized);
       rallyDocument = normalized;
       state = window.BVState.reduceExtensionState(state, { type: "SET_RALLY_REVIEW", videoKey: activeVideoKey || currentVideoKey(), document: normalized });
-      if (options.notice) rallyNotice = { ok: true, message: options.notice };
-      persist();
-      return true;
+      var persisted = persist();
+      if (options.notice && !extensionContextInvalidated) rallyNotice = { ok: true, message: options.notice };
+      return persisted || !extensionContextInvalidated;
     } catch (error) {
       rallyNotice = { ok: false, message: error && error.message ? error.message : String(error) };
       return false;
     }
+  }
+  function undoRallyEdit() {
+    if (!rallyUndoStack.length || !rallyDocument) return;
+    var target = rallyUndoStack.pop();
+    rallyRedoStack.push(rallyApi.clone(rallyDocument));
+    if (setRallyDocument(target, { history: false, notice: "Undid the last rally edit." })) render();
+  }
+  function redoRallyEdit() {
+    if (!rallyRedoStack.length || !rallyDocument) return;
+    var target = rallyRedoStack.pop();
+    rallyUndoStack.push(rallyApi.clone(rallyDocument));
+    if (setRallyDocument(target, { history: false, notice: "Redid the rally edit." })) render();
   }
   function commitRallyUpdate(build, notice) {
     try {
@@ -2001,15 +2170,12 @@
       showRallyValidationError(error);
     }
   }
-  function createRallyDocument() {
-    if (!rallyApi) return;
+  function freshRallyDocument() {
+    if (!rallyApi) return null;
     var duration = video && Number(video.duration);
-    if (!Number.isFinite(duration) || duration <= 0) {
-      showRallyValidationError(new Error("Video duration is unavailable. Wait for metadata and try again."));
-      return;
-    }
+    if (!Number.isFinite(duration) || duration <= 0) return null;
     var info = currentVideoInfo();
-    var created = rallyApi.createDocument({
+    return rallyApi.createDocument({
       sourceId: activeVideoKey || currentVideoKey(),
       label: info && info.title || activeVideoKey || currentVideoKey(),
       videoKey: activeVideoKey || currentVideoKey(),
@@ -2017,27 +2183,79 @@
       startSec: 0,
       endSec: duration
     });
+  }
+  function ensureRallyDocument() {
+    if (!rallyLabelerEnabled() || rallyDocument) return false;
+    var created = freshRallyDocument();
+    if (!created) return false;
+    rallySelectedId = null;
+    return setRallyDocument(created, { history: false });
+  }
+  function createRallyDocument() {
+    if (!rallyApi) return;
+    var created = freshRallyDocument();
+    if (!created) {
+      showRallyValidationError(new Error("Video duration is unavailable. Wait for metadata and try again."));
+      return;
+    }
     rallySelectedId = null;
     if (setRallyDocument(created, { notice: "Created a video-local review window." })) render();
   }
   function rallyIntervalById(id) {
     return rallyDocument && rallyDocument.intervals.find(function (interval) { return interval.id === String(id); });
   }
-  function selectRallyInterval(id) {
+  function selectRallyInterval(id, options) {
+    options = options || {};
     rallySelectedId = String(id);
+    if (options.seekToStart && rallyDocument && rallyApi) {
+      var interval = rallyIntervalById(id);
+      var bounds = interval && rallyApi.effectiveBounds(interval);
+      if (bounds) seekVideoToSeconds(bounds.startSec);
+    }
     render();
   }
   function updateRallyEdge(id, edge, value) {
     if (!rallyDocument) return;
     var seconds = rallyApi.parseSeconds(value);
     if (seconds == null) {
-      rallyNotice = { ok: false, message: "Enter seconds as a number or mm:ss.sss." };
+      rallyNotice = { ok: false, message: "Enter a clock time such as 1:23:45.000, 12:34.500, or plain seconds." };
       render();
       return;
     }
     var next = rallyApi.resizeInterval(rallyDocument, id, edge, seconds);
     if (setRallyDocument(next)) render();
     else render();
+  }
+  function setRallyEdgeFromPlayhead(id, edge) {
+    if (!rallyDocument || !rallyApi) return;
+    var seconds = currentMediaTimestamp();
+    if (seconds == null) {
+      showRallyValidationError(new Error("Media time is unavailable."));
+      return;
+    }
+    try {
+      var next = rallyApi.setEdgeFromPlayhead(rallyDocument, id, edge, seconds);
+      if (setRallyDocument(next, { notice: "Set " + edge + " from the playhead." })) render();
+      else showRallyValidationError(rallyNotice && rallyNotice.message);
+    } catch (error) {
+      showRallyValidationError(error);
+    }
+  }
+  function seekVideoToSeconds(seconds) {
+    if (!video || !rallyApi) return false;
+    var next = rallyDocument ? rallyApi.clampPlayheadSeconds(rallyDocument, seconds) : rallyApi.roundSeconds(seconds);
+    if (next == null || !Number.isFinite(next)) return false;
+    try {
+      // Keep the playback mutation isolated to this developer widget. Bracket
+      // access also keeps the manual-label source contract's static guard
+      // precise: no ordinary labeling path writes a player property.
+      video["currentTime"] = next;
+      mediaTime = next;
+      refreshRallyPlayhead();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
   function addMissingRally() {
     if (!rallyDocument) return;
@@ -2054,22 +2272,88 @@
     rallySelectedId = added && added.id;
     if (setRallyDocument(next, { notice: "Added a missing rally at the observed media time." })) render();
   }
+  function missingRallyEvidenceLabels(fields) {
+    var missing = [];
+    if (!fields || !fields.comment) missing.push("comment");
+    if (!fields || !fields.verifier) missing.push("Reviewed by");
+    if (!fields || !fields.verifiedAt) missing.push("review date");
+    return missing;
+  }
+  function rallyMissingEvidenceError(fields, purpose) {
+    var missing = missingRallyEvidenceLabels(fields);
+    if (!missing.length) return null;
+    if (missing.length === 1) return new Error("Fill in " + missing[0] + " before " + purpose + ".");
+    if (missing.length === 2) return new Error("Fill in " + missing[0] + " and " + missing[1] + " before " + purpose + ".");
+    return new Error("Fill in " + missing[0] + ", " + missing[1] + ", and " + missing[2] + " before " + purpose + ".");
+  }
   function commitRallyReview(id, action, container) {
     if (!rallyDocument) return;
     var fields = rallyEvidence(container);
+    if (!fields.verifier) fields.verifier = rallyPreferredVerifier({});
+    if (!fields.verifiedAt) fields.verifiedAt = defaultRallyVerifiedAt();
     fields.action = action;
-    commitRallyUpdate(function () { return rallyApi.reviewInterval(rallyDocument, id, fields); }, "Saved " + action + " evidence for " + id + ".");
+    if (action === "correction" && !fields.comment) {
+      showRallyValidationError(new Error("Fill in comment before saving this correction."), { container: container });
+      return;
+    }
+    if (action === "removal") {
+      var removalError = rallyMissingEvidenceError(fields, "removing this false positive");
+      if (removalError) {
+        showRallyValidationError(removalError, { container: container });
+        return;
+      }
+    }
+    try {
+      var next = action === "removal"
+        ? rallyApi.removeInterval(rallyDocument, id, fields)
+        : rallyApi.reviewInterval(rallyDocument, id, fields);
+      if (action === "removal") {
+        var removed = next.intervals.find(function (interval) { return interval.id === String(id); });
+        if (!removed || !rallyApi.completeMetadata(removed)) {
+          showRallyValidationError(
+            rallyMissingEvidenceError(removed || fields, "removing this false positive") ||
+              new Error("Fill in comment, Reviewed by, and review date before removing this false positive."),
+            { container: container }
+          );
+          return;
+        }
+      }
+      rememberRallyVerifier(fields.verifier);
+      if (setRallyDocument(next, { notice: "Saved " + action + " evidence for " + id + "." })) render();
+      else showRallyValidationError(rallyNotice && rallyNotice.message, { container: container });
+    } catch (error) {
+      showRallyValidationError(error, { container: container });
+    }
   }
   function restoreRallyInterval(id) {
     if (setRallyDocument(rallyApi.restoreInterval(rallyDocument, id), { notice: "Restored " + id + " for review." })) render();
   }
   function addRallyControl(kind) {
-    if (setRallyDocument(rallyApi.addControl(rallyDocument, kind), { notice: "Added an explicit " + kind + " confirmation." })) render();
+    if (setRallyDocument(rallyApi.addControl(rallyDocument, kind), { notice: "Added a validation case." })) render();
+  }
+  function removeRallyControl(kind) {
+    if (!rallyDocument || !rallyApi) return;
+    var control = rallyDocument.controls.find(function (item) { return item.kind === kind; });
+    if (control && setRallyDocument(rallyApi.removeControl(rallyDocument, control.id), { notice: "Removed the validation case." })) render();
+  }
+  function toggleRallyControl(kind) {
+    var exists = rallyDocument && rallyDocument.controls.some(function (control) { return control.kind === kind; });
+    if (exists) removeRallyControl(kind);
+    else addRallyControl(kind);
   }
   function commitRallyControl(id, controlState, container) {
     var fields = rallyEvidence(container);
+    if (!fields.verifier) fields.verifier = rallyPreferredVerifier({});
+    if (!fields.verifiedAt) fields.verifiedAt = defaultRallyVerifiedAt();
     fields.state = controlState;
-    commitRallyUpdate(function () { return rallyApi.reviewControl(rallyDocument, id, fields); }, "Saved control confirmation for " + id + ".");
+    try {
+      var next = rallyApi.reviewControl(rallyDocument, id, fields);
+      rememberRallyVerifier(fields.verifier);
+      if (setRallyDocument(next, { notice: "Saved control confirmation for " + id + "." })) render();
+      else showRallyValidationError(rallyNotice && rallyNotice.message, { container: container });
+    } catch (error) {
+      showRallyValidationError(error, { container: container });
+    }
   }
   function exportRallyJson(verifiedOnly) {
     if (!rallyDocument) return;
@@ -2108,6 +2392,7 @@
     rallySelectedId = parsed.document.intervals.length ? parsed.document.intervals[0].id : null;
     rallyTimelineZoom = 1;
     rallyTimelineScroll = 0;
+    rallyPanelScrollTop = 0;
     if (setRallyDocument(parsed.document, { notice: "Imported " + parsed.document.intervals.length + " intervals and " + parsed.document.controls.length + " controls." })) render();
   }
   function readRallyJsonFile(file) {
@@ -2143,28 +2428,31 @@
     }
     rallyImportInput.click();
   }
+  function rallyDisplayBounds(interval) {
+    if (!interval || !rallyApi) return null;
+    if (typeof rallyApi.displayBounds === "function") return rallyApi.displayBounds(interval);
+    return rallyApi.effectiveBounds(interval) || interval.corrected || interval.original || null;
+  }
   function updateRallyTimelineGeometry() {
     if (!root || !rallyDocument) return;
     var bars = root.querySelectorAll("[data-bso-rally-interval]");
     Array.prototype.forEach.call(bars, function (bar) {
       var interval = rallyIntervalById(bar.getAttribute("data-bso-rally-interval"));
-      var bounds = interval && rallyApi.effectiveBounds(interval);
+      var bounds = rallyDisplayBounds(interval);
       if (!bounds) return;
       var windowBounds = rallyDocument.source.reviewWindow;
       var duration = windowBounds.endSec - windowBounds.startSec;
       bar.style.left = ((bounds.startSec - windowBounds.startSec) / duration * 100) + "%";
       bar.style.width = (Math.max(.001, bounds.endSec - bounds.startSec) / duration * 100) + "%";
-      bar.setAttribute("aria-label", interval.id + " from " + rallyApi.formatSeconds(bounds.startSec) + " to " + rallyApi.formatSeconds(bounds.endSec));
+      bar.setAttribute("aria-label", interval.id + (interval.action === "removal" ? " removed" : "") + " from " + rallyApi.formatSeconds(bounds.startSec) + " to " + rallyApi.formatSeconds(bounds.endSec));
     });
     var selected = rallyIntervalById(rallySelectedId);
     var selectedBounds = selected && (rallyApi.effectiveBounds(selected) || selected.corrected || selected.original);
     if (selectedBounds) {
       var startInput = root.querySelector("[data-bso-rally-start-input]");
       var endInput = root.querySelector("[data-bso-rally-end-input]");
-      if (startInput) startInput.value = selectedBounds.startSec.toFixed(3);
-      if (endInput) endInput.value = selectedBounds.endSec.toFixed(3);
-      var exact = root.querySelector("[data-bso-rally-exact]");
-      if (exact) exact.textContent = rallyApi.formatSeconds(selectedBounds.startSec) + " → " + rallyApi.formatSeconds(selectedBounds.endSec);
+      if (startInput && document.activeElement !== startInput) startInput.value = rallyApi.formatSeconds(selectedBounds.startSec);
+      if (endInput && document.activeElement !== endInput) endInput.value = rallyApi.formatSeconds(selectedBounds.endSec);
     }
     refreshRallyPlayhead();
   }
@@ -2182,19 +2470,29 @@
     playhead.setAttribute("data-bso-media-seconds", String(rallyApi.roundSeconds(seconds)));
     return true;
   }
+  function rallyTimelineViewForScroller(scroller) {
+    var viewportWidth = Number(scroller && scroller.clientWidth) || 640;
+    var scrollLeft = Number(scroller && scroller.scrollLeft) || rallyTimelineScroll;
+    return rallyApi.createTimelineView(rallyDocument, viewportWidth, rallyTimelineZoom, scrollLeft);
+  }
   function startRallyGesture(event, id, mode, scroller) {
     if (!rallyDocument || !event) return;
     if (event.button != null && event.button !== 0) return;
     if (event.preventDefault) event.preventDefault();
     if (event.stopPropagation) event.stopPropagation();
-    var viewportWidth = Number(scroller && scroller.clientWidth) || 640;
-    var scrollLeft = Number(scroller && scroller.scrollLeft) || rallyTimelineScroll;
-    var view = rallyApi.createTimelineView(rallyDocument, viewportWidth, rallyTimelineZoom, scrollLeft);
-    rallyGesture = { id: String(id), mode: mode, pointerId: event.pointerId, startX: Number(event.clientX) || 0, base: rallyDocument, view: view, target: event.currentTarget || event.target };
-    rallySelectedId = String(id);
+    var view = rallyTimelineViewForScroller(scroller);
+    rallyGesture = { id: id != null ? String(id) : null, mode: mode, pointerId: event.pointerId, startX: Number(event.clientX) || 0, base: rallyDocument, view: view, target: event.currentTarget || event.target, scroller: scroller };
+    if (id != null) rallySelectedId = String(id);
     if (rallyGesture.target && rallyGesture.pointerId != null && typeof rallyGesture.target.setPointerCapture === "function") {
       try { rallyGesture.target.setPointerCapture(rallyGesture.pointerId); } catch (_) {}
     }
+  }
+  function startRallyPlayheadGesture(event, scroller) {
+    if (!rallyDocument || !event) return;
+    if (event.button != null && event.button !== 0) return;
+    startRallyGesture(event, null, "playhead", scroller);
+    var localX = (Number(event.clientX) || 0) - (scroller && scroller.getBoundingClientRect ? scroller.getBoundingClientRect().left : 0) + (Number(scroller && scroller.scrollLeft) || 0);
+    seekVideoToSeconds(rallyApi.pixelsToSeconds(rallyGesture.view, localX));
   }
   function releaseRallyGesture(restoreBase) {
     var gesture = rallyGesture;
@@ -2212,7 +2510,21 @@
   function rallyPointerMove(event) {
     if (!rallyGesture || event && event.pointerId != null && rallyGesture.pointerId != null && event.pointerId !== rallyGesture.pointerId) return;
     try {
-      rallyDocument = rallyApi.pointerEdit(rallyGesture.base, rallyGesture.id, rallyGesture.mode, (Number(event && event.clientX) || 0) - rallyGesture.startX, rallyGesture.view);
+      if (rallyGesture.mode === "playhead") {
+        var scroller = rallyGesture.scroller;
+        var localX = (Number(event && event.clientX) || 0) - (scroller && scroller.getBoundingClientRect ? scroller.getBoundingClientRect().left : 0) + (Number(scroller && scroller.scrollLeft) || 0);
+        seekVideoToSeconds(rallyApi.pixelsToSeconds(rallyGesture.view, localX));
+        return;
+      }
+      var snapGuide = currentMediaTimestamp();
+      rallyDocument = rallyApi.pointerEdit(
+        rallyGesture.base,
+        rallyGesture.id,
+        rallyGesture.mode,
+        (Number(event && event.clientX) || 0) - rallyGesture.startX,
+        rallyGesture.view,
+        { snapGuideSec: snapGuide, snapThresholdPx: 8 }
+      );
       updateRallyTimelineGeometry();
     } catch (error) {
       rallyNotice = { ok: false, message: error && error.message ? error.message : String(error) };
@@ -2222,7 +2534,30 @@
     if (!rallyGesture || event && event.pointerId != null && rallyGesture.pointerId != null && event.pointerId !== rallyGesture.pointerId) return;
     var gesture = releaseRallyGesture(cancelled);
     if (!gesture) return;
-    if (!cancelled) setRallyDocument(rallyDocument, { notice: "Updated " + gesture.id + " from the interval bar." });
+    var dragDistance = Math.abs((Number(event && event.clientX) || 0) - (Number(gesture.startX) || 0));
+    if (gesture.mode === "playhead") {
+      if (!cancelled && event) {
+        var scroller = gesture.scroller;
+        var localX = (Number(event.clientX) || 0) - (scroller && scroller.getBoundingClientRect ? scroller.getBoundingClientRect().left : 0) + (Number(scroller && scroller.scrollLeft) || 0);
+        seekVideoToSeconds(rallyApi.pixelsToSeconds(gesture.view, localX));
+      }
+      return;
+    }
+    // pointerup rebuilds the bar DOM, so the later click event is unreliable.
+    // A tap (no real drag) selects only and seeks to the bar start without
+    // writing a correction. A real drag commits the geometry change.
+    if (cancelled || dragDistance <= 3) {
+      rallyDocument = gesture.base;
+      if (!cancelled && gesture.mode === "move" && gesture.id) {
+        var tapped = gesture.base.intervals.find(function (interval) { return interval.id === String(gesture.id); });
+        var tappedBounds = tapped && (rallyApi.effectiveBounds(tapped) || tapped.corrected || tapped.original);
+        rallySelectedId = String(gesture.id);
+        if (tappedBounds) seekVideoToSeconds(tappedBounds.startSec);
+      }
+      render();
+      return;
+    }
+    if (!cancelled) setRallyDocument(rallyDocument, { previousDocument: gesture.base, notice: "Updated " + gesture.id + " from the interval edge." });
     render();
   }
   function nudgeRallyEdge(event, id, edge) {
@@ -2248,118 +2583,328 @@
     rallyTimelineScroll = next.scrollLeft;
     render();
   }
-  function scrollRallyTimeline(direction) {
+  function rallyTimelinePanState() {
     var scroller = root && root.querySelector("[data-bso-rally-scroll]");
     var width = Number(scroller && scroller.clientWidth) || 640;
     var current = rallyApi.createTimelineView(rallyDocument, width, rallyTimelineZoom, Number(scroller && scroller.scrollLeft) || rallyTimelineScroll);
-    var next = rallyApi.scrollTimeline(rallyDocument, current, direction * width * .75);
-    rallyTimelineScroll = next.scrollLeft;
-    if (scroller) scroller.scrollLeft = rallyTimelineScroll;
+    return { view: current, canLeft: current.scrollLeft > 0.5, canRight: current.scrollLeft < current.maxScroll - 0.5 };
   }
-  function rallyMetadataFields(item) {
+  function syncRallyPanButtons() {
+    var state = rallyTimelinePanState();
+    var left = root && root.querySelector("[data-bso-rally-pan-left]");
+    var right = root && root.querySelector("[data-bso-rally-pan-right]");
+    if (left) left.disabled = !state.canLeft;
+    if (right) right.disabled = !state.canRight;
+    return state;
+  }
+  function scrollRallyTimeline(direction) {
+    if (!rallyDocument) return;
+    var state = rallyTimelinePanState();
+    if (direction < 0 && !state.canLeft || direction > 0 && !state.canRight) return;
+    var next = rallyApi.scrollTimeline(rallyDocument, state.view, direction * state.view.viewportWidth * .75);
+    rallyTimelineScroll = next.scrollLeft;
+    var scroller = root && root.querySelector("[data-bso-rally-scroll]");
+    if (scroller) scroller.scrollLeft = rallyTimelineScroll;
+    syncRallyPanButtons();
+  }
+  function isRallyEditableTarget(target) {
+    if (!target || !rallyApi || !rallyApi.isEditableKeyboardTarget(target)) return false;
+    if (target.closest && target.closest('[data-bso-panel="rallyLabeler"]')) return true;
+    // Keep the direct attribute path for lightweight DOM/test hosts and for
+    // composed events whose target does not expose closest().
+    if (target.getAttribute) {
+      return ["data-bso-rally-comment", "data-bso-rally-verifier", "data-bso-rally-date", "data-bso-rally-start-input", "data-bso-rally-end-input"].some(function (attribute) {
+        return target.getAttribute(attribute) != null;
+      });
+    }
+    return false;
+  }
+  function isolateRallyEditableKeys(event) {
+    if (!event || !isRallyEditableTarget(event.target)) return;
+    if (event.stopPropagation) event.stopPropagation();
+    if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
+  }
+  function attachRallyKeyIsolation(node) {
+    if (!node || typeof node.addEventListener !== "function") return node;
+    ["keydown", "keyup", "keypress"].forEach(function (type) {
+      node.addEventListener(type, isolateRallyEditableKeys, true);
+      node.addEventListener(type, isolateRallyEditableKeys, false);
+    });
+    return node;
+  }
+  function rallyActionBadgeTone(action) {
+    if (action === "removal") return "out";
+    if (action === "unresolved") return "warn";
+    if (action === "approve") return "in";
+    if (action === "addition") return "accent";
+    if (action === "correction") return "correction";
+    return "info";
+  }
+  function rallyMetadataFields(item, options) {
+    options = options || {};
+    var commentPlaceholder = options.commentPlaceholder || "Why this approval, change, or removal is correct";
+    var verifierValue = rallyPreferredVerifier(item);
+    var verifiedAtValue = rallyPreferredVerifiedAt(item);
+    var verifierInput = rallyInput("text", verifierValue, {
+      "data-bso-rally-verifier": "true",
+      placeholder: "Jin-Ho Lee",
+      autocomplete: "name",
+      onChange: function (event) { rememberRallyVerifier(event && event.target && event.target.value); }
+    });
+    verifierInput.setAttribute("aria-label", "Reviewed by");
+    verifierInput.title = "Who is recording this review decision (you). The last name is remembered for the next interval.";
     return ui.el("div", { className: "bv-rally-metadata" }, [
-      rallyField("Comment / reason", rallyTextarea(item.comment, { "data-bso-rally-comment": "true", placeholder: "Why this approval or change is correct" })),
-      rallyField("Verifier", rallyInput("text", item.verifier, { "data-bso-rally-verifier": "true", placeholder: "Name or handle" })),
-      rallyField("Review date", rallyInput("text", item.verifiedAt, { "data-bso-rally-date": "true", placeholder: "YYYY-MM-DD or UTC timestamp", autocomplete: "off" }))
+      rallyField("Comment / reason", rallyTextarea(item.comment, { "data-bso-rally-comment": "true", placeholder: commentPlaceholder })),
+      rallyField("Reviewed by", verifierInput),
+      rallyField("Review date", rallyInput("text", verifiedAtValue, { "data-bso-rally-date": "true", placeholder: "Autofills with the current time when empty", autocomplete: "off" }))
     ]);
   }
   function rallySelectedEditor(interval) {
     if (!interval) return ui.el("p", { className: "bv-helper" }, ["Select an interval bar to inspect exact seconds and adjudicate it."]);
     var bounds = rallyApi.effectiveBounds(interval) || interval.corrected || interval.original;
     if (interval.action === "removal") {
-      return ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
+      var removalEditor = ui.el("section", { className: "bv-rally-editor" + (rallyFocusedUnresolvedId === interval.id ? " bv-rally-unresolved-focus" : ""), "data-bso-rally-editor": interval.id }, [
         ui.el("div", { className: "bv-rally-editor-heading" }, [
           ui.el("strong", {}, [interval.id]),
-          ui.badge("removal", "out", false),
-          ui.el("span", { className: "bv-mono", "data-bso-rally-exact": "true" }, [rallyApi.formatSeconds(bounds.startSec) + " → " + rallyApi.formatSeconds(bounds.endSec)])
+          ui.badge("removal", rallyActionBadgeTone("removal"), false)
         ]),
-        ui.el("p", { className: "bv-helper" }, ["This removed interval is locked. Restore it before editing boundaries or review evidence."]),
-        ui.el("div", { className: "bv-rally-editor-actions" }, [ui.button("Restore", { variant: "secondary", size: "sm", onClick: function () { restoreRallyInterval(interval.id); } })])
+        ui.el("p", { className: "bv-helper bv-rally-comparison" }, ["Removed false positive · ", rallyApi.formatSeconds(bounds.startSec), " → ", rallyApi.formatSeconds(bounds.endSec), ". Boundaries stay locked; record why this was a false positive, then restore only if it should become active again."]),
+        rallyMetadataFields(interval, { commentPlaceholder: "Why this labeled rally is a false positive" })
       ]);
+      removalEditor.appendChild(ui.el("div", { className: "bv-rally-editor-actions" }, [
+        ui.button("Save removal evidence", { variant: "primary", size: "sm", onClick: function () { commitRallyReview(interval.id, "removal", removalEditor); } }),
+        ui.button("Restore", { variant: "secondary", size: "sm", onClick: function () { restoreRallyInterval(interval.id); } })
+      ]));
+      return attachRallyKeyIsolation(removalEditor);
     }
-    var editor = ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
+    var editor = ui.el("section", { className: "bv-rally-editor" + (rallyFocusedUnresolvedId === interval.id ? " bv-rally-unresolved-focus" : ""), "data-bso-rally-editor": interval.id }, [
       ui.el("div", { className: "bv-rally-editor-heading" }, [
         ui.el("strong", {}, [interval.id]),
-        ui.badge(interval.action, interval.action === "removal" ? "out" : interval.action === "unresolved" ? "warn" : "info", false),
-        ui.el("span", { className: "bv-mono", "data-bso-rally-exact": "true" }, [rallyApi.formatSeconds(bounds.startSec) + " → " + rallyApi.formatSeconds(bounds.endSec)])
+        ui.badge(interval.action, rallyActionBadgeTone(interval.action), false)
       ]),
-      ui.el("p", { className: "bv-helper" }, ["Original proposal: " + (interval.original ? rallyApi.formatSeconds(interval.original.startSec) + " → " + rallyApi.formatSeconds(interval.original.endSec) : "none (manual addition)")]),
+      (interval.original && (bounds.startSec !== interval.original.startSec || bounds.endSec !== interval.original.endSec)
+        ? ui.el("p", { className: "bv-helper bv-rally-comparison" }, ["Original proposal · ", rallyApi.formatSeconds(interval.original.startSec), " → ", rallyApi.formatSeconds(interval.original.endSec)])
+        : null),
       ui.el("div", { className: "bv-rally-edge-inputs" }, [
-        rallyField("Start seconds", rallyInput("number", bounds.startSec.toFixed(3), { min: rallyDocument.source.reviewWindow.startSec, max: bounds.endSec - rallyApi.MIN_INTERVAL_SECONDS, step: ".001", "data-bso-rally-start-input": "true", onChange: function (event) { updateRallyEdge(interval.id, "start", event.target.value); } })),
-        rallyField("End seconds", rallyInput("number", bounds.endSec.toFixed(3), { min: bounds.startSec + rallyApi.MIN_INTERVAL_SECONDS, max: rallyDocument.source.reviewWindow.endSec, step: ".001", "data-bso-rally-end-input": "true", onChange: function (event) { updateRallyEdge(interval.id, "end", event.target.value); } }))
+        rallyField("Start", rallyInput("text", rallyApi.formatSeconds(bounds.startSec), { inputmode: "decimal", autocomplete: "off", spellcheck: "false", "data-bso-rally-start-input": "true", placeholder: "h:mm:ss.sss or seconds", onChange: function (event) { updateRallyEdge(interval.id, "start", event.target.value); } })),
+        rallyField("End", rallyInput("text", rallyApi.formatSeconds(bounds.endSec), { inputmode: "decimal", autocomplete: "off", spellcheck: "false", "data-bso-rally-end-input": "true", placeholder: "h:mm:ss.sss or seconds", onChange: function (event) { updateRallyEdge(interval.id, "end", event.target.value); } }))
       ]),
       rallyMetadataFields(interval)
     ]);
     var actions = ui.el("div", { className: "bv-rally-editor-actions" });
-    if (interval.original) actions.appendChild(ui.button("Approve proposal", { variant: "secondary", size: "sm", onClick: function () { commitRallyReview(interval.id, "approve", editor); } }));
-    actions.appendChild(ui.button(interval.original ? "Save correction" : "Save addition", { variant: "primary", size: "sm", onClick: function () { commitRallyReview(interval.id, interval.original ? "correction" : "addition", editor); } }));
-    actions.appendChild(ui.button("Remove false positive", { variant: "danger", size: "sm", onClick: function () { commitRallyReview(interval.id, "removal", editor); } }));
+    if (interval.original) {
+      var approveAction = ui.button("Approve proposal", { variant: "secondary", size: "sm", icon: "check", title: "Approve proposal; the interval becomes approved", onClick: function () { commitRallyReview(interval.id, "approve", editor); } });
+      approveAction.className += " bv-rally-action approve";
+      actions.appendChild(approveAction);
+    }
+    var saveAction = ui.button(interval.original ? "Save correction" : "Save addition", { variant: "primary", size: "sm", icon: interval.original ? "pencil" : "check", title: interval.original ? "Save correction; the interval becomes corrected" : "Save the new rally interval", onClick: function () { commitRallyReview(interval.id, interval.original ? "correction" : "addition", editor); } });
+    if (interval.original) saveAction.className += " bv-rally-action correction";
+    actions.appendChild(saveAction);
+    var removeAction = ui.button("Remove false positive", { variant: "secondary", size: "sm", icon: "x", title: "Remove false positive; the interval becomes removed", onClick: function () { commitRallyReview(interval.id, "removal", editor); } });
+    removeAction.className += " bv-rally-action removal";
+    actions.appendChild(removeAction);
     editor.appendChild(actions);
-    return editor;
+    return attachRallyKeyIsolation(editor);
   }
   function rallyControlCard(control) {
-    var card = ui.el("section", { className: "bv-rally-control", "data-bso-rally-control": control.id }, [
-      ui.el("div", { className: "bv-rally-control-heading" }, [ui.el("strong", {}, [control.label]), ui.badge(control.kind, "neutral", false), ui.badge(control.state, control.state === "unresolved" ? "warn" : control.state === "confirmed" ? "in" : "neutral", false)]),
+    var help = control.kind === "empty-set"
+      ? "Use Confirm expected result when this fixed-camera badminton window truly has no rally."
+      : "Use Confirm expected result when this source is expected non-badminton content such as basketball.";
+    var card = ui.el("section", { className: "bv-rally-control" + (rallyFocusedUnresolvedId === control.id ? " bv-rally-unresolved-focus" : ""), "data-bso-rally-control": control.id }, [
+      ui.el("div", { className: "bv-rally-control-heading" }, [ui.el("strong", {}, [control.label]), ui.badge(control.kind === "empty-set" ? "no-rally" : "non-badminton", "neutral", false), ui.badge(control.state, control.state === "unresolved" ? "warn" : control.state === "confirmed" ? "in" : "neutral", false)]),
+      ui.el("p", { className: "bv-helper bv-rally-control-help" }, [help]),
       rallyMetadataFields(control)
     ]);
     card.appendChild(ui.el("div", { className: "bv-rally-editor-actions" }, [
-      ui.button("Confirm", { variant: "primary", size: "sm", onClick: function () { commitRallyControl(control.id, "confirmed", card); } }),
+      ui.button("Confirm expected result", { variant: "primary", size: "sm", onClick: function () { commitRallyControl(control.id, "confirmed", card); } }),
       ui.button("Not true", { variant: "secondary", size: "sm", onClick: function () { commitRallyControl(control.id, "rejected", card); } })
     ]));
-    return card;
+    return attachRallyKeyIsolation(card);
   }
   function rallyTimeline() {
     var windowBounds = rallyDocument.source.reviewWindow;
     var duration = windowBounds.endSec - windowBounds.startSec;
     var scroll = ui.el("div", { className: "bv-rally-timeline-scroll", tabindex: "0", role: "region", "aria-label": "Horizontally scrollable rally timeline", "data-bso-rally-scroll": "true", style: { pointerEvents: "auto" } });
-    var track = ui.el("div", { className: "bv-rally-timeline-track", style: { width: (rallyTimelineZoom * 100) + "%", height: Math.max(96, 42 + rallyDocument.intervals.length * 34) + "px" } });
+    var packing = typeof rallyApi.packTimelineLanes === "function"
+      ? rallyApi.packTimelineLanes(rallyDocument)
+      : { laneCount: 1, lanesById: Object.create(null) };
+    var laneCount = Math.max(1, Number(packing.laneCount) || 1);
+    var track = ui.el("div", {
+      className: "bv-rally-timeline-track",
+      "data-bso-rally-lane-count": String(laneCount),
+      style: { width: (rallyTimelineZoom * 100) + "%", height: Math.max(72, 34 + laneCount * 34) + "px" }
+    });
     var ruler = ui.el("div", { className: "bv-rally-ruler" });
     for (var tickIndex = 0; tickIndex <= 8; tickIndex += 1) {
       var tickSeconds = windowBounds.startSec + duration * tickIndex / 8;
       ruler.appendChild(ui.el("span", { style: { left: (tickIndex / 8 * 100) + "%" } }, [rallyApi.formatSeconds(tickSeconds)]));
     }
     track.appendChild(ruler);
-    track.appendChild(ui.el("i", { className: "bv-rally-playhead", "data-bso-rally-playhead": "true", "aria-hidden": "true" }));
-    rallyDocument.intervals.forEach(function (interval, index) {
-      var row = ui.el("div", { className: "bv-rally-timeline-row" + (interval.id === rallySelectedId ? " selected" : "") + (interval.action === "removal" ? " removed" : ""), style: { top: (34 + index * 34) + "px" } });
-      var bounds = rallyApi.effectiveBounds(interval);
+    var playhead = ui.el("button", {
+      className: "bv-rally-playhead",
+      type: "button",
+      "data-bso-rally-playhead": "true",
+      "aria-label": "Drag playhead to seek video",
+      title: "Drag to seek the YouTube playhead within the review window",
+      onPointerdown: function (event) { startRallyPlayheadGesture(event, scroll); }
+    });
+    track.appendChild(playhead);
+    track.addEventListener("pointerdown", function (event) {
+      if (!event || event.button != null && event.button !== 0) return;
+      if (event.__bvRallyIntervalHandled) return;
+      var target = event.target;
+      var nested = function (selector) {
+        if (target && target.closest && target.closest(selector)) return true;
+        var node = target;
+        while (node && node !== track) {
+          if (node.matches && node.matches(selector)) return true;
+          node = node.parentNode;
+        }
+        return false;
+      };
+      if (nested("[data-bso-rally-interval]") || nested("[data-bso-rally-playhead]") || nested(".bv-rally-tombstone")) return;
+      startRallyPlayheadGesture(event, scroll);
+    });
+    rallyDocument.intervals.forEach(function (interval) {
+      var lane = packing.lanesById && packing.lanesById[interval.id] != null ? Number(packing.lanesById[interval.id]) : 0;
+      if (!Number.isFinite(lane) || lane < 0) lane = 0;
+      var row = ui.el("div", {
+        className: "bv-rally-timeline-row" + (interval.id === rallySelectedId ? " selected" : "") + (interval.action === "removal" ? " removed" : ""),
+        "data-bso-rally-lane": String(lane),
+        style: { top: (34 + lane * 34) + "px" }
+      });
+      var bounds = rallyDisplayBounds(interval);
       if (!bounds) {
         row.appendChild(ui.el("button", { className: "bv-rally-tombstone", type: "button", onClick: function () { selectRallyInterval(interval.id); } }, [interval.id + " · removed"]));
       } else {
+        var removed = interval.action === "removal";
         var left = (bounds.startSec - windowBounds.startSec) / duration * 100;
         var width = (bounds.endSec - bounds.startSec) / duration * 100;
         var bar = ui.el("div", {
-          className: "bv-rally-interval " + interval.action,
+          className: "bv-rally-interval " + interval.action + (interval.id === rallySelectedId ? " selected" : ""),
           role: "group",
           tabindex: "0",
           "data-bso-rally-interval": interval.id,
-          "aria-label": interval.id + " from " + rallyApi.formatSeconds(bounds.startSec) + " to " + rallyApi.formatSeconds(bounds.endSec),
+          "data-bso-rally-action": interval.action,
+          "aria-label": interval.id + (removed ? " removed" : "") + " from " + rallyApi.formatSeconds(bounds.startSec) + " to " + rallyApi.formatSeconds(bounds.endSec),
+          title: removed
+            ? "Removed false positive kept at its original time range. Click to inspect."
+            : "Click to seek to this rally start. Drag to move. Use edges to resize.",
           style: { left: left + "%", width: Math.max(.001, width) + "%" },
-          onClick: function () { selectRallyInterval(interval.id); },
-          onPointerdown: function (event) { startRallyGesture(event, interval.id, "move", scroll); }
-        }, [ui.el("span", { className: "bv-rally-interval-label" }, [interval.id])]);
-        var startEdge = ui.el("button", {
-          className: "bv-rally-edge start", type: "button", role: "slider", "aria-label": "Resize start of " + interval.id,
-          "aria-valuemin": windowBounds.startSec, "aria-valuemax": bounds.endSec - rallyApi.MIN_INTERVAL_SECONDS, "aria-valuenow": bounds.startSec, "aria-valuetext": rallyApi.formatSeconds(bounds.startSec),
-          onPointerdown: function (event) { startRallyGesture(event, interval.id, "start", scroll); },
-          onKeydown: function (event) { nudgeRallyEdge(event, interval.id, "start"); }
-        });
-        var endEdge = ui.el("button", {
-          className: "bv-rally-edge end", type: "button", role: "slider", "aria-label": "Resize end of " + interval.id,
-          "aria-valuemin": bounds.startSec + rallyApi.MIN_INTERVAL_SECONDS, "aria-valuemax": windowBounds.endSec, "aria-valuenow": bounds.endSec, "aria-valuetext": rallyApi.formatSeconds(bounds.endSec),
-          onPointerdown: function (event) { startRallyGesture(event, interval.id, "end", scroll); },
-          onKeydown: function (event) { nudgeRallyEdge(event, interval.id, "end"); }
-        });
-        bar.appendChild(startEdge);
-        bar.appendChild(endEdge);
+          onPointerdown: function (event) {
+            // Stop the parent timeline's generic seek surface. The body is a
+            // selector, never a playhead drag; only contained edge buttons
+            // start resize gestures.
+            if (event) event.__bvRallyIntervalHandled = true;
+            if (event && event.stopPropagation) event.stopPropagation();
+          },
+          onClick: function (event) {
+            var target = event && event.target;
+            if (target && target.closest && target.closest(".bv-rally-edge")) return;
+            if (event) event.__bvRallyIntervalHandled = true;
+            if (event && event.stopPropagation) event.stopPropagation();
+            selectRallyInterval(interval.id, { seekToStart: !removed });
+          }
+        }, [ui.el("span", { className: "bv-rally-interval-label" }, [removed ? interval.id + " · removed" : interval.id])]);
+        if (!removed) {
+          var startEdge = ui.el("button", {
+            className: "bv-rally-edge start", type: "button", role: "slider", "aria-label": "Resize start of " + interval.id,
+            "aria-valuemin": windowBounds.startSec, "aria-valuemax": bounds.endSec - rallyApi.MIN_INTERVAL_SECONDS, "aria-valuenow": bounds.startSec, "aria-valuetext": rallyApi.formatSeconds(bounds.startSec),
+            onPointerdown: function (event) { if (event && event.stopPropagation) event.stopPropagation(); startRallyGesture(event, interval.id, "start", scroll); },
+            onClick: function (event) { if (event && event.stopPropagation) event.stopPropagation(); },
+            onKeydown: function (event) { nudgeRallyEdge(event, interval.id, "start"); }
+          });
+          var endEdge = ui.el("button", {
+            className: "bv-rally-edge end", type: "button", role: "slider", "aria-label": "Resize end of " + interval.id,
+            "aria-valuemin": bounds.startSec + rallyApi.MIN_INTERVAL_SECONDS, "aria-valuemax": windowBounds.endSec, "aria-valuenow": bounds.endSec, "aria-valuetext": rallyApi.formatSeconds(bounds.endSec),
+            onPointerdown: function (event) { if (event && event.stopPropagation) event.stopPropagation(); startRallyGesture(event, interval.id, "end", scroll); },
+            onClick: function (event) { if (event && event.stopPropagation) event.stopPropagation(); },
+            onKeydown: function (event) { nudgeRallyEdge(event, interval.id, "end"); }
+          });
+          bar.appendChild(startEdge);
+          bar.appendChild(endEdge);
+        }
         row.appendChild(bar);
       }
       track.appendChild(row);
     });
     scroll.appendChild(track);
-    scroll.addEventListener("scroll", function () { rallyTimelineScroll = Number(scroll.scrollLeft) || 0; });
+    scroll.addEventListener("scroll", function () { rallyTimelineScroll = Number(scroll.scrollLeft) || 0; syncRallyPanButtons(); });
     setTimeout(function () { if (scroll.isConnected) scroll.scrollLeft = rallyTimelineScroll; refreshRallyPlayhead(); }, 0);
     return scroll;
+  }
+  function captureRallyPanelScroll() {
+    var panel = root && root.querySelector && root.querySelector('[data-bso-panel="rallyLabeler"]');
+    var body = panel && panel.querySelector && panel.querySelector(".bv-panel-body");
+    if (body) rallyPanelScrollTop = Number(body.scrollTop) || 0;
+  }
+  function restoreRallyPanelScroll() {
+    var panel = root && root.querySelector && root.querySelector('[data-bso-panel="rallyLabeler"]');
+    var body = panel && panel.querySelector && panel.querySelector(".bv-panel-body");
+    if (!body) return false;
+    body.scrollTop = rallyPanelScrollTop;
+    return true;
+  }
+  function rallyUnresolvedRequirement(value, kind) {
+    if (value === "action") return "choose an action";
+    if (value === "state") return "confirm expected result or mark it not true";
+    if (value === "confirmation") return "confirm expected result";
+    var fields = String(value || "").split(",").map(function (field) { return field.trim(); }).filter(Boolean);
+    if (!fields.length) return "review evidence";
+    return "missing " + fields.join(", ");
+  }
+  function rallyUnresolvedEntries(gate) {
+    if (!gate || !Array.isArray(gate.unresolved)) return [];
+    var windowBounds = rallyDocument && rallyDocument.source && rallyDocument.source.reviewWindow;
+    return gate.unresolved.map(function (entry) {
+      var entryText = String(entry);
+      var separator = entryText.lastIndexOf(":");
+      var id = separator < 0 ? entryText : entryText.slice(0, separator);
+      var requirement = separator < 0 ? "" : entryText.slice(separator + 1);
+      var interval = rallyDocument && rallyDocument.intervals.find(function (item) { return item.id === id; });
+      var control = rallyDocument && rallyDocument.controls.find(function (item) { return item.id === id; });
+      if (interval) {
+        var bounds = rallyDisplayBounds(interval);
+        var range = bounds ? " · " + rallyApi.formatSeconds(bounds.startSec) + "–" + rallyApi.formatSeconds(bounds.endSec) : "";
+        return { id: id, type: "interval", text: "Rally label · " + id + range + " — " + rallyUnresolvedRequirement(requirement, "interval") };
+      }
+      if (control) {
+        var windowText = windowBounds ? " · review window " + rallyApi.formatSeconds(windowBounds.startSec) + "–" + rallyApi.formatSeconds(windowBounds.endSec) : "";
+        return { id: id, type: "control", text: "Validation case · " + control.label + windowText + " — " + rallyUnresolvedRequirement(requirement, "control") };
+      }
+      var fallbackWindow = windowBounds ? " · review window " + rallyApi.formatSeconds(windowBounds.startSec) + "–" + rallyApi.formatSeconds(windowBounds.endSec) : "";
+      var fallbackLabel = id === "empty-set" ? "Expected no rally · fixed-camera badminton" : id;
+      return { id: id, type: "control", text: "Validation case · " + fallbackLabel + fallbackWindow + " — " + rallyUnresolvedRequirement(requirement, "control") };
+    });
+  }
+  function focusRallyUnresolved(entry) {
+    if (!entry) return;
+    rallyFocusedUnresolvedId = entry.id;
+    if (entry.type === "interval") rallySelectedId = entry.id;
+    render();
+    setTimeout(function () {
+      var selector = entry.type === "interval"
+        ? '[data-bso-rally-editor="' + entry.id + '"]'
+        : '[data-bso-rally-control="' + entry.id + '"]';
+      var target = root && root.querySelector(selector);
+      var input = target && target.querySelector("[data-bso-rally-comment]");
+      if (input && typeof input.focus === "function") input.focus();
+      else if (target && typeof target.focus === "function") target.focus();
+    }, 0);
+  }
+  function appendRallyPlaybackHelp(body) {
+    if (!body) return;
+    if (rallyHelpVisible) {
+      var help = ui.callout("info", "Developer playback help", "Drag the blue playhead (or the empty timeline) to seek the YouTube video. Edge drags snap to that playhead. Set start/set end copy it onto the selected interval. Play, pause, rate, and player chrome stay on YouTube.", {
+        onDismiss: function () { rallyHelpVisible = false; render(); }
+      });
+      help.setAttribute("data-bso-rally-playback-help", "true");
+      body.appendChild(help);
+    } else {
+      var showHelp = ui.button("Show help", { variant: "secondary", size: "sm", icon: "help", compact: true, ariaLabel: "Show help", title: "Show the developer playback help again", onClick: function () { rallyHelpVisible = true; render(); } });
+      showHelp.setAttribute("data-bso-rally-show-help", "true");
+      body.appendChild(ui.el("div", { className: "bv-rally-help-actions" }, [showHelp]));
+    }
   }
   function rallyLabelerPanel() {
     var close = ui.iconButton("x", "Disable developer rally labeler", { size: "sm", onClick: function () {
@@ -2373,11 +2918,17 @@
       collapsed: panelCollapsed("rallyLabeler"),
       onToggleCollapse: function (value) { togglePanelCollapsed("rallyLabeler", value); },
       actions: [ui.el("span", { className: "bv-panel-time", "data-bso-rally-clock": "true" }, [rallyApi.formatSeconds(currentMediaTimestamp()) || "—"]), close],
-      bodyStyle: { pointerEvents: "none" }
+      // Every visible pixel of this developer panel is a hit target so clicks on
+      // the info callout or empty body never fall through to YouTube.
+      bodyStyle: { pointerEvents: "auto" }
     }, []);
     var body = panel.querySelector(".bv-panel-body");
     if (!body) return panel;
-    body.appendChild(ui.callout("info", "Read-only playback boundary", "Use the native YouTube player to play, pause, or seek. This developer widget only observes currentTime and never changes playback, media, or player styles."));
+    body.addEventListener("scroll", function () { rallyPanelScrollTop = Number(body.scrollTop) || 0; }, { passive: true });
+    // Restore immediately and after layout so button-driven rerenders do not
+    // jump the reviewer back to the top of a long panel.
+    body.scrollTop = rallyPanelScrollTop;
+    setTimeout(function () { if (body.isConnected) body.scrollTop = rallyPanelScrollTop; }, 0);
     var importButton = ui.button("Import review JSON", { variant: "secondary", size: "sm", icon: "upload", onClick: importRallyJson });
     if (!rallyDocument) {
       body.appendChild(ui.el("div", { className: "bv-rally-empty" }, [
@@ -2385,6 +2936,7 @@
         ui.el("div", { className: "bv-rally-toolbar" }, [ui.button("Start review for this video", { variant: "primary", size: "sm", onClick: createRallyDocument }), importButton])
       ]));
       if (rallyNotice) body.appendChild(ui.el("p", { className: "bv-helper", role: "status" }, [rallyNotice.message]));
+      appendRallyPlaybackHelp(body);
       return panel;
     }
     var gate = rallyApi.completion(rallyDocument);
@@ -2392,37 +2944,72 @@
       ui.el("div", {}, [ui.el("strong", {}, [rallyDocument.source.label]), ui.el("span", { className: "bv-mono" }, [rallyDocument.source.id + " · " + rallyDocument.source.videoKey])]),
       ui.badge(gate.complete ? "complete" : gate.unresolved.length + " unresolved", gate.complete ? "in" : "warn", false)
     ]));
-    body.appendChild(ui.el("div", { className: "bv-rally-toolbar" }, [
-      ui.button("Add missing rally", { variant: "primary", size: "sm", onClick: addMissingRally }),
-      ui.button("Zoom out", { variant: "ghost", size: "sm", disabled: rallyTimelineZoom <= 1, onClick: function () { zoomRallyTimeline(.5); } }),
-      ui.el("span", { className: "bv-mono" }, [rallyTimelineZoom.toFixed(1) + "×"]),
-      ui.button("Zoom in", { variant: "ghost", size: "sm", disabled: rallyTimelineZoom >= rallyApi.MAX_ZOOM, onClick: function () { zoomRallyTimeline(2); } }),
-      ui.button("Scroll left", { variant: "ghost", size: "sm", onClick: function () { scrollRallyTimeline(-1); } }),
-      ui.button("Scroll right", { variant: "ghost", size: "sm", onClick: function () { scrollRallyTimeline(1); } })
+    var selectedForToolbar = rallyIntervalById(rallySelectedId);
+    var canSetToolbarEdge = Boolean(selectedForToolbar && selectedForToolbar.action !== "removal" && (rallyApi.effectiveBounds(selectedForToolbar) || selectedForToolbar.corrected || selectedForToolbar.original));
+    var undoButton = ui.button("Undo", { variant: "secondary", size: "sm", icon: "undo", compact: true, ariaLabel: "Undo", disabled: !rallyUndoStack.length, title: "Undo the last saved timeline or review edit", onClick: undoRallyEdit });
+    undoButton.setAttribute("data-bso-rally-undo", "true");
+    var redoButton = ui.button("Redo", { variant: "secondary", size: "sm", icon: "redo", compact: true, ariaLabel: "Redo", disabled: !rallyRedoStack.length, title: "Redo the last undone timeline or review edit", onClick: redoRallyEdit });
+    redoButton.setAttribute("data-bso-rally-redo", "true");
+    var panState = rallyTimelinePanState();
+    var panEarlierButton = ui.button("Pan earlier", { variant: "secondary", size: "sm", icon: "pan-left", compact: true, ariaLabel: "Pan timeline earlier", disabled: !panState.canLeft, title: "Pan the zoomed timeline earlier", onClick: function () { scrollRallyTimeline(-1); } });
+    panEarlierButton.setAttribute("data-bso-rally-pan-left", "true");
+    var panLaterButton = ui.button("Pan later", { variant: "secondary", size: "sm", icon: "pan-right", compact: true, ariaLabel: "Pan timeline later", disabled: !panState.canRight, title: "Pan the zoomed timeline later", onClick: function () { scrollRallyTimeline(1); } });
+    panLaterButton.setAttribute("data-bso-rally-pan-right", "true");
+    var setStartButton = ui.button("Set start", { variant: "secondary", size: "sm", icon: "interval-start", compact: true, ariaLabel: "Set start from playhead", disabled: !canSetToolbarEdge, title: "Set the selected interval start to the blue playhead", onClick: function () { setRallyEdgeFromPlayhead(rallySelectedId, "start"); } });
+    setStartButton.className += " bv-rally-set-edge";
+    setStartButton.setAttribute("data-bso-rally-set-start", "true");
+    var setEndButton = ui.button("Set end", { variant: "secondary", size: "sm", icon: "interval-end", compact: true, ariaLabel: "Set end from playhead", disabled: !canSetToolbarEdge, title: "Set the selected interval end to the blue playhead", onClick: function () { setRallyEdgeFromPlayhead(rallySelectedId, "end"); } });
+    setEndButton.className += " bv-rally-set-edge";
+    setEndButton.setAttribute("data-bso-rally-set-end", "true");
+    body.appendChild(ui.el("div", { className: "bv-rally-toolbar bv-rally-timeline-toolbar", "aria-label": "Timeline controls" }, [
+      ui.button("Add missing rally", { variant: "primary", size: "sm", title: "Create a new rally interval at the current playhead", onClick: addMissingRally }),
+      ui.button("Zoom out", { variant: "secondary", size: "sm", icon: "zoom-out", compact: true, ariaLabel: "Zoom out", disabled: rallyTimelineZoom <= 1, title: "Show a wider time range", onClick: function () { zoomRallyTimeline(.5); } }),
+      ui.el("span", { className: "bv-mono", title: "Timeline zoom" }, [rallyTimelineZoom.toFixed(1) + "×"]),
+      ui.button("Zoom in", { variant: "secondary", size: "sm", icon: "zoom-in", compact: true, ariaLabel: "Zoom in", disabled: rallyTimelineZoom >= rallyApi.MAX_ZOOM, title: "Show more detail around the timeline", onClick: function () { zoomRallyTimeline(2); } }),
+      panEarlierButton,
+      panLaterButton,
+      undoButton,
+      redoButton,
+      ui.el("span", { className: "bv-rally-toolbar-spacer" }),
+      setStartButton,
+      setEndButton
     ]));
     body.appendChild(rallyTimeline());
     body.appendChild(rallySelectedEditor(rallyIntervalById(rallySelectedId)));
-    var controls = ui.el("section", { className: "bv-rally-controls", "aria-label": "Control confirmations" }, [
-      ui.el("div", { className: "bv-rally-control-heading" }, [ui.el("strong", {}, ["Control confirmations"]), ui.el("span", { className: "bv-helper" }, ["Explicitly resolve empty or inactive source controls when present."])]),
+    var hasEmptyCase = rallyDocument.controls.some(function (control) { return control.kind === "empty-set"; });
+    var hasInactiveCase = rallyDocument.controls.some(function (control) { return control.kind === "inactive"; });
+    var controls = ui.el("section", { className: "bv-rally-controls", "aria-label": "Validation cases" }, [
+      ui.el("div", { className: "bv-rally-control-heading" }, [ui.el("strong", {}, ["Validation cases"]), ui.el("span", { className: "bv-helper" }, ["Optional expected outcomes kept separate from rally intervals: fixed-camera badminton should contain no rally, while basketball is expected non-badminton content."])]),
       ui.el("div", { className: "bv-rally-toolbar" }, [
-        ui.button("Add empty-set control", { variant: "ghost", size: "sm", disabled: rallyDocument.controls.some(function (control) { return control.kind === "empty-set"; }), onClick: function () { addRallyControl("empty-set"); } }),
-        ui.button("Add inactive control", { variant: "ghost", size: "sm", disabled: rallyDocument.controls.some(function (control) { return control.kind === "inactive"; }), onClick: function () { addRallyControl("inactive"); } })
+        ui.button(hasEmptyCase ? "Remove no-rally case" : "Add no-rally case", { variant: "secondary", size: "sm", title: hasEmptyCase ? "Remove the expected no-rally fixed-camera badminton case" : "Add an expected no-rally case for fixed-camera badminton footage", onClick: function () { toggleRallyControl("empty-set"); } }),
+        ui.button(hasInactiveCase ? "Remove non-badminton case" : "Add non-badminton case", { variant: "secondary", size: "sm", title: hasInactiveCase ? "Remove the expected non-badminton basketball case" : "Add an expected non-badminton case for basketball footage", onClick: function () { toggleRallyControl("inactive"); } })
       ])
     ]);
     rallyDocument.controls.forEach(function (control) { controls.appendChild(rallyControlCard(control)); });
     body.appendChild(controls);
     if (rallyNotice) body.appendChild(ui.el("p", { className: "bv-helper" + (rallyNotice.ok ? "" : " error"), role: "status", "data-bso-rally-notice": "true" }, [rallyNotice.message]));
+    var unresolvedEntries = rallyUnresolvedEntries(gate);
+    var unresolvedList = !gate.complete && unresolvedEntries.length
+      ? ui.el("ul", { className: "bv-rally-unresolved-list", "data-bso-rally-unresolved-list": "true" }, unresolvedEntries.map(function (entry) {
+        var link = ui.button(entry.text, { variant: "ghost", size: "sm", full: true, ariaLabel: "Focus " + entry.text, title: "Focus this unresolved review item", onClick: function () { focusRallyUnresolved(entry); } });
+        link.className += " bv-rally-unresolved-link";
+        return ui.el("li", {}, [link]);
+      }))
+      : null;
+    var completionCopy = [
+      ui.el("strong", {}, [gate.complete ? "Review complete" : "Completion blocked"]),
+      ui.el("p", { className: "bv-helper", "data-bso-unresolved-count": String(gate.unresolved.length) }, [gate.complete ? "All intervals and validation cases have required evidence." : gate.unresolved.length + " unresolved evidence item(s)" + (gate.contradictions.length ? " · " + gate.contradictions.length + " contradiction(s)" : "") + ". Select an item below to focus its evidence."])
+    ];
+    if (unresolvedList) completionCopy.push(unresolvedList);
     body.appendChild(ui.el("div", { className: "bv-rally-completion", "data-bso-rally-complete": String(gate.complete) }, [
-      ui.el("div", {}, [
-        ui.el("strong", {}, [gate.complete ? "Review complete" : "Completion blocked"]),
-        ui.el("p", { className: "bv-helper" }, [gate.complete ? "All intervals and controls have action, reason, verifier, and date evidence." : gate.unresolved.length + " unresolved evidence item(s)" + (gate.contradictions.length ? " · " + gate.contradictions.length + " contradiction(s)" : "") + "."])
-      ]),
+      ui.el("div", {}, completionCopy),
       ui.el("div", { className: "bv-rally-toolbar" }, [
         importButton,
         ui.button("Export draft JSON", { variant: "secondary", size: "sm", icon: "download", onClick: function () { exportRallyJson(false); } }),
         ui.button("Export verified JSON", { variant: "primary", size: "sm", icon: "download", disabled: !gate.complete, onClick: function () { exportRallyJson(true); } })
       ])
     ]));
+    appendRallyPlaybackHelp(body);
     return panel;
   }
   function settingsPanel() {
@@ -2437,7 +3024,7 @@
         return ui.el("li", {}, [ui.el("a", { href: link.href, target: "_blank", rel: "noreferrer", title: link.description || link.label }, [link.label, ui.icon("external", 12)])]);
       }))
     ]);
-    var developerToggle = ui.toggle("Rally boundary review", "Developer-only interval editor; off by default and playback read-only", rallyLabelerEnabled(), function (next) {
+    var developerToggle = ui.toggle("Rally boundary review", "Developer-only interval editor; off by default. Playhead drag seeks currentTime only inside this widget.", rallyLabelerEnabled(), function (next) {
       state = window.BVState.reduceExtensionState(state, { type: "SET_SETTING", key: "rallyLabelerEnabled", value: next });
       if (next) {
         clearRallyGesture(true);
@@ -2867,6 +3454,13 @@
   }
   function handleKeyboardShortcuts(event) {
     var key = String(event.key || "").toLowerCase();
+    // While a rally comment/clock field is focused, swallow page and widget
+    // shortcuts so typing cannot drive YouTube or edge nudges. Leaving the
+    // field restores both on the next keydown.
+    if (rallyLabelerEnabled() && isRallyEditableTarget(event.target)) {
+      isolateRallyEditableKeys(event);
+      return;
+    }
     // Escape is a global dismiss affordance, including while a shot button is
     // focused. Other shortcuts yield to native controls so Enter/Space do not
     // accidentally save a draft when activating a picker button.
@@ -2925,8 +3519,14 @@
 
   function render() {
     if (!root) return;
+    // A newly enabled developer review starts as a durable empty document once
+    // video metadata is available, so the full workspace is usable before any
+    // JSON import. The empty interval set remains unresolved until explicit
+    // control confirmation is added; it is never treated as approval.
+    ensureRallyDocument();
     // Structural state updates replace the panel DOM. Never leave a pointer
     // gesture attached to a retired node or let it write stale geometry.
+    captureRallyPanelScroll();
     clearPanelGesture();
     clearRallyGesture(true);
     updateDiagnosticsMarkers();
@@ -2962,6 +3562,7 @@
     syncHoughDetectionLoop();
     refreshPanelLayouts();
     installPanelInteractionsInRoot();
+    restoreRallyPanelScroll();
   }
   function applyStoredState(nextState) {
     clearRallyGesture(true);
@@ -3121,6 +3722,12 @@
     window.addEventListener("transitionend", positionToVideo, { passive: true, capture: true });
     document.addEventListener("fullscreenchange", positionToVideo);
     document.addEventListener("webkitfullscreenchange", positionToVideo);
+    // Capture editable rally-field keys before YouTube's document/window
+    // shortcuts see them. The target check is scoped to this widget, so a
+    // normal YouTube search field keeps its native behavior.
+    ["keydown", "keyup", "keypress"].forEach(function (type) {
+      window.addEventListener(type, isolateRallyEditableKeys, true);
+    });
     window.addEventListener("keydown", handleKeyboardShortcuts);
     // Pointer capture covers normal browsers; the window listeners keep a
     // gesture alive in embedded/recovery DOMs that do not implement capture.

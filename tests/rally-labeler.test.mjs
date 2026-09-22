@@ -38,6 +38,60 @@ test("canonical normalization keeps stable source/interval identities and propos
   assert.equal(model.parseSeconds("1:54.500"), 114.5);
 });
 
+test("clock parse/format accepts hours:minutes:seconds and minutes:seconds", () => {
+  assert.equal(model.parseSeconds("1:02:03.250"), 3723.25);
+  assert.equal(model.parseSeconds("62:03.250"), null, "minutes overflow is rejected outside the hours form");
+  assert.equal(model.parseSeconds("1:02:03"), 3723);
+  assert.equal(model.parseSeconds("2:03.5"), 123.5);
+  assert.equal(model.parseSeconds("114.500"), 114.5);
+  assert.equal(model.formatSeconds(3723.25), "1:02:03.250");
+  assert.equal(model.formatSeconds(123.5), "2:03.500");
+});
+
+test("edge resize snaps to the playhead guide within the threshold", () => {
+  const document = fixture();
+  const view = model.createTimelineView(document, 600, 5, 0);
+  const snapped = model.pointerEdit(document, "bwf-ws-2026:rally-001", "end", 20, view, {
+    snapGuideSec: 115.2,
+    snapThresholdSec: 0.5
+  });
+  assert.deepEqual(model.effectiveBounds(snapped.intervals[0]), { startSec: 110, endSec: 115.2 });
+  assert.equal(model.snapSeconds(115.05, 115.2, 0.2), 115.2);
+  assert.equal(model.snapSeconds(114.0, 115.2, 0.2), 114.0);
+});
+
+test("setEdgeFromPlayhead and clampPlayheadSeconds keep start before end", () => {
+  let document = fixture();
+  document = model.setEdgeFromPlayhead(document, "bwf-ws-2026:rally-001", "start", 112.5);
+  assert.deepEqual(model.effectiveBounds(document.intervals[0]), { startSec: 112.5, endSec: 114.5 });
+  document = model.setEdgeFromPlayhead(document, "bwf-ws-2026:rally-001", "end", 113.25);
+  assert.deepEqual(model.effectiveBounds(document.intervals[0]), { startSec: 112.5, endSec: 113.25 });
+  assert.equal(model.clampPlayheadSeconds(document, 90), 100);
+  assert.equal(model.clampPlayheadSeconds(document, 240), 220);
+  assert.equal(model.clampPlayheadSeconds(document, 160.125), 160.125);
+});
+
+test("timeline packing keeps non-overlapping rallies on one horizontal lane", () => {
+  const packed = model.packTimelineLanes(fixture());
+  assert.equal(packed.laneCount, 1);
+  assert.equal(packed.lanesById["bwf-ws-2026:rally-001"], 0);
+  assert.equal(packed.lanesById["bwf-ws-2026:rally-002"], 0);
+
+  let overlapping = model.addInterval(fixture(), 112, 116);
+  overlapping = model.packTimelineLanes(overlapping);
+  assert.equal(overlapping.laneCount, 2, "only true time overlap opens a second lane");
+  assert.equal(overlapping.lanesById["bwf-ws-2026:rally-001"], 0);
+  assert.equal(overlapping.lanesById["bwf-ws-2026:addition-001"], 1);
+});
+
+test("editable keyboard targets are detected for focus-scoped shortcut isolation", () => {
+  assert.equal(model.isEditableKeyboardTarget({ tagName: "TEXTAREA" }), true);
+  assert.equal(model.isEditableKeyboardTarget({ tagName: "INPUT", type: "text" }), true);
+  assert.equal(model.isEditableKeyboardTarget({ tagName: "INPUT", type: "button" }), false);
+  assert.equal(model.isEditableKeyboardTarget({ tagName: "BUTTON" }), false);
+  assert.equal(model.isEditableKeyboardTarget({ tagName: "DIV", isContentEditable: true }), true);
+});
+
 test("zoom preserves the anchored review second and explicit scrolling is clamped", () => {
   const document = fixture();
   const view = model.createTimelineView(document, 600, 1, 0);
@@ -126,27 +180,67 @@ test("removed intervals reject edits until explicit restoration", () => {
   assert.equal(edited.intervals[1].action, "correction");
 });
 
-test("adjudication state changes require fresh evidence", () => {
+test("false-positive removal keeps explicit comment evidence and allows tombstone updates", () => {
   let document = model.reviewInterval(fixture(), "bwf-ws-2026:rally-001", { action: "approve", ...evidence });
-  document = model.reviewInterval(document, "bwf-ws-2026:rally-001", { action: "removal", ...evidence });
-  const interval = document.intervals.find((item) => item.id === "bwf-ws-2026:rally-001");
-  assert.deepEqual({ comment: interval.comment, verifier: interval.verifier, verifiedAt: interval.verifiedAt }, { comment: "", verifier: "", verifiedAt: "" });
-  assert.equal(model.completion(document).complete, false);
+  const removalEvidence = {
+    comment: "Camera cut made this proposed rally a false positive.",
+    verifier: "developer@example.test",
+    verifiedAt: "2026-09-21"
+  };
+  document = model.removeInterval(document, "bwf-ws-2026:rally-001", removalEvidence);
+  let interval = document.intervals.find((item) => item.id === "bwf-ws-2026:rally-001");
+  assert.equal(interval.action, "removal");
+  assert.deepEqual({ comment: interval.comment, verifier: interval.verifier, verifiedAt: interval.verifiedAt }, removalEvidence);
+  assert.equal(model.effectiveBounds(interval), null);
 
-  const exportedRemoval = model.removeInterval(
-    model.reviewInterval(fixture(), "bwf-ws-2026:rally-001", { action: "approve", ...evidence }),
-    "bwf-ws-2026:rally-001",
-    evidence
-  );
-  const removedInterval = exportedRemoval.intervals.find((item) => item.id === "bwf-ws-2026:rally-001");
-  assert.deepEqual({ comment: removedInterval.comment, verifier: removedInterval.verifier, verifiedAt: removedInterval.verifiedAt }, { comment: "", verifier: "", verifiedAt: "" });
-  assert.equal(model.completion(exportedRemoval).complete, false);
+  const revised = {
+    comment: "Revised: replay showed the shuttle was already down.",
+    verifier: "developer@example.test",
+    verifiedAt: "2026-09-21"
+  };
+  document = model.removeInterval(document, "bwf-ws-2026:rally-001", revised);
+  interval = document.intervals.find((item) => item.id === "bwf-ws-2026:rally-001");
+  assert.deepEqual({ comment: interval.comment, verifier: interval.verifier, verifiedAt: interval.verifiedAt }, revised);
 
   document = model.reviewControl(document, "club-fixed-cam:empty", { state: "confirmed", ...evidence });
   document = model.reviewControl(document, "club-fixed-cam:empty", { state: "rejected", ...evidence });
   const control = document.controls.find((item) => item.id === "club-fixed-cam:empty");
   assert.deepEqual({ comment: control.comment, verifier: control.verifier, verifiedAt: control.verifiedAt }, { comment: "", verifier: "", verifiedAt: "" });
   assert.equal(model.completion(document).complete, false);
+});
+
+test("approval comments are optional but corrections and removals require them", () => {
+  const approved = model.reviewInterval(fixture(), "bwf-ws-2026:rally-001", { action: "approve", verifier: "developer@example.test", verifiedAt: "2026-09-22" });
+  assert.deepEqual(model.missingMetadataFields(approved.intervals[0]), [], "an approval with verifier/date is complete without a comment");
+  let exportable = fixture();
+  for (const interval of exportable.intervals) exportable = model.reviewInterval(exportable, interval.id, { action: "approve", verifier: "developer@example.test", verifiedAt: "2026-09-22" });
+  exportable = model.reviewControl(exportable, "club-fixed-cam:empty", { state: "rejected", ...evidence });
+  exportable = model.reviewControl(exportable, "negative-basketball:inactive", { state: "rejected", ...evidence });
+  assert.equal(model.completion(exportable).complete, true, "verified export allows approved intervals without comments");
+  assert.throws(() => model.reviewInterval(fixture(), "bwf-ws-2026:rally-001", { action: "correction", verifier: "developer@example.test", verifiedAt: "2026-09-22" }), /comment is required/);
+  assert.throws(() => model.removeInterval(fixture(), "bwf-ws-2026:rally-001", { verifier: "developer@example.test", verifiedAt: "2026-09-22" }), /comment is required/);
+});
+
+test("validation cases have clear outcome semantics and are reversible", () => {
+  let document = model.createDocument({ sourceId: "validation-source", videoKey: "youtube:validation", startSec: 0, endSec: 30 });
+  document = model.addControl(document, "empty-set");
+  document = model.addControl(document, "inactive");
+  assert.match(document.controls.find((control) => control.kind === "empty-set").label, /fixed-camera badminton/);
+  assert.match(document.controls.find((control) => control.kind === "inactive").label, /basketball/);
+  const emptyId = document.controls.find((control) => control.kind === "empty-set").id;
+  document = model.removeControl(document, emptyId);
+  assert.equal(document.controls.some((control) => control.kind === "empty-set"), false);
+  assert.throws(() => model.removeControl(document, emptyId), /unknown control id/);
+});
+
+test("an empty review requires an explicit confirmed empty-set control", () => {
+  let document = model.createDocument({ sourceId: "empty-source", videoKey: "youtube:empty", startSec: 0, endSec: 30 });
+  assert.equal(model.completion(document).complete, false);
+  document = model.addControl(document, "empty-set");
+  assert.equal(model.completion(document).complete, false, "an unresolved empty-set control still blocks completion");
+  const control = document.controls[0];
+  document = model.reviewControl(document, control.id, { state: "confirmed", ...evidence });
+  assert.equal(model.completion(document).complete, true, "explicitly confirming the empty set completes the empty review");
 });
 
 test("completion is blocked by unresolved evidence and contradictory controls", () => {

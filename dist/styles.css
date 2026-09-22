@@ -12,9 +12,25 @@
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
   /* Native player bottom control strip that overlay panels must never cover. */
   --overlay-controls-reserve: 72px;
+  /* Shared translucent surface for extension panels over live video. No blur:
+     the footage remains faintly visible while the panel stays foreground. */
+  --overlay-panel-surface: rgba(6,9,11,.86);
   /* Brighter highlight for the court-setup line projection on live footage. */
   --court-setup-line: var(--lime-400);
   --court-setup-net: var(--lime-300);
+  /* Shared rally review state surfaces; bars, badges, and actions use the
+     same semantic color rather than independent button literals. */
+  --rally-approve-color: var(--signal-in);
+  --rally-approve-tint: var(--signal-in-tint);
+  --rally-approve-border: rgba(63,212,139,.4);
+  --rally-correction-color: #c4b5ff;
+  --rally-correction-tint: rgba(139,124,255,.18);
+  --rally-correction-border: rgba(139,124,255,.45);
+  --rally-remove-color: var(--signal-out);
+  --rally-remove-tint: var(--signal-out-tint);
+  --rally-remove-border: rgba(255,107,90,.4);
+  --action-primary-fill: var(--accent);
+  --action-primary-text: var(--text-on-accent);
 }
 
 :host {
@@ -139,10 +155,17 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 }
 .bv-button.sm { height: var(--control-height-sm); padding: 0 var(--sp-4); font: var(--type-ui-sm); }
 .bv-button.lg { height: var(--control-height-lg); padding: 0 var(--sp-6); }
-.bv-button.primary { color: var(--text-on-accent); border-color: var(--accent); background: var(--accent); }
+.bv-button.primary { color: var(--action-primary-text); border-color: var(--action-primary-fill); background: var(--action-primary-fill); }
 .bv-button.secondary { color: var(--text-primary); background: var(--surface-raised); }
 .bv-button.ghost { color: var(--text-muted); border-color: transparent; background: transparent; }
 .bv-button.danger { color: var(--signal-out); border-color: rgba(255,107,90,.4); background: var(--signal-out-tint); }
+.bv-rally-action { color: var(--text-primary); border-color: var(--border-subtle); background: var(--surface-raised); border-inline-start-width: 3px; }
+.bv-rally-action.approve { border-inline-start-color: var(--rally-approve-color); }
+.bv-rally-action.correction { border-inline-start-color: var(--rally-correction-color); }
+.bv-rally-action.removal { border-inline-start-color: var(--rally-remove-color); }
+.bv-rally-action.approve [data-bso-icon] { color: var(--rally-approve-color); }
+.bv-rally-action.correction [data-bso-icon] { color: var(--rally-correction-color); }
+.bv-rally-action.removal [data-bso-icon] { color: var(--rally-remove-color); }
 .bv-button:disabled { opacity: .42; cursor: not-allowed; }
 .bv-button.full { width: 100%; }
 .bv-icon-button {
@@ -159,10 +182,11 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 }
 .bv-badge.neutral { color: var(--text-muted); background: var(--surface-active); }
 .bv-badge.accent { color: var(--lime-500); background: var(--lime-tint); border-color: rgba(200,240,74,.4); }
-.bv-badge.in { color: var(--signal-in); background: var(--signal-in-tint); border-color: rgba(63,212,139,.4); }
-.bv-badge.out { color: var(--signal-out); background: var(--signal-out-tint); border-color: rgba(255,107,90,.4); }
+.bv-badge.in { color: var(--rally-approve-color); background: var(--rally-approve-tint); border-color: var(--rally-approve-border); }
+.bv-badge.out { color: var(--rally-remove-color); background: var(--rally-remove-tint); border-color: var(--rally-remove-border); }
 .bv-badge.warn { color: var(--signal-warn); background: var(--signal-warn-tint); border-color: rgba(255,176,32,.4); }
 .bv-badge.info { color: var(--signal-info); background: var(--signal-info-tint); border-color: rgba(98,182,255,.4); }
+.bv-badge.correction { color: var(--rally-correction-color); background: var(--rally-correction-tint); border-color: var(--rally-correction-border); }
 .bv-badge.unknown { color: var(--signal-unknown); background: var(--signal-unknown-tint); border-color: rgba(122,139,150,.4); }
 .bv-kbd {
   display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 var(--sp-2);
@@ -448,15 +472,36 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-panel-body { pointer-events: none; }
 .bv-panel-body button, .bv-panel-body [role="button"], .bv-panel-body input, .bv-panel-body textarea,
 .bv-panel-body select, .bv-panel-body details, .bv-panel-body summary, .bv-panel-body a,
-.bv-panel-body .bv-feed, .bv-panel-body .bv-suggestion, .bv-panel-body .bv-review-undo,
-.bv-panel-body .bv-status-chip, .bv-panel-body .bv-rally-timeline-scroll { pointer-events: auto; }
+.bv-panel-body label, .bv-panel-body .bv-feed, .bv-panel-body .bv-suggestion, .bv-panel-body .bv-review-undo,
+.bv-panel-body .bv-status-chip, .bv-panel-body .bv-rally-timeline-scroll,
+.bv-panel-body .bv-rally-interval, .bv-panel-body .bv-rally-edge, .bv-panel-body .bv-rally-playhead,
+.bv-panel-body .bv-rally-tombstone, .bv-panel-body .bv-rally-editor-error { pointer-events: auto; }
 .bv-label-panel .bv-panel-body { pointer-events: auto; }
 /* Developer-only rally boundary editor. The timeline has exactly one visual
    interval bar per active record. Its transparent in-bar edge hit zones are
-   the start/end affordances; no separate boundary marker is painted. */
-.bv-rally-labeler-panel { display: flex; flex-direction: column; }
+   the start/end affordances; no separate boundary marker is painted.
+   Every visible pixel of this panel is a hit target (info callout, black/empty
+   body background, and controls) so clicks never fall through to YouTube; the
+   foreground control under the cursor still receives the event first. */
+.bv-rally-labeler-panel { display: flex; flex-direction: column; pointer-events: auto; }
+.bv-rally-labeler-panel .bv-panel-header,
+.bv-rally-labeler-panel .bv-panel-body,
+.bv-rally-labeler-panel .bv-panel-footer,
+.bv-rally-labeler-panel .bv-panel-resize-handle { pointer-events: auto; }
 .bv-rally-labeler-panel .bv-panel-body { display: flex; flex-direction: column; gap: var(--sp-4); overflow: auto; }
+.bv-rally-labeler-panel .bv-callout,
+.bv-rally-labeler-panel .bv-rally-empty,
+.bv-rally-labeler-panel .bv-rally-source,
+.bv-rally-labeler-panel .bv-rally-toolbar,
+.bv-rally-labeler-panel .bv-rally-editor,
+.bv-rally-labeler-panel .bv-rally-control,
+.bv-rally-labeler-panel .bv-rally-controls,
+.bv-rally-labeler-panel .bv-rally-completion,
+.bv-rally-labeler-panel .bv-rally-field,
+.bv-rally-labeler-panel .bv-helper,
+.bv-rally-labeler-panel label { pointer-events: auto; }
 .bv-rally-labeler-panel .bv-callout { flex: 0 0 auto; }
+.bv-rally-editor-error { margin: 0; color: var(--signal-out); font: var(--type-body-sm); }
 .bv-rally-empty { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-5); border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); }
 .bv-rally-empty p { margin: 0; color: var(--text-muted); font: var(--type-body-sm); }
 .bv-rally-source, .bv-rally-control-heading, .bv-rally-editor-heading, .bv-rally-completion { display: flex; align-items: center; gap: var(--sp-4); }
@@ -465,6 +510,43 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-source strong, .bv-rally-control-heading strong, .bv-rally-editor-heading strong, .bv-rally-completion strong { color: var(--text-primary); font: var(--type-ui); }
 .bv-rally-source .bv-mono { overflow: hidden; color: var(--text-faint); font-size: var(--fs-10); text-overflow: ellipsis; white-space: nowrap; }
 .bv-rally-toolbar, .bv-rally-editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.bv-rally-toolbar-label { color: var(--text-faint); font: var(--type-ui-sm); font-size: var(--fs-11); margin-right: var(--sp-1); }
+.bv-rally-toolbar-spacer { flex: 1 1 auto; min-width: var(--sp-3); }
+.bv-rally-timeline-toolbar { flex-wrap: wrap; min-width: 0; overflow: visible; padding: var(--sp-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: rgba(255,255,255,.02); }
+.bv-rally-timeline-toolbar .bv-button { flex: 0 0 auto; }
+.bv-rally-timeline-toolbar .bv-button.compact { width: var(--control-height-sm); padding: 0; }
+.bv-rally-timeline-toolbar .bv-button.compact .bv-button-label { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (min-width: 860px) {
+  .bv-rally-timeline-toolbar .bv-button.bv-rally-set-edge { width: auto; padding-inline: var(--sp-2); }
+  .bv-rally-timeline-toolbar .bv-button.bv-rally-set-edge .bv-button-label { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: nowrap; }
+}
+.bv-rally-labeler-panel .bv-button.ghost,
+.bv-rally-labeler-panel .bv-button.secondary { color: var(--text-primary); border-color: var(--border-subtle); background: var(--surface-raised); }
+.bv-rally-labeler-panel .bv-button:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-panel-solid); }
+.bv-rally-labeler-panel .bv-button:focus-visible { outline: 2px solid var(--signal-info); outline-offset: 1px; }
+/* Primary actions keep their neon priority surface through every interaction
+   state. The generic button hover filter is intentionally neutralized here;
+   border/elevation provide feedback without sacrificing text/icon contrast. */
+.bv-button.primary,
+.bv-button.primary:hover:not(:disabled),
+.bv-button.primary:focus-visible,
+.bv-button.primary:active:not(:disabled),
+.bv-button.primary:disabled {
+  color: var(--action-primary-text);
+  background: var(--action-primary-fill);
+  border-color: var(--action-primary-fill);
+  filter: none;
+}
+.bv-button.primary [data-bso-icon] { color: var(--action-primary-text); }
+.bv-button.primary:hover:not(:disabled) { border-color: var(--lime-300); box-shadow: 0 2px 10px rgba(200,240,74,.22); }
+.bv-button.primary:focus-visible { box-shadow: var(--focus-ring); }
+.bv-button.primary:active:not(:disabled) { box-shadow: 0 1px 4px rgba(200,240,74,.2); }
+.bv-button.primary:disabled { opacity: .42; cursor: not-allowed; }
+.bv-rally-help-actions { display: flex; align-items: center; }
+.bv-rally-unresolved-list { display: flex; flex-direction: column; gap: var(--sp-1); margin: var(--sp-3) 0 0; padding: 0; list-style: none; }
+.bv-rally-unresolved-link { justify-content: flex-start; height: auto; min-height: var(--control-height-sm); padding: var(--sp-2) var(--sp-3); overflow: hidden; color: var(--text-muted); border-inline-start: 2px solid var(--signal-warn); text-align: left; text-overflow: ellipsis; white-space: normal; }
+.bv-rally-unresolved-link:hover:not(:disabled) { color: var(--text-primary); border-inline-start-color: var(--signal-info); background: var(--surface-active); }
+.bv-rally-unresolved-focus { border-color: var(--signal-info); box-shadow: 0 0 0 2px var(--signal-info-tint); }
 .bv-rally-toolbar > .bv-mono { min-width: 38px; color: var(--lime-400); text-align: center; font-size: var(--fs-11); }
 .bv-rally-timeline-scroll { position: relative; flex: 0 0 auto; width: 100%; max-width: 100%; overflow-x: scroll; overflow-y: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--ink-800); scrollbar-gutter: stable; }
 .bv-rally-timeline-scroll:focus-visible { box-shadow: var(--focus-ring); }
@@ -473,25 +555,41 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-ruler > span { position: absolute; top: 7px; transform: translateX(-50%); color: var(--text-faint); font: var(--type-mono); font-size: var(--fs-10); white-space: nowrap; }
 .bv-rally-ruler > span:first-child { transform: none; }
 .bv-rally-ruler > span:last-child { transform: translateX(-100%); }
-.bv-rally-playhead { position: absolute; z-index: 4; top: 30px; bottom: 0; width: 1px; background: var(--signal-info); pointer-events: none; }
-.bv-rally-playhead::before { content: ""; position: absolute; left: -3px; top: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid var(--signal-info); }
+/* Center the visible 2px line on the exact media second so it coincides with
+   interval start/end edges that use the same percentage left. */
+.bv-rally-playhead { position: absolute; z-index: 4; top: 30px; bottom: 0; width: 12px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; cursor: ew-resize; touch-action: none; pointer-events: auto; transform: translateX(-50%); }
+.bv-rally-playhead::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); background: var(--signal-info); pointer-events: none; }
+.bv-rally-playhead::before { content: ""; position: absolute; left: 50%; top: 0; transform: translateX(-50%); border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 6px solid var(--signal-info); pointer-events: none; }
+.bv-rally-playhead:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .bv-rally-timeline-row { position: absolute; left: 0; right: 0; height: 30px; border-bottom: 1px solid rgba(255,255,255,.025); }
-.bv-rally-timeline-row.selected { background: rgba(98,182,255,.06); }
-.bv-rally-interval { position: absolute; top: 4px; box-sizing: border-box; min-width: 3px; height: 22px; overflow: hidden; border: 1px solid var(--lime-500); border-radius: var(--radius-xs); background: rgba(200,240,74,.18); color: var(--text-primary); cursor: grab; touch-action: none; user-select: none; }
-.bv-rally-interval.correction { border-color: var(--signal-info); background: var(--signal-info-tint); }
-.bv-rally-interval.addition { border-color: var(--signal-in); background: var(--signal-in-tint); }
+.bv-rally-timeline-row.selected { background: rgba(255,255,255,.04); }
+/* Review-state colors are independent from selection. Selection only adds a
+   bright ring so clicking a bar never looks like a correction. */
+.bv-rally-interval { position: absolute; z-index: 3; top: 4px; box-sizing: border-box; min-width: 10px; height: 22px; overflow: hidden; border: 1px solid var(--signal-warn); border-radius: var(--radius-xs); border-style: dashed; background: var(--signal-warn-tint); color: var(--text-primary); cursor: pointer; touch-action: none; user-select: none; }
 .bv-rally-interval.unresolved { border-style: dashed; border-color: var(--signal-warn); background: var(--signal-warn-tint); }
+.bv-rally-interval.approve { border-style: solid; border-color: var(--rally-approve-color); background: var(--rally-approve-tint); }
+.bv-rally-interval.addition { border-style: solid; border-color: var(--lime-500); background: rgba(200,240,74,.18); }
+.bv-rally-interval.correction { border-style: solid; border-color: var(--rally-correction-color); background: var(--rally-correction-tint); }
+.bv-rally-interval.removal { border-style: solid; border-color: var(--rally-remove-color); background: var(--rally-remove-tint); color: var(--rally-remove-color); cursor: pointer; }
+.bv-rally-interval.selected,
+.bv-rally-timeline-row.selected .bv-rally-interval { box-shadow: 0 0 0 2px rgba(255,255,255,.88), 0 0 0 4px rgba(98,182,255,.55); }
 .bv-rally-interval:focus-visible { box-shadow: inset 0 0 0 2px var(--ink-900), var(--focus-ring); }
+.bv-rally-interval.selected:focus-visible { box-shadow: 0 0 0 2px rgba(255,255,255,.88), 0 0 0 4px rgba(98,182,255,.55), var(--focus-ring); }
 .bv-rally-interval-label { position: absolute; inset: 2px 11px; overflow: hidden; font: var(--type-mono); font-size: var(--fs-10); line-height: 16px; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
-.bv-rally-edge { position: absolute; z-index: 2; top: 0; bottom: 0; width: min(10px, 50%); padding: 0; border: 0; background: transparent; touch-action: none; cursor: ew-resize; }
-.bv-rally-edge.start { left: 0; }
-.bv-rally-edge.end { right: 0; }
+/* Only the edge hit zones drag/resize. The bar body is click-to-seek only. */
+.bv-rally-edge { position: absolute; z-index: 6; top: -2px; bottom: -2px; width: 3px; padding: 0; border: 0; background: transparent; touch-action: none; cursor: ew-resize; }
+.bv-rally-edge:hover { cursor: ew-resize; }
+.bv-rally-edge.start { left: -3px; }
+.bv-rally-edge.end { right: -3px; }
+.bv-rally-edge::after { content: ""; position: absolute; top: 2px; bottom: 2px; width: 2px; background: rgba(255,255,255,.55); }
+.bv-rally-edge.start::after { left: 3px; }
+.bv-rally-edge.end::after { right: 3px; }
 .bv-rally-edge:focus-visible { outline: none; box-shadow: inset 2px 0 var(--text-primary); }
 .bv-rally-edge.end:focus-visible { box-shadow: inset -2px 0 var(--text-primary); }
 .bv-rally-tombstone { position: sticky; left: var(--sp-3); top: 4px; max-width: 260px; height: 22px; overflow: hidden; padding: 0 var(--sp-3); border: 1px dashed var(--signal-out); border-radius: var(--radius-xs); background: var(--signal-out-tint); color: var(--signal-out); font: var(--type-mono); font-size: var(--fs-10); text-overflow: ellipsis; white-space: nowrap; }
 .bv-rally-editor, .bv-rally-control { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--border-hairline); border-radius: var(--radius-md); background: rgba(255,255,255,.02); }
-.bv-rally-editor-heading .bv-mono { margin-left: auto; color: var(--lime-400); font-size: var(--fs-11); }
 .bv-rally-editor > .bv-helper { margin: 0; }
+.bv-rally-comparison { color: var(--text-faint); font-size: var(--fs-11); }
 .bv-rally-edge-inputs, .bv-rally-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
 .bv-rally-metadata .bv-rally-field:first-child { grid-column: 1 / -1; }
 .bv-rally-field { min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -573,7 +671,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-seed-note .bv-button { margin-left: auto; }
 .bv-seed-card .bv-button.ghost { color: var(--text-primary); border-color: var(--border-subtle); background: var(--ink-700); }
 .bv-seed-card .bv-button.primary { color: var(--text-on-accent); background: var(--lime-500); border-color: var(--lime-500); }
-.bv-overlay-root .bv-panel { background: var(--ink-900); border-color: var(--border-subtle); box-shadow: 0 8px 24px rgba(0,0,0,.68); }
+.bv-overlay-root .bv-panel { background: var(--overlay-panel-surface); border-color: var(--border-subtle); box-shadow: 0 8px 24px rgba(0,0,0,.68); }
 .bv-overlay-root .bv-panel-header { background: var(--ink-800); border-bottom-color: var(--border-subtle); }
 .bv-overlay-root .bv-panel-header h2,
 .bv-overlay-root .bv-panel .bv-feed-shot,

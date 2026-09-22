@@ -7,6 +7,15 @@
   var iconPaths = {
     activity: [["path", { d: "M22 12h-4l-3 9L9 3l-3 9H2" }]],
     "arrow-left": [["path", { d: "m12 19-7-7 7-7" }], ["path", { d: "M19 12H5" }]],
+    "arrow-right": [["path", { d: "m12 5 7 7-7 7" }], ["path", { d: "M5 12h14" }]],
+    "pan-left": [["path", { d: "M4 12h16" }], ["path", { d: "m9 7-5 5 5 5" }], ["path", { d: "M14 7v10" }]],
+    "pan-right": [["path", { d: "M4 12h16" }], ["path", { d: "m15 7 5 5-5 5" }], ["path", { d: "M10 7v10" }]],
+    "interval-start": [["rect", { x: "3", y: "8", width: "18", height: "8", rx: "1" }], ["line", { x1: "11", y1: "4", x2: "11", y2: "20" }], ["line", { x1: "4", y1: "5", x2: "4", y2: "19" }]],
+    "interval-end": [["rect", { x: "3", y: "8", width: "18", height: "8", rx: "1" }], ["line", { x1: "13", y1: "4", x2: "13", y2: "20" }], ["line", { x1: "20", y1: "5", x2: "20", y2: "19" }]],
+    undo: [["path", { d: "M9 14 4 9l5-5" }], ["path", { d: "M4 9h10a6 6 0 0 1 0 12h-1" }]],
+    redo: [["path", { d: "m15 14 5-5-5-5" }], ["path", { d: "M20 9H10a6 6 0 0 0 0 12h1" }]],
+    "zoom-in": [["circle", { cx: "11", cy: "11", r: "7" }], ["line", { x1: "11", y1: "8", x2: "11", y2: "14" }], ["line", { x1: "8", y1: "11", x2: "14", y2: "11" }], ["line", { x1: "16.5", y1: "16.5", x2: "21", y2: "21" }]],
+    "zoom-out": [["circle", { cx: "11", cy: "11", r: "7" }], ["line", { x1: "8", y1: "11", x2: "14", y2: "11" }], ["line", { x1: "16.5", y1: "16.5", x2: "21", y2: "21" }]],
     check: [["path", { d: "m5 12 4 4L19 6" }]],
     clock: [["circle", { cx: "12", cy: "12", r: "10" }], ["polyline", { points: "12 6 12 12 16 14" }]],
     "chevron-down": [["path", { d: "m6 9 6 6 6-6" }]],
@@ -72,7 +81,7 @@
   }
 
   function icon(name, size) {
-    var svg = svgEl("svg", { xmlns: "http://www.w3.org/2000/svg", width: size || 16, height: size || 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.75", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" });
+    var svg = svgEl("svg", { xmlns: "http://www.w3.org/2000/svg", width: size || 16, height: size || 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.75", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", "data-bso-icon": name });
     (iconPaths[name] || iconPaths.info).forEach(function (item) { var child = svgEl(item[0], item[1]); svg.appendChild(child); });
     return svg;
   }
@@ -81,9 +90,9 @@
     opts = opts || {};
     var children = [];
     if (opts.icon) children.push(icon(opts.icon, opts.iconSize || 16));
-    children.push(label);
+    if (label != null && label !== "") children.push(el("span", { className: "bv-button-label" }, [label]));
     if (opts.iconRight) children.push(icon(opts.iconRight, opts.iconSize || 13));
-    var attrs = { className: "bv-button " + (opts.variant || "secondary") + (opts.size ? " " + opts.size : "") + (opts.full ? " full" : ""), type: "button", disabled: opts.disabled, title: opts.title, "aria-pressed": opts.pressed, onClick: opts.onClick, style: opts.style };
+    var attrs = { className: "bv-button " + (opts.variant || "secondary") + (opts.size ? " " + opts.size : "") + (opts.full ? " full" : "") + (opts.compact ? " compact" : ""), type: "button", disabled: opts.disabled, title: opts.title, "aria-label": opts.ariaLabel, "aria-pressed": opts.pressed, onClick: opts.onClick, style: opts.style };
     return el("button", attrs, children);
   }
 
@@ -92,7 +101,7 @@
     return el("button", { className: "bv-icon-button " + (opts.size || "") + (opts.variant || "") + (opts.active ? " active" : ""), type: "button", "aria-label": label, title: label, disabled: opts.disabled, onClick: opts.onClick }, [icon(name, opts.iconSize || 14)]);
   }
 
-  var badgeTone = { neutral: "neutral", accent: "accent", in: "in", out: "out", warn: "warn", info: "info", unknown: "unknown" };
+  var badgeTone = { neutral: "neutral", accent: "accent", in: "in", out: "out", warn: "warn", info: "info", unknown: "unknown", correction: "correction" };
   function badge(text, tone, uppercase) { return el("span", { className: "bv-badge " + (badgeTone[tone] || "neutral"), style: uppercase === false ? { textTransform: "none", letterSpacing: "0" } : null }, [text]); }
   function kbd(text, accent) { return el("kbd", { className: "bv-kbd" + (accent ? " accent" : "") }, [text]); }
 
@@ -146,6 +155,17 @@
         collapseToggle.setAttribute("data-bso-panel-collapse", "true");
         actions.unshift(collapseToggle);
       }
+      // Header dragging listens on the parent header. Explicitly fence every
+      // action control at pointerdown so SVG/icon hit targets cannot be
+      // retargeted into a panel move or leak to the page underneath. The
+      // control's own click handler still runs normally.
+      actions.forEach(function (action) {
+        if (action && typeof action.addEventListener === "function") {
+          action.addEventListener("pointerdown", function (event) {
+            if (event && event.stopPropagation) event.stopPropagation();
+          });
+        }
+      });
       var heading = el("header", {
         className: "bv-panel-header",
         tabindex: movable ? "0" : null,
