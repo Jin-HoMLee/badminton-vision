@@ -176,11 +176,11 @@ test("every timeline references a declared broadcast with a consistent url, wind
   }
 });
 
-test("provisional rally boundaries remain linked and unverified", async () => {
+test("captain-verified rally boundaries retain complete adjudication evidence", async () => {
   const review = await readJson(rallyReviewPath);
   assert.equal(review.schema, "bv-rally-review.v1");
-  assert.equal(review.status, "provisional-pending-human-verification");
-  assert.equal(review.sourcePlaybackStatus, "unavailable-in-capture");
+  assert.equal(review.status, "captain-verified");
+  assert.equal(review.sourcePlaybackStatus, "direct-playback-reviewed-by-captain");
   const files = await corpusFiles();
   const timelineKeys = files.timelines.map((file) => file.replace(/\.json$/, ""));
   assert.equal(review.broadcasts.length, timelineKeys.length);
@@ -188,25 +188,57 @@ test("provisional rally boundaries remain linked and unverified", async () => {
   assert.deepEqual([...byKey.keys()].sort(), timelineKeys.slice().sort());
   for (const key of REQUIRED_KEYS) assert.ok(byKey.has(key), `${key} needs a canonical rally review entry`);
 
+  let evidenceCount = 0;
+  let activeCount = 0;
+  let controlCount = 0;
   for (const key of timelineKeys) {
     const timeline = await readJson(join(corpusDir, "timelines", `${key}.json`));
     const entry = byKey.get(key);
     assert.equal(entry.url, timeline.url, `${key} review URL must match the timeline`);
+    assert.equal(entry.reviewStatus, "captain-verified", `${key} review must be captain verified`);
     assert.equal(Object.hasOwn(timeline, "shuttleTrackable"), false, `${key} must not fabricate shuttleTrackable labels`);
-    if (Object.hasOwn(timeline, "rallyActive")) {
-      assert.equal(entry.reviewStatus, "pending-human-verification", `${key} rally review must remain pending`);
-      assert.equal(timeline.rallyActiveStatus, "provisional-pending-human-verification", `${key} rally labels must remain provisional`);
-      assert.equal(typeof timeline.rallyActiveDefinition, "string", `${key} rallyActiveDefinition`);
-    } else {
-      assert.equal(entry.reviewStatus, "unmarked", `${key} unmarked rally review must remain unmarked`);
-      assert.equal(Object.hasOwn(timeline, "rallyActiveStatus"), false, `${key} unmarked timeline must not claim rally status`);
-      assert.equal(Object.hasOwn(timeline, "rallyActiveDefinition"), false, `${key} unmarked timeline must not claim rally provenance`);
-    }
+    assert.equal(timeline.rallyActiveStatus, "captain-verified-direct-playback", `${key} rally labels must carry direct-playback provenance`);
+    assert.equal(timeline.rallyActiveProvenance, "captain-verified-direct-playback", `${key} rally provenance`);
+    assert.equal(typeof timeline.rallyActiveDefinition, "string", `${key} rallyActiveDefinition`);
+    assert.ok(Array.isArray(timeline.rallyActive), `${key} rallyActive`);
     assert.deepEqual(
       entry.boundaries.map(({ start, end }) => ({ start, end })),
-      timeline.rallyActive ?? [],
-      `${key} review boundaries must match provisional intervals`
+      timeline.rallyActive,
+      `${key} review boundaries must match accepted active intervals`
     );
+
+    const actions = new Set(["approve", "correction", "addition", "removal"]);
+    assert.ok(Array.isArray(entry.evidence), `${key} evidence ledger`);
+    assert.equal(entry.evidence.length, entry.boundaries.length + entry.evidence.filter((item) => item.action === "removal").length);
+    const activeEvidence = entry.evidence.filter((item) => item.action !== "removal");
+    assert.deepEqual(
+      activeEvidence.map((item) => ({ start: item.corrected.start, end: item.corrected.end })),
+      timeline.rallyActive,
+      `${key} active timeline must use corrected non-removed evidence`
+    );
+    for (const item of entry.evidence) {
+      evidenceCount += 1;
+      assert.equal(item.sourceId, key, `${key} evidence source ID`);
+      assert.ok(actions.has(item.action), `${key} ${item.id} has a completed action`);
+      assert.ok(item.original && Number.isFinite(item.original.start) && Number.isFinite(item.original.end), `${key} ${item.id} original bounds`);
+      assert.ok(item.corrected && Number.isFinite(item.corrected.start) && Number.isFinite(item.corrected.end), `${key} ${item.id} corrected bounds`);
+      assert.ok(item.corrected.start < item.corrected.end, `${key} ${item.id} corrected bounds ordered`);
+      assert.equal(typeof item.comment, "string", `${key} ${item.id} comment`);
+      assert.match(item.verifier, /\S/, `${key} ${item.id} verifier`);
+      assert.match(item.verifiedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, `${key} ${item.id} verifiedAt`);
+      if (item.action !== "removal") activeCount += 1;
+    }
+    assert.equal(entry.evidence.some((item) => item.action === "unresolved"), false, `${key} has no unresolved interval evidence`);
+    assert.ok(Array.isArray(entry.controls), `${key} controls`);
+    for (const control of entry.controls) {
+      controlCount += 1;
+      assert.equal(control.sourceId, key, `${key} control source ID`);
+      assert.equal(control.state, "confirmed", `${key} ${control.id} completed state`);
+      assert.match(control.verifier, /\S/, `${key} ${control.id} verifier`);
+      assert.match(control.verifiedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, `${key} ${control.id} verifiedAt`);
+      assert.match(control.comment, /\S/, `${key} ${control.id} comment`);
+    }
+
     const sourceUrl = new URL(timeline.url);
     const videoId = sourceUrl.searchParams.get("v");
     for (const boundary of entry.boundaries) {
@@ -220,6 +252,9 @@ test("provisional rally boundaries remain linked and unverified", async () => {
     }
   }
 
+  assert.equal(evidenceCount, 32, "all 32 reviewed intervals must remain in the evidence ledger");
+  assert.equal(activeCount, 22, "only the 22 non-removed reviewed intervals are active");
+  assert.equal(controlCount, 2, "both reviewed controls must remain in the corpus");
   const fixedCamera = await readJson(join(corpusDir, "timelines/club-fixed-cam.json"));
   assert.deepEqual(fixedCamera.rallyActive, [], "the fixed-camera control must not infer live play from framing");
 });

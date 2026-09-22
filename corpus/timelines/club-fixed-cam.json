@@ -18,9 +18,10 @@
     }
   ],
   "sceneChanges": [],
-  "notes": "One fixed camera, one unbroken shot, no replays, no score graphics, no cuts across the whole 301 s window. This is the zero-true-cut control for E2: every scene-change event a detector raises here is a false positive by construction. Doubles (four players), dim indoor hall, low-contrast wood floor. Live-play intervals were not separately adjudicated in this pass, so rallyActive is intentionally absent.",
+  "notes": "One fixed camera, one unbroken shot, no replays, no score graphics, no cuts across the whole 301 s window. This is the zero-true-cut control for E2: every scene-change event a detector raises here is a false positive by construction. Doubles (four players), dim indoor hall, low-contrast wood floor. No rally-active interval is supplied by the camera-grammar corpus; the fixed-camera control was separately reviewed and its control decision is retained in rally-review.json.\nRally-active annotations were independently reviewed from direct playback by the captain; see rally-review.json for full interval evidence, including removed proposals and corrections.",
   "sceneChangesComplete": true,
-  "rallyActiveStatus": "provisional-pending-human-verification",
-  "rallyActiveDefinition": "No provisional active interval; the fixed-camera control is not labeled without an observed rally.",
-  "rallyActive": []
+  "rallyActiveStatus": "captain-verified-direct-playback",
+  "rallyActiveDefinition": "Captain-verified control: no rally-active intervals are supplied by the camera-grammar corpus because this fixed camera has no scene changes; the confirmed control evidence is retained in rally-review.json.",
+  "rallyActive": [],
+  "rallyActiveProvenance": "captain-verified-direct-playback"
 }

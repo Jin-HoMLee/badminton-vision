@@ -8,9 +8,10 @@ manifest records `rights.status: "not-cleared"`, with no license, permission,
 public-domain, or reuse-rights evidence.
 
 The Phase-0 court-view probe produced the inherited court-view, scene-change,
-and verification records. The timeline files also carry provisional
-`rallyActive` review targets; they are not ground truth until the linked
-boundaries in `rally-review.json` receive direct human verification. See
+and verification records. The timeline files also carry rally-active intervals
+that were independently adjudicated from direct playback by the captain,
+separately from camera framing. `rally-review.json` retains the complete
+adjudication ledger, including removed proposals and corrections. See
 `README.md` in this directory for how to add and validate marked intervals.
 
 ## `broadcasts.json` - `bv-timeline-corpus/broadcasts.v1`
@@ -49,12 +50,18 @@ names a broadcast not listed here is invalid.
 
 ## `rally-review.json` - `bv-rally-review.v1`
 
-The review manifest mirrors every timeline. A timeline with provisional
-`rallyActive` intervals has a direct source-video link for each start and end
-boundary, and its entry's `reviewStatus` is
-`pending-human-verification` until a human confirms the links. A
-timeline without `rallyActive` uses `reviewStatus: "unmarked"` and an empty
-`boundaries` array.
+The review manifest mirrors every timeline. This corpus uses
+`status: "captain-verified"` and `sourcePlaybackStatus:
+"direct-playback-reviewed-by-captain"` after the captain independently checks
+all proposed boundaries from actual playback. Each broadcast entry has
+`reviewStatus: "captain-verified"`.
+
+`boundaries` contains only accepted active intervals, with links for their
+reviewed start and end. `evidence` contains every reviewed proposal, including
+removed false positives, immutable original bounds, corrected bounds, action,
+comment, verifier, and UTC verification timestamp. A removal is deliberately
+absent from `boundaries` but remains in `evidence`. `controls` retains the
+completed fixed-camera and negative-case control decisions.
 
 ## `timelines/<key>.json` - `bv-timeline-corpus/timeline.v1`
 
@@ -69,14 +76,16 @@ timeline without `rallyActive` uses `reviewStatus: "unmarked"` and an empty
   "markResolutionSeconds": 0.5,            // the quantum these marks are trustworthy to
   "renderedResolution": "1920x1080",
   "courtViewDefinition": "<the exact rule the marker applied, in prose>",
-  "rallyActiveStatus": "provisional-pending-human-verification",
-  "rallyActiveDefinition": "<provisional review target, not ground truth>",
+  "rallyActiveStatus": "captain-verified-direct-playback",
+  "rallyActiveDefinition": "Captain-verified live-play intervals from direct playback; camera inserts within continuing rallies remain inside the same interval.",
+  "rallyActiveProvenance": "captain-verified-direct-playback",
 
   // The world feed is showing the wide playing-court view. Complement = non-court.
   "courtView":    [{ "start": 1055.25, "end": 1105.05 }],
 
-  // Provisional live-play review targets to be independently adjudicated from
-  // playback; camera inserts inside a continuing rally stay inside the same interval.
+  // Captain-verified live-play intervals; camera inserts inside a continuing
+  // rally stay inside the same interval. Removed proposals remain in the
+  // evidence ledger and are not included here.
   "rallyActive":  [{ "start": 1055.25, "end": 1105.05 }],
 
   // Hard visual discontinuities (shot changes), as intervals at the marking
@@ -127,12 +136,13 @@ a zero-cut fixed camera) has no verification file.
 2. **`provenance` is mandatory.** Imported ShuttleSet/BadmintonDB intervals
    must keep their own value and must not be merged into a hand-marked array.
 3. **Absent means unmarked.** A missing `rallyActive` key means "nobody marked
-   this yet"; an empty array means "marked, and there is none". Provisional
+   this yet"; an empty array means "marked, and there is none". Captain-verified
    `rallyActive` arrays require `rallyActiveStatus:
-   "provisional-pending-human-verification"` and must not be used as ground
-   truth until `rally-review.json` is verified. This corpus does not define
-   `shuttleTrackable`; shuttle visibility must be labeled in a later pass rather
-   than inferred from `rallyActive`.
+   "captain-verified-direct-playback"` and matching complete evidence in
+   `rally-review.json`. Removed proposals remain in that ledger rather than
+   being silently discarded. This corpus does not define `shuttleTrackable`;
+   shuttle visibility must be labeled in a later pass rather than inferred from
+   `rallyActive`.
 4. **`markResolutionSeconds` governs the evaluation tolerance.** Any matcher
    must use a tolerance at least this large and say so. It is also the bound
    on how far a marked interval edge may sit outside the measured `window`:
@@ -147,9 +157,11 @@ a zero-cut fixed camera) has no verification file.
 ## Corrections from the Phase-0 schema candidate
 
 The court-view, scene-change, and verification records were inherited from the
-Phase-0 probe. This pass adds provisional `rallyActive` review targets and
-timestamp links, explicitly marked pending human verification; it does not
-claim those targets as ground truth.
+Phase-0 probe. The rally-active intervals were imported from five widget review
+exports after the captain's direct-playback verification. This pass preserves
+accepted corrections, removed proposals, comments, verifier identities,
+timestamps, and the two control decisions in `rally-review.json`; it does not
+redistribute media or record rights to the source videos.
 
 1. **`sceneChanges` were documented as points (`{ "t": 1063.5, ... }`) but are
    stored as intervals (`{ "start", "end", ... }`).** The interval form is what
@@ -162,7 +174,7 @@ claim those targets as ground truth.
    report carried (transition cases reported separately; verdict reversals
    recorded) are restored as rules 5 and 6.
 
-The `markedFrom` and `method` strings name `probe/debug/...` and
-`probe/corpus/...` paths from the Phase-0 measurement workspace. That workspace
-is deliberately not committed - it contains debug imagery - so those strings
-record marking method and provenance, not resolvable repository paths.
+The `markedFrom` and `method` strings name the Phase-0 measurement workspace.
+That workspace is deliberately not committed because it contains debug
+imagery; those strings record marking method and provenance, not repository
+paths.

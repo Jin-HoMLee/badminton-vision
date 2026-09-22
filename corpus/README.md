@@ -19,9 +19,9 @@ substrate, and `SCHEMA.md` is the field-level contract.
 ## Inventory
 
 Five canonical broadcasts, each with a 300 s window. `courtView` is the marked
-wide-court interval list; `rallyActive` is a provisional live-play review-target
-list; `transitions` is the hand-marked `sceneChanges` count; `verified` is the
-per-candidate adjudication count. The inventory is extensible:
+wide-court interval list; `rallyActive` is the captain-verified live-play
+interval list; `transitions` is the hand-marked `sceneChanges` count; `verified`
+is the per-candidate adjudication count. The inventory is extensible:
 added broadcasts must add their manifest and timeline records plus their own manifest checksums;
 the fixed Phase-0 fixture remains responsible only for the five canonical
 records.
@@ -39,12 +39,13 @@ candidates. Axes covered: singles and doubles, 1080p and 720p, modern and
 2018-era production, broadcast multi-camera grammar vs a single amateur fixed
 camera, a zero-cut control, and a non-badminton negative.
 
-The `rallyActive` intervals are provisional review targets only. They are not
-independent human ground truth: the source playback was unavailable in this
-capture, so every start and end is linked in `rally-review.json` for direct
-captain verification. The tests validate those links and provisional status,
-but no evaluation gate scores these intervals. `negative-basketball` and the
-fixed-camera control keep empty arrays rather than inventing active play.
+The `rallyActive` intervals are independently adjudicated from direct playback
+by the captain, separately from camera framing. `rally-review.json` contains
+the accepted active boundaries plus a complete evidence ledger for all 32
+reviewed proposals, including corrections, removals, comments, verifier
+identities, and timestamps. The two control decisions are retained there as
+well. `negative-basketball` and the fixed-camera control keep empty arrays
+rather than inventing active play.
 
 `negative-basketball` is different in kind and the schema says so:
 `sceneChangesComplete: false` and `verifiedCandidatesOnly: true`. Its usable
@@ -63,10 +64,11 @@ file because it raises no candidates (it is the zero-true-cut control).
    filename, and the `url` must all agree with the manifest entry.
 3. Mark from contact sheets rendered from the live player at the
    `markResolutionSeconds` quantum (this corpus uses 2 Hz sheets, 0.5 s).
-   Record the exact court-view definition in `courtViewDefinition` and add
-   `rallyActive` only from a separate live-play adjudication; a missing optional
-   field means "not marked", never "false". Do not infer `shuttleTrackable`
-   from either label.
+   Record the exact court-view definition in `courtViewDefinition`. Rally
+   activity must be adjudicated separately from framing; put accepted intervals
+   in `rallyActive` and retain every proposal's evidence in `rally-review.json`.
+   A missing optional field means "not marked", never "false". Do not infer
+   `shuttleTrackable` from either label.
 4. If you adjudicated detector candidates, add `corpus/verified/<key>.json`.
    Record verdict reversals in `correction`; never overwrite the original.
 5. If a broadcast is only partially marked, set `sceneChangesComplete: false`
@@ -98,24 +100,24 @@ derived evaluation fixture `test/fixtures/scene-change-evidence.json`, which
 embeds a canonical manifest checksum, the canonical URLs/windows, and the sha256
 of each committed canonical `timelines/<key>.json` and
 `verified/<key>.json`. The committed timeline checksums cover the inherited
-records and provisional review fields. **If you change a
+records and captain-verified rally fields. **If you change a
 canonical corpus file, regenerate that fixture;
 for a noncanonical addition or change, update its manifest `sourceChecksums`** -
 otherwise the recorded provenance no longer describes the corpus.
 
 ## Honest limits (carried with the data)
 
-- Marking resolution is 0.5 s and ground truth is one unreplicated marker;
-  near-identical cuts can be under-marked. `verified/<key>.json` recovers the
-  ones a 0.15 histogram could see, and records the one verdict that was
-  reversed after a dense re-check.
+- Scene-change marking resolution is 0.5 s and the hand-marked scene-change
+  record is one unreplicated marker; near-identical cuts can be under-marked.
+  `verified/<key>.json` recovers the ones a 0.15 histogram could see, and
+  records the one verdict that was reversed after a dense re-check.
 - One 300 s window per broadcast, chosen for play density rather than sampled
   at random. Per-event recall and per-second-of-court-view rates are the
   comparable numbers; the transition rate is not unbiased across a whole match.
-- `rallyActive` is provisional and pending human verification through the
-  timestamp links in `rally-review.json`; it is not evaluation ground truth.
-  `shuttleTrackable` remains absent because no shuttle-visibility labels were
-  collected.
+- `rallyActive` is captain-verified from direct playback, separately from
+  camera framing; `rally-review.json` retains the complete evidence ledger,
+  including removed proposals and corrections. `shuttleTrackable` remains
+  absent because no shuttle-visibility labels were collected.
 - The fixed-camera control remains intentionally unmarked for rally activity
   rather than treating its uninterrupted framing as continuous play.
 
@@ -123,10 +125,10 @@ otherwise the recorded provenance no longer describes the corpus.
 
 The broadcast manifest, court-view intervals, scene-change intervals, and
 verification records were inherited from the Phase-0 probe
-(`data/badminton-court-view-probe/artifacts/corpus/`). This pass adds
-provisional `rallyActive` review targets and the linked boundary manifest but
-does not claim human ground truth before direct verification. The `markedFrom`
-and `method` strings refer to the
-probe's `probe/` scratch workspace, which is intentionally not committed
-because it holds debug imagery - they record how the marks were made, not
-repository paths.
+(`data/badminton-court-view-probe/artifacts/corpus/`). The rally-active
+intervals were imported from five widget review exports after direct-playback
+verification by the captain. The committed metadata preserves corrections,
+removals, comments, verifier identities, timestamps, and both control
+verdicts; it redistributes no media and grants no rights to source videos. The
+`markedFrom` and `method` strings refer to the probe's scratch workspace,
+which is intentionally not committed because it holds debug imagery.

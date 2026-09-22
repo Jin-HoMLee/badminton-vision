@@ -136,7 +136,7 @@
       "to": "close-up"
     },
     {
-      "start": 1175.0,
+      "start": 1175,
       "end": 1175.5,
       "kind": "cut",
       "from": "close-up",
@@ -178,7 +178,7 @@
       "to": "court"
     },
     {
-      "start": 1208.0,
+      "start": 1208,
       "end": 1208.5,
       "kind": "cut",
       "from": "court",
@@ -199,7 +199,7 @@
       "to": "close-up"
     },
     {
-      "start": 1236.0,
+      "start": 1236,
       "end": 1236.5,
       "kind": "cut",
       "from": "close-up",
@@ -249,7 +249,7 @@
     },
     {
       "start": 1273.5,
-      "end": 1274.0,
+      "end": 1274,
       "kind": "cut",
       "from": "court",
       "to": "coaches"
@@ -367,20 +367,39 @@
       "to": "crowd"
     }
   ],
-  "notes": "Cuts between two visually similar non-court shots (close-up to close-up, inside the 23 s bench sequence 1128-1152, and inside multi-camera side coverage) are under-marked at the 2 Hz marking rate; see the candidate-verification pass in probe/debug/*/verify for the cuts recovered there.",
+  "notes": "Cuts between two visually similar non-court shots (close-up to close-up, inside the 23 s bench sequence 1128-1152, and inside multi-camera side coverage) are under-marked at the 2 Hz marking rate; see the candidate-verification pass in probe/debug/*/verify for the cuts recovered there.\nRally-active annotations were independently reviewed from direct playback by the captain; see rally-review.json for full interval evidence, including removed proposals and corrections.",
   "sceneChangesComplete": true,
-  "rallyActiveStatus": "provisional-pending-human-verification",
-  "rallyActiveDefinition": "Provisional boundary-review targets only; not independent human ground truth until direct playback review.",
+  "rallyActiveStatus": "captain-verified-direct-playback",
+  "rallyActiveDefinition": "Captain-verified live-play intervals from direct playback; camera inserts within continuing rallies remain inside the same interval. Removed proposals remain in rally-review.json evidence and are not active intervals.",
   "rallyActive": [
-    { "start": 1057.0, "end": 1104.0 },
-    { "start": 1117.0, "end": 1126.0 },
-    { "start": 1156.0, "end": 1165.5 },
-    { "start": 1177.0, "end": 1184.0 },
-    { "start": 1191.0, "end": 1207.5 },
-    { "start": 1237.0, "end": 1249.5 },
-    { "start": 1259.0, "end": 1262.5 },
-    { "start": 1267.5, "end": 1273.5 },
-    { "start": 1302.0, "end": 1315.0 },
-    { "start": 1339.5, "end": 1347.5 }
-  ]
+    {
+      "start": 1057,
+      "end": 1104
+    },
+    {
+      "start": 1177,
+      "end": 1184
+    },
+    {
+      "start": 1196.592,
+      "end": 1207.5
+    },
+    {
+      "start": 1237,
+      "end": 1249.5
+    },
+    {
+      "start": 1267.5,
+      "end": 1273.5
+    },
+    {
+      "start": 1302,
+      "end": 1315
+    },
+    {
+      "start": 1339.5,
+      "end": 1347.5
+    }
+  ],
+  "rallyActiveProvenance": "captain-verified-direct-playback"
 }
