@@ -102,6 +102,79 @@ function unknownEvidence(reason) {
   return { state: 'unknown', confidence: null, reason };
 }
 
+// Phase-1 camera-grammar state is optional: it is built on the analysis
+// primitives (analysis/index.js, packaged as analysis-primitives.js) and, when
+// absent, the live envelope keeps the historical `unknown` rally/marker shape
+// rather than failing a frame.
+const PHASE1_PRIMITIVES = () => globalThis.BVAnalysisPrimitives || null;
+const PLAYER_MOTION_DISPLACEMENT_THRESHOLD = 0.02;
+
+function bboxCenter(player) {
+  const box = player && player.bbox;
+  if (!box || !Number.isFinite(box.x) || !Number.isFinite(box.y)) return null;
+  return { x: box.x + (Number.isFinite(box.width) ? box.width : 0) / 2, y: box.y + (Number.isFinite(box.height) ? box.height : 0) / 2 };
+}
+
+function presentPlayers(players) {
+  if (!Array.isArray(players)) return [];
+  return players.filter((player) => player && player.bbox && player.state !== 'unknown');
+}
+
+function playerMotionScore(players, previous) {
+  if (!previous || !Array.isArray(players) || !players.length) return 0;
+  let maximum = 0;
+  for (const player of players) {
+    const center = bboxCenter(player);
+    if (!center || !player.trackId) continue;
+    const prior = previous.get(player.trackId);
+    if (!prior) continue;
+    maximum = Math.max(maximum, Math.hypot(center.x - prior.x, center.y - prior.y));
+  }
+  return Math.min(1, maximum);
+}
+
+function matchEvidenceFrom(snapshot) {
+  if (!snapshot) return unknownEvidence('match-state-not-available');
+  return {
+    state: snapshot.state,
+    confidence: snapshot.confidence,
+    reason: snapshot.reason,
+    corroborated: Boolean(snapshot.corroborated),
+    players: snapshot.players
+  };
+}
+
+function rallyEvidenceFrom(record) {
+  if (!record || !record.rally_id) return unknownEvidence('rally-segmentation-not-available');
+  const aggregate = record.aggregate_confidence;
+  return {
+    state: 'estimated',
+    status: record.status || 'unknown',
+    id: record.rally_id,
+    rally_id: record.rally_id,
+    start_media_time: record.start_media_time,
+    end_media_time: record.end_media_time,
+    confidence: aggregate && aggregate.status === 'known' ? aggregate.value : null,
+    source: record.source || 'estimated',
+    evidence_state: record.evidence_state || 'suggested',
+    reason: 'estimated-from-scene-change-and-player-persistence',
+    partial_reasons: Array.isArray(record.partial_reasons) ? record.partial_reasons.slice() : [],
+    shot_count: record.shot_count || 0
+  };
+}
+
+function rallyEndEvidenceFrom(record) {
+  if (!record || !record.rally_id || record.end_media_time === null) return unknownEvidence('rally-end-evidence-not-available');
+  return {
+    state: 'estimated',
+    confidence: null,
+    reason: 'estimated-from-scene-change-and-player-persistence',
+    end_media_time: record.end_media_time,
+    rally_id: record.rally_id,
+    source: record.source || 'estimated'
+  };
+}
+
 function racketEvidence(players) {
   const hands = [];
   for (const player of Array.isArray(players) ? players : []) {
@@ -152,6 +225,7 @@ class LocalPoseShuttleAnalyzer {
     if (Object.hasOwn(this.shuttleAnalyzer, 'onStatus')) this.shuttleAnalyzer.onStatus = (value) => this.status({ component: 'shuttle', ...value });
     if (this.racketAnalyzer && Object.hasOwn(this.racketAnalyzer, 'onStatus')) this.racketAnalyzer.onStatus = (value) => this.status({ component: 'racket', ...value });
     this.lastMediaBySession = new Map();
+    this.phase1BySession = new Map();
     this.setPoseAnalyzer(resolvedPose);
   }
 
@@ -263,7 +337,15 @@ class LocalPoseShuttleAnalyzer {
     if (id !== null && typeof this.poseAnalyzer.resetSession === 'function') this.poseAnalyzer.resetSession(id, reason);
     if (id !== null && typeof this.shuttleAnalyzer.resetSession === 'function') this.shuttleAnalyzer.resetSession(id, reason);
     if (id !== null && this.racketAnalyzer && typeof this.racketAnalyzer.resetSession === 'function') this.racketAnalyzer.resetSession(id, reason);
-    if (id !== null) this.lastMediaBySession.delete(id);
+    if (id !== null) {
+      const phase1 = this.phase1BySession.get(id);
+      if (phase1) {
+        if (phase1.match && typeof phase1.match.reset === 'function') phase1.match.reset(reason);
+        if (phase1.rally && typeof phase1.rally.reset === 'function') phase1.rally.reset(reason);
+        phase1.previousPlayers = null;
+      }
+      this.lastMediaBySession.delete(id);
+    }
     return { sessionId: id, reason };
   }
 
@@ -275,8 +357,25 @@ class LocalPoseShuttleAnalyzer {
     else if (id !== null && typeof this.shuttleAnalyzer.resetSession === 'function') this.shuttleAnalyzer.resetSession(id, reason);
     if (id !== null && this.racketAnalyzer && typeof this.racketAnalyzer.endSession === 'function') this.racketAnalyzer.endSession(id, reason);
     else if (id !== null && this.racketAnalyzer && typeof this.racketAnalyzer.resetSession === 'function') this.racketAnalyzer.resetSession(id, reason);
-    if (id !== null) this.lastMediaBySession.delete(id);
+    if (id !== null) {
+      this.lastMediaBySession.delete(id);
+      this.phase1BySession.delete(id);
+    }
     return { sessionId: id, reason };
+  }
+
+  phase1State(sessionId) {
+    let entry = this.phase1BySession.get(sessionId);
+    if (!entry) {
+      const primitives = PHASE1_PRIMITIVES();
+      entry = {
+        match: primitives && typeof primitives.createMatchStateMachine === 'function' ? primitives.createMatchStateMachine() : null,
+        rally: primitives && typeof primitives.createPhase1RallyStateMachine === 'function' ? primitives.createPhase1RallyStateMachine() : null,
+        previousPlayers: null
+      };
+      this.phase1BySession.set(sessionId, entry);
+    }
+    return entry;
   }
 
   unknownShuttle(reason) {
@@ -352,6 +451,36 @@ class LocalPoseShuttleAnalyzer {
     const players = Array.isArray(poseResult.players) ? poseResult.players : tracking?.players || [];
     const poseAvailable = Boolean(poseEnvelope.inferenceAvailable);
     const poseKind = typeof poseResult.kind === 'string' && poseResult.kind ? poseResult.kind : null;
+
+    // Phase-1 match/rally state runs on the per-frame evidence the composition
+    // already produces (scene change, persistent player tracks, racket/shuttle
+    // corroboration and a coarse player-motion signal). It forms no court-view
+    // opinion. When the analysis primitives are absent the envelope keeps the
+    // historical `unknown` rally/marker shape instead of failing the frame.
+    let matchEvidence = unknownEvidence('match-state-not-available');
+    let rallyEvidence = unknownEvidence('rally-segmentation-not-available');
+    let rallyEndEvidence = unknownEvidence('rally-end-evidence-not-available');
+    if (PHASE1_PRIMITIVES()) {
+      const phase1 = this.phase1State(sessionId);
+      if (phase1.match && phase1.rally) {
+        const present = presentPlayers(tracking && tracking.accepted === false ? [] : players);
+        const playerCount = present.length;
+        const motionScore = playerMotionScore(present, phase1.previousPlayers);
+        const motion = motionScore >= PLAYER_MOTION_DISPLACEMENT_THRESHOLD;
+        phase1.previousPlayers = present.length
+          ? new Map(present.map((player) => [player.trackId, bboxCenter(player)]).filter(([, center]) => center))
+          : null;
+        const racketDetected = Boolean(racketEvidenceFromDetector && Array.isArray(racketEvidenceFromDetector.detections) && racketEvidenceFromDetector.detections.length > 0);
+        const shuttleTracked = shuttle.state === 'tracked';
+        const matchSnapshot = phase1.match.update({ media_time: mediaTime, player_count: playerCount, racket_detected: racketDetected, shuttle_tracked: shuttleTracked, scene_change: cut });
+        const rallySnapshot = phase1.rally.update({ media_time: mediaTime, match_active: matchSnapshot.state === 'MATCH DETECTED', player_count: playerCount, motion, scene_change: cut });
+        matchEvidence = matchEvidenceFrom(matchSnapshot);
+        const activeRecord = rallySnapshot.active_rally_id ? rallySnapshot.rallies.find((rally) => rally.rally_id === rallySnapshot.active_rally_id) : null;
+        rallyEvidence = rallyEvidenceFrom(activeRecord || rallySnapshot.last_ended_rally);
+        rallyEndEvidence = rallyEndEvidenceFrom(rallySnapshot.last_ended_rally);
+      }
+    }
+
     const analysis = {
       kind: poseKind && poseKind !== 'lightweight-openpose' ? `${poseKind}-pose-shuttle` : 'lightweight-openpose-pose-shuttle',
       composition: 'pose-plus-shuttle-v1',
@@ -377,8 +506,9 @@ class LocalPoseShuttleAnalyzer {
       shotFamily: poseResult.shotFamily || 'unclassified',
       classificationConfidence: Number.isFinite(poseResult.classificationConfidence) ? poseResult.classificationConfidence : 0,
       geometryConfidence: Number.isFinite(poseResult.geometryConfidence) ? poseResult.geometryConfidence : 0,
-      rally: unknownEvidence('rally-segmentation-not-available'),
-      rallyEnd: unknownEvidence('rally-end-evidence-not-available'),
+      match: matchEvidence,
+      rally: rallyEvidence,
+      rallyEnd: rallyEndEvidence,
       winner: unknownEvidence('winner-evidence-not-available'),
       outcome: 'unclassified',
       detector: this.identity,
@@ -408,6 +538,7 @@ class LocalPoseShuttleAnalyzer {
     if (typeof this.shuttleAnalyzer.dispose === 'function') this.shuttleAnalyzer.dispose();
     if (this.racketAnalyzer && typeof this.racketAnalyzer.dispose === 'function') this.racketAnalyzer.dispose();
     this.lastMediaBySession.clear();
+    this.phase1BySession.clear();
   }
 }
 
