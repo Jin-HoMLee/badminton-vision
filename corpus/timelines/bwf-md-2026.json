@@ -1,0 +1,331 @@
+{
+  "schema": "bv-timeline-corpus/timeline.v1",
+  "broadcast": "bwf-md-2026",
+  "url": "https://www.youtube.com/watch?v=OyTqFMdLb_U",
+  "window": {
+    "start": 1202.2,
+    "end": 1500.9
+  },
+  "provenance": "hand-marked",
+  "markedFrom": "2 Hz contact sheets rendered from the live player (probe/debug/bwf-md-2026/sheetsA)",
+  "markResolutionSeconds": 0.5,
+  "renderedResolution": "1920x1080",
+  "courtViewDefinition": "the world feed shows the whole playing court from the elevated behind-baseline or high-oblique camera, with all four court corners inside the frame; low sideline / net-level / close-up / Hawk-Eye synthetic review renders are NOT court view even when strong straight lines are visible",
+  "courtView": [
+    {
+      "start": 1229.15,
+      "end": 1244.35
+    },
+    {
+      "start": 1257.05,
+      "end": 1274.35
+    },
+    {
+      "start": 1294.2,
+      "end": 1304.35
+    },
+    {
+      "start": 1309.45,
+      "end": 1314.05
+    },
+    {
+      "start": 1317.15,
+      "end": 1325.25
+    },
+    {
+      "start": 1331.25,
+      "end": 1340.95
+    },
+    {
+      "start": 1355.75,
+      "end": 1367.95
+    },
+    {
+      "start": 1374.05,
+      "end": 1378.05
+    },
+    {
+      "start": 1383.65,
+      "end": 1393.85
+    },
+    {
+      "start": 1497.55,
+      "end": 1501
+    }
+  ],
+  "sceneChanges": [
+    {
+      "start": 1205.7,
+      "end": 1206.3,
+      "kind": "cut",
+      "from": "umpire",
+      "to": "bench"
+    },
+    {
+      "start": 1210.3,
+      "end": 1210.9,
+      "kind": "cut",
+      "from": "bench",
+      "to": "hawkeye-review"
+    },
+    {
+      "start": 1217.5,
+      "end": 1218,
+      "kind": "cut",
+      "from": "hawkeye-review",
+      "to": "bench"
+    },
+    {
+      "start": 1228.9,
+      "end": 1229.4,
+      "kind": "cut",
+      "from": "bench",
+      "to": "court"
+    },
+    {
+      "start": 1244.1,
+      "end": 1244.6,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1248.2,
+      "end": 1248.7,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "low-sideline"
+    },
+    {
+      "start": 1252.7,
+      "end": 1253.3,
+      "kind": "cut",
+      "from": "low-sideline",
+      "to": "net-level"
+    },
+    {
+      "start": 1255.3,
+      "end": 1255.8,
+      "kind": "cut",
+      "from": "net-level",
+      "to": "close-up"
+    },
+    {
+      "start": 1256.8,
+      "end": 1257.3,
+      "kind": "wipe",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1274.1,
+      "end": 1274.6,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1276.1,
+      "end": 1276.6,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "crowd"
+    },
+    {
+      "start": 1280.2,
+      "end": 1280.7,
+      "kind": "wipe",
+      "from": "crowd",
+      "to": "low-sideline"
+    },
+    {
+      "start": 1290.9,
+      "end": 1291.4,
+      "kind": "wipe",
+      "from": "low-sideline",
+      "to": "close-up"
+    },
+    {
+      "start": 1293.9,
+      "end": 1294.5,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1304.1,
+      "end": 1304.6,
+      "kind": "cut",
+      "from": "court",
+      "to": "bench"
+    },
+    {
+      "start": 1309.2,
+      "end": 1309.7,
+      "kind": "dissolve",
+      "from": "bench",
+      "to": "court"
+    },
+    {
+      "start": 1314.3,
+      "end": 1314.8,
+      "kind": "dissolve",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1316.9,
+      "end": 1317.4,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1325,
+      "end": 1325.5,
+      "kind": "cut",
+      "from": "court",
+      "to": "bench"
+    },
+    {
+      "start": 1331,
+      "end": 1331.5,
+      "kind": "cut",
+      "from": "bench",
+      "to": "court"
+    },
+    {
+      "start": 1340.7,
+      "end": 1341.2,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1355.5,
+      "end": 1356,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1367.7,
+      "end": 1368.2,
+      "kind": "cut",
+      "from": "court",
+      "to": "net-level"
+    },
+    {
+      "start": 1373.7,
+      "end": 1374.3,
+      "kind": "wipe",
+      "from": "net-level",
+      "to": "court"
+    },
+    {
+      "start": 1378.3,
+      "end": 1379.8,
+      "kind": "wipe",
+      "from": "court",
+      "to": "low-sideline"
+    },
+    {
+      "start": 1383.4,
+      "end": 1383.9,
+      "kind": "cut",
+      "from": "low-sideline",
+      "to": "court"
+    },
+    {
+      "start": 1393.6,
+      "end": 1394.1,
+      "kind": "cut",
+      "from": "court",
+      "to": "net-level"
+    },
+    {
+      "start": 1395.6,
+      "end": 1396.1,
+      "kind": "cut",
+      "from": "net-level",
+      "to": "crowd"
+    },
+    {
+      "start": 1399.6,
+      "end": 1400.2,
+      "kind": "wipe",
+      "from": "crowd",
+      "to": "low-sideline"
+    },
+    {
+      "start": 1406.8,
+      "end": 1407.3,
+      "kind": "cut",
+      "from": "low-sideline",
+      "to": "net-level"
+    },
+    {
+      "start": 1411.9,
+      "end": 1412.4,
+      "kind": "wipe",
+      "from": "net-level",
+      "to": "bench"
+    },
+    {
+      "start": 1446.5,
+      "end": 1447,
+      "kind": "cut",
+      "from": "bench",
+      "to": "bench"
+    },
+    {
+      "start": 1496.3,
+      "end": 1496.8,
+      "kind": "cut",
+      "from": "bench",
+      "to": "court-edge"
+    },
+    {
+      "start": 1497.3,
+      "end": 1497.8,
+      "kind": "cut",
+      "from": "court-edge",
+      "to": "court"
+    }
+  ],
+  "notes": "Doubles, same production house as bwf-ws-2026. Contains a Hawk-Eye/official-review synthetic court render (1210.9-1217.5) - a perfect-line non-court frame that is a deliberate counterexample for any line-count court rule. The 1412-1497 interval is an 85 s between-game bench sequence whose internal close-up-to-close-up cuts are under-marked at the 2 Hz marking rate; see the candidate-verification pass.\nRally-active annotations were independently reviewed from direct playback by the captain; see rally-review.json for full interval evidence, including removed proposals and corrections.",
+  "sceneChangesComplete": true,
+  "rallyActiveStatus": "captain-verified-direct-playback",
+  "rallyActiveDefinition": "Captain-verified live-play intervals from direct playback; camera inserts within continuing rallies remain inside the same interval. Removed proposals remain in rally-review.json evidence and are not active intervals.",
+  "rallyActive": [
+    {
+      "start": 1230,
+      "end": 1243.5
+    },
+    {
+      "start": 1258,
+      "end": 1273.5
+    },
+    {
+      "start": 1295,
+      "end": 1303.5
+    },
+    {
+      "start": 1318,
+      "end": 1324.5
+    },
+    {
+      "start": 1332,
+      "end": 1340
+    },
+    {
+      "start": 1356.5,
+      "end": 1367
+    },
+    {
+      "start": 1384.5,
+      "end": 1393
+    }
+  ],
+  "rallyActiveProvenance": "captain-verified-direct-playback"
+}

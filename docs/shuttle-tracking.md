@@ -73,9 +73,12 @@ helper. It applies the same score threshold and merges consecutive crossings
 within `0.6` seconds, preserving the strongest score in each event.
 The committed fixture at `test/fixtures/scene-change-evidence.json` records the
 checksum-identified broadcast samples and transition truth used to audit the
-`0.15` entry bound. Its focused test requires at least `0.90` transition recall
-per broadcast and no more than one unmarked event per 60 seconds of court-view
-duration; it contains no video or frame assets.
+`0.15` entry bound. Its focused test keeps the three canonical BWF broadcasts
+complete, excludes incomplete broadcasts from recall and false-event scoring,
+requires at least `0.90` transition recall for each scored broadcast with
+transitions, zero unmarked scene-change events, and no more than one false
+event per 60 seconds of court-view duration. It contains no video or frame
+assets.
 
 The default transport budget is a 256px long edge (at most 65,536 pixels per
 frame). Oversized readable frames are nearest-neighbour bounded before

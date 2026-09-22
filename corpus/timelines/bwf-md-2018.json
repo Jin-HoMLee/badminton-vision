@@ -1,0 +1,535 @@
+{
+  "schema": "bv-timeline-corpus/timeline.v1",
+  "broadcast": "bwf-md-2018",
+  "url": "https://www.youtube.com/watch?v=GESh9Dg8oJE",
+  "window": {
+    "start": 1200.2,
+    "end": 1501.2
+  },
+  "provenance": "hand-marked",
+  "markedFrom": "2 Hz contact sheets rendered from the live player (probe/debug/bwf-md-2018/sheetsA)",
+  "markResolutionSeconds": 0.5,
+  "renderedResolution": "1280x720",
+  "courtViewDefinition": "the world feed shows the whole playing court from the elevated behind-baseline camera with all four court corners inside the frame. This 2018 production's main court camera is noticeably lower and tighter than the 2026 one. The low reverse-angle camera used at 1381-1393 shows most of the court but its near corners are occluded by crowd silhouettes, so it is marked NOT court view - a deliberate hard case.",
+  "courtView": [
+    {
+      "start": 1227.25,
+      "end": 1236.95
+    },
+    {
+      "start": 1251.65,
+      "end": 1262.95
+    },
+    {
+      "start": 1282.15,
+      "end": 1301.05
+    },
+    {
+      "start": 1323.45,
+      "end": 1326.95
+    },
+    {
+      "start": 1331.05,
+      "end": 1336.15
+    },
+    {
+      "start": 1346.35,
+      "end": 1349.35
+    },
+    {
+      "start": 1350.95,
+      "end": 1357.95
+    },
+    {
+      "start": 1363.15,
+      "end": 1368.15
+    },
+    {
+      "start": 1393.65,
+      "end": 1396.15
+    },
+    {
+      "start": 1402.25,
+      "end": 1402.75
+    },
+    {
+      "start": 1412.35,
+      "end": 1415.45
+    },
+    {
+      "start": 1417.95,
+      "end": 1426.65
+    },
+    {
+      "start": 1442.35,
+      "end": 1451.9
+    },
+    {
+      "start": 1452.6,
+      "end": 1456.4
+    },
+    {
+      "start": 1457.1,
+      "end": 1469.35
+    }
+  ],
+  "sceneChanges": [
+    {
+      "start": 1202.7,
+      "end": 1203.2,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1204.7,
+      "end": 1205.2,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "close-up"
+    },
+    {
+      "start": 1207.8,
+      "end": 1208.3,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "replay-net"
+    },
+    {
+      "start": 1211.3,
+      "end": 1211.8,
+      "kind": "cut",
+      "from": "replay-net",
+      "to": "line-close-up"
+    },
+    {
+      "start": 1213.3,
+      "end": 1213.8,
+      "kind": "cut",
+      "from": "line-close-up",
+      "to": "close-up"
+    },
+    {
+      "start": 1218.9,
+      "end": 1219.4,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "close-up"
+    },
+    {
+      "start": 1223.4,
+      "end": 1223.9,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "close-up",
+      "note": "time corrected from the candidate-verification pass (was mis-read as 1225.0 from the 2 Hz sheet)"
+    },
+    {
+      "start": 1227,
+      "end": 1227.5,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1236.7,
+      "end": 1237.2,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1241.8,
+      "end": 1242.3,
+      "kind": "wipe",
+      "from": "close-up",
+      "to": "replay"
+    },
+    {
+      "start": 1250.4,
+      "end": 1250.9,
+      "kind": "cut",
+      "from": "replay",
+      "to": "close-up"
+    },
+    {
+      "start": 1251.4,
+      "end": 1251.9,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1262.7,
+      "end": 1263.2,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1264.7,
+      "end": 1265.2,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "crowd"
+    },
+    {
+      "start": 1267.7,
+      "end": 1268.2,
+      "kind": "cut",
+      "from": "crowd",
+      "to": "close-up"
+    },
+    {
+      "start": 1271.8,
+      "end": 1272.3,
+      "kind": "wipe",
+      "from": "close-up",
+      "to": "replay"
+    },
+    {
+      "start": 1278.4,
+      "end": 1278.9,
+      "kind": "cut",
+      "from": "replay",
+      "to": "close-up"
+    },
+    {
+      "start": 1281.9,
+      "end": 1282.4,
+      "kind": "dissolve",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1300.8,
+      "end": 1301.3,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1304.3,
+      "end": 1304.8,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "close-up"
+    },
+    {
+      "start": 1310.9,
+      "end": 1311.5,
+      "kind": "wipe",
+      "from": "close-up",
+      "to": "serve-replay"
+    },
+    {
+      "start": 1315.5,
+      "end": 1316.5,
+      "kind": "dissolve",
+      "from": "serve-replay",
+      "to": "close-up"
+    },
+    {
+      "start": 1323.2,
+      "end": 1323.7,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1326.7,
+      "end": 1327.3,
+      "kind": "cut",
+      "from": "court",
+      "to": "racket-close-up"
+    },
+    {
+      "start": 1330.8,
+      "end": 1331.3,
+      "kind": "cut",
+      "from": "racket-close-up",
+      "to": "court"
+    },
+    {
+      "start": 1335.9,
+      "end": 1336.4,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1337.4,
+      "end": 1337.9,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "coach"
+    },
+    {
+      "start": 1344,
+      "end": 1344.5,
+      "kind": "wipe",
+      "from": "coach",
+      "to": "net-level"
+    },
+    {
+      "start": 1346.1,
+      "end": 1346.6,
+      "kind": "cut",
+      "from": "net-level",
+      "to": "court"
+    },
+    {
+      "start": 1349.1,
+      "end": 1349.6,
+      "kind": "cut",
+      "from": "court",
+      "to": "net-level"
+    },
+    {
+      "start": 1350.7,
+      "end": 1351.2,
+      "kind": "wipe",
+      "from": "net-level",
+      "to": "court"
+    },
+    {
+      "start": 1357.8,
+      "end": 1358.3,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1362.9,
+      "end": 1363.4,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1367.9,
+      "end": 1368.5,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1370,
+      "end": 1370.5,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "coach"
+    },
+    {
+      "start": 1372.5,
+      "end": 1373,
+      "kind": "cut",
+      "from": "coach",
+      "to": "close-up"
+    },
+    {
+      "start": 1377.1,
+      "end": 1377.6,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "close-up"
+    },
+    {
+      "start": 1380.7,
+      "end": 1381.2,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "reverse-angle"
+    },
+    {
+      "start": 1393.4,
+      "end": 1393.9,
+      "kind": "cut",
+      "from": "reverse-angle",
+      "to": "court"
+    },
+    {
+      "start": 1395.9,
+      "end": 1396.4,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1402,
+      "end": 1403,
+      "kind": "wipe",
+      "from": "close-up",
+      "to": "low-sideline"
+    },
+    {
+      "start": 1408.1,
+      "end": 1408.6,
+      "kind": "cut",
+      "from": "low-sideline",
+      "to": "net-close-up"
+    },
+    {
+      "start": 1412.1,
+      "end": 1412.6,
+      "kind": "dissolve",
+      "from": "net-close-up",
+      "to": "court"
+    },
+    {
+      "start": 1415.2,
+      "end": 1415.7,
+      "kind": "cut",
+      "from": "court",
+      "to": "net-level"
+    },
+    {
+      "start": 1417.7,
+      "end": 1418.2,
+      "kind": "cut",
+      "from": "net-level",
+      "to": "court"
+    },
+    {
+      "start": 1426.4,
+      "end": 1426.9,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1431.4,
+      "end": 1431.9,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "replay-net"
+    },
+    {
+      "start": 1438,
+      "end": 1438.6,
+      "kind": "wipe",
+      "from": "replay-net",
+      "to": "close-up"
+    },
+    {
+      "start": 1442.1,
+      "end": 1442.6,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "court"
+    },
+    {
+      "start": 1451.7,
+      "end": 1452.1,
+      "kind": "cut",
+      "from": "court",
+      "to": "low-angle-insert",
+      "note": "recovered by the 0.25 s dense re-check"
+    },
+    {
+      "start": 1452.4,
+      "end": 1452.8,
+      "kind": "cut",
+      "from": "low-angle-insert",
+      "to": "court",
+      "note": "recovered by the 0.25 s dense re-check"
+    },
+    {
+      "start": 1456.2,
+      "end": 1456.6,
+      "kind": "cut",
+      "from": "court",
+      "to": "low-angle-insert",
+      "note": "recovered by the 0.25 s dense re-check"
+    },
+    {
+      "start": 1456.9,
+      "end": 1457.3,
+      "kind": "cut",
+      "from": "low-angle-insert",
+      "to": "court",
+      "note": "recovered by the 0.25 s dense re-check"
+    },
+    {
+      "start": 1469.1,
+      "end": 1469.6,
+      "kind": "cut",
+      "from": "court",
+      "to": "close-up"
+    },
+    {
+      "start": 1470.6,
+      "end": 1471.1,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "crowd"
+    },
+    {
+      "start": 1472.2,
+      "end": 1472.7,
+      "kind": "cut",
+      "from": "crowd",
+      "to": "close-up"
+    },
+    {
+      "start": 1475.7,
+      "end": 1476.3,
+      "kind": "wipe",
+      "from": "close-up",
+      "to": "side-camera"
+    },
+    {
+      "start": 1488,
+      "end": 1488.5,
+      "kind": "dissolve",
+      "from": "side-camera",
+      "to": "close-up"
+    },
+    {
+      "start": 1495.1,
+      "end": 1495.6,
+      "kind": "cut",
+      "from": "close-up",
+      "to": "bench"
+    }
+  ],
+  "notes": "All England 2018 world feed, 720p source, warmer/darker hall, much heavier use of super-slow-motion replay inserts (racket/shuttle macro shots at 1327-1331 and 1311-1316) than the 2026 feed. Close-up-to-close-up cuts are under-marked at the 2 Hz marking rate. A 0.25 s dense re-check of 1449-1459 s (probe/debug/bwf-md-2018/dense) found two ~0.7 s low-angle action inserts inside one rally (1451.9-1452.6 and 1456.4-1457.1); the four cuts around them are marked and the court interval is split accordingly. This production cuts mid-rally, which the 2026 feed does not. the 1225.0 mark was relocated to 1223.4.\nRally-active annotations were independently reviewed from direct playback by the captain; see rally-review.json for full interval evidence, including removed proposals and corrections.",
+  "sceneChangesComplete": true,
+  "rallyActiveStatus": "captain-verified-direct-playback",
+  "rallyActiveDefinition": "Captain-verified live-play intervals from direct playback; camera inserts within continuing rallies remain inside the same interval. Removed proposals remain in rally-review.json evidence and are not active intervals.",
+  "rallyActive": [
+    {
+      "start": 1228,
+      "end": 1236
+    },
+    {
+      "start": 1252.5,
+      "end": 1262
+    },
+    {
+      "start": 1283,
+      "end": 1300
+    },
+    {
+      "start": 1324,
+      "end": 1335
+    },
+    {
+      "start": 1352,
+      "end": 1367.5
+    },
+    {
+      "start": 1385.366,
+      "end": 1395.5
+    },
+    {
+      "start": 1413,
+      "end": 1425.5
+    },
+    {
+      "start": 1442,
+      "end": 1469.5
+    }
+  ],
+  "rallyActiveProvenance": "captain-verified-direct-playback"
+}

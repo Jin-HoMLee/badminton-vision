@@ -1,0 +1,23 @@
+{
+  "schema": "bv-timeline-corpus/timeline.v1",
+  "broadcast": "negative-basketball",
+  "url": "https://www.youtube.com/watch?v=PDmqTrdr-vs",
+  "window": {
+    "start": 202,
+    "end": 501.4
+  },
+  "provenance": "hand-marked",
+  "markedFrom": "2 Hz contact sheets rendered from the live player (probe/debug/negative-basketball/sheetsA)",
+  "markResolutionSeconds": 0.5,
+  "renderedResolution": "1920x1080",
+  "courtViewDefinition": "same badminton court-view definition as the other broadcasts. This is a basketball broadcast: no frame in the window is a badminton court view, so courtView is empty by construction and every positive prediction on this broadcast is a false positive.",
+  "courtView": [],
+  "rallyActiveStatus": "captain-verified-direct-playback",
+  "rallyActiveDefinition": "Captain-verified negative control: no badminton rally-active intervals are present in this basketball source; the confirmed inactive control evidence is retained in rally-review.json.",
+  "rallyActive": [],
+  "sceneChanges": [],
+  "sceneChangesComplete": false,
+  "notes": "NEGATIVE broadcast. Included because an indoor basketball court is the hardest available negative for a line-based court-view rule: a large bright wooden floor with many long, high-contrast straight painted lines, shot from a wide elevated camera - exactly the feature signature a badminton court produces. The E1 measurement on this broadcast is pure specificity. The scene-change ground truth is deliberately left empty and marked incomplete: a highlights package cuts faster than the 0.5 s marking rate can resolve, so this broadcast is reported for E2 context only and is excluded from the E2 recall/false-rate gate (the gate's false-event budget is defined per 60 s of continuous court view, of which this broadcast has none). The 42 scene changes used for this broadcast come entirely from the candidate-verification pass (probe/corpus/verified/negative-basketball.json); no independent hand-marked scene-change list exists for it, so its E2 recall is reported for context only.\nRally-active annotations were independently reviewed from direct playback by the captain; see rally-review.json for full interval evidence, including removed proposals and corrections.",
+  "verifiedCandidatesOnly": true,
+  "rallyActiveProvenance": "captain-verified-direct-playback"
+}

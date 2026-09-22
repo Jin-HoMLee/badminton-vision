@@ -2,7 +2,7 @@
   "schema": "bv-scene-change-evidence.v1",
   "sourceBundle": "Phase-0 court-view probe, checksum-verified staged input",
   "sourceChecksumsFile": "artifacts/SHA256SUMS",
-  "broadcastManifestChecksum": "1dd160100d26390d16b7549a278998561371f2ce3cee6671c568d6bc5bdfb1c5",
+  "broadcastManifestChecksum": "03aab66ca3abaf0c7399d89aefbae2e0f8c04bf6780d976569009867b49a1b01",
   "candidateThreshold": 0.15,
   "debounceSeconds": 0.6,
   "matchToleranceSeconds": 0.75,
@@ -10,6 +10,7 @@
   "broadcasts": [
     {
       "id": "bwf-ws-2026",
+      "sceneChangesComplete": true,
       "url": "https://www.youtube.com/watch?v=99riPBazzfk",
       "window": {
         "start": 1050,
@@ -20,7 +21,7 @@
       "verifiedSource": "artifacts/corpus/verified/bwf-ws-2026.json",
       "sourceChecksums": {
         "passA": "62b3371ba0d1e1446904b695a8e9ae244540d4a7c5374060db84048478a5bed0",
-        "timeline": "dfc75df4f39308bc743be9e18086b86f0ba5deb28cbf74dd33e819884c44d477",
+        "timeline": "8898ee3c44b4369ab6dcdd2ae18cc10329b31ab1dc5e35cd8939c322c012e35a",
         "verified": "508b6a164c40779b5abc9bdaf4ed8eb6e714121df421e795e1c9840ab78e6601"
       },
       "courtView": [
@@ -1119,6 +1120,7 @@
     },
     {
       "id": "bwf-md-2026",
+      "sceneChangesComplete": true,
       "url": "https://www.youtube.com/watch?v=OyTqFMdLb_U",
       "window": {
         "start": 1200,
@@ -1129,7 +1131,7 @@
       "verifiedSource": "artifacts/corpus/verified/bwf-md-2026.json",
       "sourceChecksums": {
         "passA": "5a464fc49d97e7e8cd4c4bc51aa129707769ec0d8b9b46f6d3123c385b956e48",
-        "timeline": "0e391242e9de552dfc472b82a29e33152df7bfc5a2e38508ec3ff78044f7e012",
+        "timeline": "e564450531822e53ed5a71c8d4b58669297fd52aae07201f5dc44251023972c5",
         "verified": "6ae3f540f2cf8a349a6758aefcdfe988cdf57bd9849282782d51eff9bccd354a"
       },
       "courtView": [
@@ -2073,6 +2075,7 @@
     },
     {
       "id": "bwf-md-2018",
+      "sceneChangesComplete": true,
       "url": "https://www.youtube.com/watch?v=GESh9Dg8oJE",
       "window": {
         "start": 1200,
@@ -2083,7 +2086,7 @@
       "verifiedSource": "artifacts/corpus/verified/bwf-md-2018.json",
       "sourceChecksums": {
         "passA": "834d2dbae500f272b5473995e8f33f29e27e775952880dd8748f44ee11dccafc",
-        "timeline": "adcda49c5d6503b5acf1b80ea6235b28b88dd35d463ed4561df763afdec53d9e",
+        "timeline": "ecefe8f36abd324050b687db771b370a90d2afcd0e71cf70795025b6c11a8969",
         "verified": "d499f7da0c0eaa52b776124fc5d180fe52138e7d2155d97d1d97810ad45e1397"
       },
       "courtView": [
@@ -3580,6 +3583,7 @@
     },
     {
       "id": "club-fixed-cam",
+      "sceneChangesComplete": true,
       "url": "https://www.youtube.com/watch?v=PlKyci2aGKs",
       "window": {
         "start": 900,
@@ -3590,7 +3594,7 @@
       "verifiedSource": null,
       "sourceChecksums": {
         "passA": "ffca3eeba857f0fc7ae09469f7c2de4ffe329632f0e1304f5d0974c2fcca9226",
-        "timeline": "bf6d4e1dfe50e6df4fbdbe1308af9cc2c1cbb6edb11564a786c0ceddb929e939",
+        "timeline": "6dae4cc5ff2a8597bab0e92bef08881acc1280cb133599a4fdc6e452e94674c8",
         "verified": null
       },
       "courtView": [
@@ -3606,6 +3610,7 @@
     },
     {
       "id": "negative-basketball",
+      "sceneChangesComplete": false,
       "url": "https://www.youtube.com/watch?v=PDmqTrdr-vs",
       "window": {
         "start": 200,
@@ -3616,7 +3621,7 @@
       "verifiedSource": "artifacts/corpus/verified/negative-basketball.json",
       "sourceChecksums": {
         "passA": "21cd2f5e3b4959dfa412e0fec02b21c2e1bc38886381be6c2bde5c4370b469c5",
-        "timeline": "cbb4e9a53544670172743fd4ec60d19032c2b6c0a4b52170c30cf8a3326316ba",
+        "timeline": "86504e2a7aaa7056512551aedcb7a7d0390259a5c8a40bcbcbcbdc5a53e15cdc",
         "verified": "92d7e0dd825ccbcc7c3293c55476b9d0440cc3002c22293a744726fbe4dc4dc3"
       },
       "courtView": [],

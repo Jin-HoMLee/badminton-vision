@@ -7,6 +7,7 @@ const sceneChangeEvidence = require('./fixtures/scene-change-evidence.json');
 
 const WIDTH = 40;
 const HEIGHT = 20;
+const CANONICAL_BWF_IDS = ['bwf-ws-2026', 'bwf-md-2026', 'bwf-md-2018'];
 
 function frame({ dots = [], fill = 0, block = null } = {}) {
   const data = new Uint8Array(WIDTH * HEIGHT * 4);
@@ -276,18 +277,37 @@ test('checksum-backed cross-broadcast histogram gate meets the 0.15 entry bound'
   assert.equal(sceneChangeEvidence.debounceSeconds, shuttle.SCENE_CHANGE_DEBOUNCE_SECONDS);
   assert.match(sceneChangeEvidence.broadcastManifestChecksum, /^[0-9a-f]{64}$/);
   assert.equal(sceneChangeEvidence.broadcasts.length, 5);
+  assert.deepEqual(
+    sceneChangeEvidence.broadcasts
+      .filter((broadcast) => CANONICAL_BWF_IDS.includes(broadcast.id))
+      .map((broadcast) => broadcast.id)
+      .sort(),
+    CANONICAL_BWF_IDS.slice().sort()
+  );
+  assert.deepEqual(
+    sceneChangeEvidence.broadcasts
+      .filter((broadcast) => broadcast.sceneChangesComplete === false)
+      .map((broadcast) => broadcast.id),
+    ['negative-basketball']
+  );
 
   for (const broadcast of sceneChangeEvidence.broadcasts) {
     assert.match(broadcast.id, /^(bwf-ws-2026|bwf-md-2026|bwf-md-2018|club-fixed-cam|negative-basketball)$/);
     assert.match(broadcast.url, /^https:\/\/www\.youtube\.com\/watch\?v=/);
     assert.ok(broadcast.sourceChecksums.passA, `${broadcast.id} is missing its pass-A checksum`);
     assert.ok(broadcast.sourceChecksums.timeline, `${broadcast.id} is missing its timeline checksum`);
+    assert.equal(typeof broadcast.sceneChangesComplete, 'boolean');
     assert.ok(broadcast.samples.every((sample) => sample.hd >= sceneChangeEvidence.candidateThreshold));
     assert.equal(
       Number(broadcast.courtView.reduce((sum, interval) => sum + interval.end - interval.start, 0).toFixed(1)),
       broadcast.courtViewSeconds,
       `${broadcast.id} court-view duration must match its intervals`
     );
+
+    if (CANONICAL_BWF_IDS.includes(broadcast.id)) {
+      assert.equal(broadcast.sceneChangesComplete, true, `${broadcast.id} must remain in the scored gate`);
+    }
+    if (broadcast.sceneChangesComplete === false) continue;
 
     const score = scoreSceneChanges(broadcast, shuttle.DEFAULTS.sceneChangeThreshold);
     if (score.transitions > 0) {

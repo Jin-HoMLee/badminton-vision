@@ -1,0 +1,892 @@
+{
+  "schema": "bv-rally-review.v1",
+  "status": "captain-verified",
+  "sourcePlaybackStatus": "direct-playback-reviewed-by-captain",
+  "note": "Rally-active intervals were independently adjudicated from direct playback by the captain, separately from camera framing. boundaries contains accepted active intervals; evidence retains every reviewed proposal, including corrections and removals. This metadata-only corpus redistributes no media and grants no rights to source videos.",
+  "broadcasts": [
+    {
+      "broadcast": "bwf-ws-2026",
+      "url": "https://www.youtube.com/watch?v=99riPBazzfk",
+      "reviewStatus": "captain-verified",
+      "boundaries": [
+        {
+          "id": "bwf-ws-2026:rally-001",
+          "sourceId": "bwf-ws-2026",
+          "start": 1057,
+          "end": 1104,
+          "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1057s",
+          "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1104s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-004",
+          "sourceId": "bwf-ws-2026",
+          "start": 1177,
+          "end": 1184,
+          "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1177s",
+          "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1184s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-005",
+          "sourceId": "bwf-ws-2026",
+          "start": 1196.592,
+          "end": 1207.5,
+          "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1196.592s",
+          "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1207.5s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-006",
+          "sourceId": "bwf-ws-2026",
+          "start": 1237,
+          "end": 1249.5,
+          "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1237s",
+          "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1249.5s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-008",
+          "sourceId": "bwf-ws-2026",
+          "start": 1267.5,
+          "end": 1273.5,
+          "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1267.5s",
+          "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1273.5s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-009",
+          "sourceId": "bwf-ws-2026",
+          "start": 1302,
+          "end": 1315,
+          "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1302s",
+          "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1315s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-010",
+          "sourceId": "bwf-ws-2026",
+          "start": 1339.5,
+          "end": 1347.5,
+          "startUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1339.5s",
+          "endUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1347.5s"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "bwf-ws-2026:rally-001",
+          "sourceId": "bwf-ws-2026",
+          "original": {
+            "start": 1057,
+            "end": 1104
+          },
+          "corrected": {
+            "start": 1057,
+            "end": 1104
+          },
+          "action": "approve",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T09:43:06Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1057s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1104s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1057s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1104s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-002",
+          "sourceId": "bwf-ws-2026",
+          "original": {
+            "start": 1117,
+            "end": 1126
+          },
+          "corrected": {
+            "start": 1117,
+            "end": 1126
+          },
+          "action": "removal",
+          "comment": "This is just a replay of the last rally. BWF broadcast usually does that when players need more time to get ready for the next rally. But especially here, because the last rally resulted in an interval break.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T09:43:27Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1117s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1126s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1117s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1126s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-003",
+          "sourceId": "bwf-ws-2026",
+          "original": {
+            "start": 1156,
+            "end": 1165.5
+          },
+          "corrected": {
+            "start": 1156,
+            "end": 1165.5
+          },
+          "action": "removal",
+          "comment": "This is just a camera angle showing how the players walk back on court after the interval break.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T09:46:54Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1156s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1165.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1156s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1165.5s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-004",
+          "sourceId": "bwf-ws-2026",
+          "original": {
+            "start": 1177,
+            "end": 1184
+          },
+          "corrected": {
+            "start": 1177,
+            "end": 1184
+          },
+          "action": "approve",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T09:47:25Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1177s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1184s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1177s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1184s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-005",
+          "sourceId": "bwf-ws-2026",
+          "original": {
+            "start": 1191,
+            "end": 1207.5
+          },
+          "corrected": {
+            "start": 1196.592,
+            "end": 1207.5
+          },
+          "action": "correction",
+          "comment": "I cropped a bit from the start of the label, because there was a short replay of the last rally again.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T09:48:31Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1191s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1207.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1196.592s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1207.5s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-006",
+          "sourceId": "bwf-ws-2026",
+          "original": {
+            "start": 1237,
+            "end": 1249.5
+          },
+          "corrected": {
+            "start": 1237,
+            "end": 1249.5
+          },
+          "action": "approve",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T09:49:55Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1237s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1249.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1237s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1249.5s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-007",
+          "sourceId": "bwf-ws-2026",
+          "original": {
+            "start": 1259,
+            "end": 1262.5
+          },
+          "corrected": {
+            "start": 1259,
+            "end": 1262.5
+          },
+          "action": "removal",
+          "comment": "Replay of last rally.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T09:50:19Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1259s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1262.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1259s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1262.5s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-008",
+          "sourceId": "bwf-ws-2026",
+          "original": {
+            "start": 1267.5,
+            "end": 1273.5
+          },
+          "corrected": {
+            "start": 1267.5,
+            "end": 1273.5
+          },
+          "action": "approve",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T09:50:59Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1267.5s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1273.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1267.5s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1273.5s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-009",
+          "sourceId": "bwf-ws-2026",
+          "original": {
+            "start": 1302,
+            "end": 1315
+          },
+          "corrected": {
+            "start": 1302,
+            "end": 1315
+          },
+          "action": "approve",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T09:51:38Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1302s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1315s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1302s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1315s"
+        },
+        {
+          "id": "bwf-ws-2026:rally-010",
+          "sourceId": "bwf-ws-2026",
+          "original": {
+            "start": 1339.5,
+            "end": 1347.5
+          },
+          "corrected": {
+            "start": 1339.5,
+            "end": 1347.5
+          },
+          "action": "approve",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T09:52:12Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1339.5s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1347.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1339.5s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=99riPBazzfk&t=1347.5s"
+        }
+      ],
+      "controls": []
+    },
+    {
+      "broadcast": "bwf-md-2026",
+      "url": "https://www.youtube.com/watch?v=OyTqFMdLb_U",
+      "reviewStatus": "captain-verified",
+      "boundaries": [
+        {
+          "id": "bwf-md-2026:rally-001",
+          "sourceId": "bwf-md-2026",
+          "start": 1230,
+          "end": 1243.5,
+          "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1230s",
+          "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1243.5s"
+        },
+        {
+          "id": "bwf-md-2026:rally-002",
+          "sourceId": "bwf-md-2026",
+          "start": 1258,
+          "end": 1273.5,
+          "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1258s",
+          "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1273.5s"
+        },
+        {
+          "id": "bwf-md-2026:rally-003",
+          "sourceId": "bwf-md-2026",
+          "start": 1295,
+          "end": 1303.5,
+          "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1295s",
+          "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1303.5s"
+        },
+        {
+          "id": "bwf-md-2026:rally-005",
+          "sourceId": "bwf-md-2026",
+          "start": 1318,
+          "end": 1324.5,
+          "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1318s",
+          "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1324.5s"
+        },
+        {
+          "id": "bwf-md-2026:rally-006",
+          "sourceId": "bwf-md-2026",
+          "start": 1332,
+          "end": 1340,
+          "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1332s",
+          "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1340s"
+        },
+        {
+          "id": "bwf-md-2026:rally-007",
+          "sourceId": "bwf-md-2026",
+          "start": 1356.5,
+          "end": 1367,
+          "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1356.5s",
+          "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1367s"
+        },
+        {
+          "id": "bwf-md-2026:rally-009",
+          "sourceId": "bwf-md-2026",
+          "start": 1384.5,
+          "end": 1393,
+          "startUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1384.5s",
+          "endUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1393s"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "bwf-md-2026:rally-001",
+          "sourceId": "bwf-md-2026",
+          "original": {
+            "start": 1230,
+            "end": 1243.5
+          },
+          "corrected": {
+            "start": 1230,
+            "end": 1243.5
+          },
+          "action": "approve",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:09:22Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1230s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1243.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1230s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1243.5s"
+        },
+        {
+          "id": "bwf-md-2026:rally-002",
+          "sourceId": "bwf-md-2026",
+          "original": {
+            "start": 1258,
+            "end": 1273.5
+          },
+          "corrected": {
+            "start": 1258,
+            "end": 1273.5
+          },
+          "action": "approve",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:10:07Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1258s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1273.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1258s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1273.5s"
+        },
+        {
+          "id": "bwf-md-2026:rally-003",
+          "sourceId": "bwf-md-2026",
+          "original": {
+            "start": 1295,
+            "end": 1303.5
+          },
+          "corrected": {
+            "start": 1295,
+            "end": 1303.5
+          },
+          "action": "approve",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:10:28Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1295s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1303.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1295s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1303.5s"
+        },
+        {
+          "id": "bwf-md-2026:rally-004",
+          "sourceId": "bwf-md-2026",
+          "original": {
+            "start": 1310,
+            "end": 1313.5
+          },
+          "corrected": {
+            "start": 1310,
+            "end": 1313.5
+          },
+          "action": "removal",
+          "comment": "This is just a different topview showing how players are preparing for the serve, but it is not an actual rally.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:10:45Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1310s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1313.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1310s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1313.5s"
+        },
+        {
+          "id": "bwf-md-2026:rally-005",
+          "sourceId": "bwf-md-2026",
+          "original": {
+            "start": 1318,
+            "end": 1324.5
+          },
+          "corrected": {
+            "start": 1318,
+            "end": 1324.5
+          },
+          "action": "approve",
+          "comment": "Yes, this is the actual rally from the preparation view (false positive) from before.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:11:58Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1318s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1324.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1318s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1324.5s"
+        },
+        {
+          "id": "bwf-md-2026:rally-006",
+          "sourceId": "bwf-md-2026",
+          "original": {
+            "start": 1332,
+            "end": 1340
+          },
+          "corrected": {
+            "start": 1332,
+            "end": 1340
+          },
+          "action": "approve",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:13:05Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1332s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1340s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1332s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1340s"
+        },
+        {
+          "id": "bwf-md-2026:rally-007",
+          "sourceId": "bwf-md-2026",
+          "original": {
+            "start": 1356.5,
+            "end": 1367
+          },
+          "corrected": {
+            "start": 1356.5,
+            "end": 1367
+          },
+          "action": "approve",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:13:13Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1356.5s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1367s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1356.5s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1367s"
+        },
+        {
+          "id": "bwf-md-2026:rally-008",
+          "sourceId": "bwf-md-2026",
+          "original": {
+            "start": 1375,
+            "end": 1377.5
+          },
+          "corrected": {
+            "start": 1375,
+            "end": 1377.5
+          },
+          "action": "removal",
+          "comment": "This is again just a replay of the rally before.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:13:38Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1375s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1377.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1375s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1377.5s"
+        },
+        {
+          "id": "bwf-md-2026:rally-009",
+          "sourceId": "bwf-md-2026",
+          "original": {
+            "start": 1384.5,
+            "end": 1393
+          },
+          "corrected": {
+            "start": 1384.5,
+            "end": 1393
+          },
+          "action": "approve",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:13:56Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1384.5s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1393s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1384.5s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1393s"
+        },
+        {
+          "id": "bwf-md-2026:rally-010",
+          "sourceId": "bwf-md-2026",
+          "original": {
+            "start": 1498,
+            "end": 1500.5
+          },
+          "corrected": {
+            "start": 1498,
+            "end": 1500.5
+          },
+          "action": "removal",
+          "comment": "That's just showing how players walk back on court view after the match break.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:14:20Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1498s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1500.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1498s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=OyTqFMdLb_U&t=1500.5s"
+        }
+      ],
+      "controls": []
+    },
+    {
+      "broadcast": "bwf-md-2018",
+      "url": "https://www.youtube.com/watch?v=GESh9Dg8oJE",
+      "reviewStatus": "captain-verified",
+      "boundaries": [
+        {
+          "id": "bwf-md-2018:rally-001",
+          "sourceId": "bwf-md-2018",
+          "start": 1228,
+          "end": 1236,
+          "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1228s",
+          "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1236s"
+        },
+        {
+          "id": "bwf-md-2018:rally-002",
+          "sourceId": "bwf-md-2018",
+          "start": 1252.5,
+          "end": 1262,
+          "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1252.5s",
+          "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1262s"
+        },
+        {
+          "id": "bwf-md-2018:rally-003",
+          "sourceId": "bwf-md-2018",
+          "start": 1283,
+          "end": 1300,
+          "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1283s",
+          "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1300s"
+        },
+        {
+          "id": "bwf-md-2018:rally-005",
+          "sourceId": "bwf-md-2018",
+          "start": 1324,
+          "end": 1335,
+          "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1324s",
+          "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1335s"
+        },
+        {
+          "id": "bwf-md-2018:rally-008",
+          "sourceId": "bwf-md-2018",
+          "start": 1352,
+          "end": 1367.5,
+          "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1352s",
+          "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1367.5s"
+        },
+        {
+          "id": "bwf-md-2018:rally-009",
+          "sourceId": "bwf-md-2018",
+          "start": 1385.366,
+          "end": 1395.5,
+          "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1385.366s",
+          "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1395.5s"
+        },
+        {
+          "id": "bwf-md-2018:rally-011",
+          "sourceId": "bwf-md-2018",
+          "start": 1413,
+          "end": 1425.5,
+          "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1413s",
+          "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1425.5s"
+        },
+        {
+          "id": "bwf-md-2018:rally-012",
+          "sourceId": "bwf-md-2018",
+          "start": 1442,
+          "end": 1469.5,
+          "startUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1442s",
+          "endUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1469.5s"
+        }
+      ],
+      "evidence": [
+        {
+          "id": "bwf-md-2018:rally-001",
+          "sourceId": "bwf-md-2018",
+          "original": {
+            "start": 1228,
+            "end": 1236
+          },
+          "corrected": {
+            "start": 1228,
+            "end": 1236
+          },
+          "action": "approve",
+          "comment": "",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:16:13Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1228s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1236s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1228s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1236s"
+        },
+        {
+          "id": "bwf-md-2018:rally-002",
+          "sourceId": "bwf-md-2018",
+          "original": {
+            "start": 1252.5,
+            "end": 1262
+          },
+          "corrected": {
+            "start": 1252.5,
+            "end": 1262
+          },
+          "action": "approve",
+          "comment": "",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:16:54Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1252.5s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1262s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1252.5s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1262s"
+        },
+        {
+          "id": "bwf-md-2018:rally-003",
+          "sourceId": "bwf-md-2018",
+          "original": {
+            "start": 1283,
+            "end": 1300
+          },
+          "corrected": {
+            "start": 1283,
+            "end": 1300
+          },
+          "action": "approve",
+          "comment": "",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:17:21Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1283s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1300s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1283s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1300s"
+        },
+        {
+          "id": "bwf-md-2018:rally-004",
+          "sourceId": "bwf-md-2018",
+          "original": {
+            "start": 1324,
+            "end": 1326.5
+          },
+          "corrected": {
+            "start": 1324,
+            "end": 1326.5
+          },
+          "action": "removal",
+          "comment": "This is the right camera view, but the players are still preparing to serve and it is not a rally on its own. It is actually part of the next labeled rally.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:20:20Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1324s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1326.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1324s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1326.5s"
+        },
+        {
+          "id": "bwf-md-2018:rally-005",
+          "sourceId": "bwf-md-2018",
+          "original": {
+            "start": 1332,
+            "end": 1335
+          },
+          "corrected": {
+            "start": 1324,
+            "end": 1335
+          },
+          "action": "correction",
+          "comment": "I extended the start of the rally to the start of the removed label (that only shows the prep phase of this rally). There is a camera view change also during the serve, as it takes longer and BWF sometimes does that to show details.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:21:35Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1332s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1335s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1324s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1335s"
+        },
+        {
+          "id": "bwf-md-2018:rally-006",
+          "sourceId": "bwf-md-2018",
+          "original": {
+            "start": 1347,
+            "end": 1348.5
+          },
+          "corrected": {
+            "start": 1347,
+            "end": 1348.5
+          },
+          "action": "removal",
+          "comment": "This is again just part of a replay",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:23:01Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1347s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1348.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1347s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1348.5s"
+        },
+        {
+          "id": "bwf-md-2018:rally-007",
+          "sourceId": "bwf-md-2018",
+          "original": {
+            "start": 1352,
+            "end": 1357
+          },
+          "corrected": {
+            "start": 1352,
+            "end": 1357
+          },
+          "action": "removal",
+          "comment": "Again, just preparing to serve here.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:23:37Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1352s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1357s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1352s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1357s"
+        },
+        {
+          "id": "bwf-md-2018:rally-008",
+          "sourceId": "bwf-md-2018",
+          "original": {
+            "start": 1364,
+            "end": 1367.5
+          },
+          "corrected": {
+            "start": 1352,
+            "end": 1367.5
+          },
+          "action": "correction",
+          "comment": "Again, there was a longer service preparation here (wrong label from before) and then a camera view change to show the server in focus, and then again the correct camera view for the actual rally.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:23:58Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1364s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1367.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1352s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1367.5s"
+        },
+        {
+          "id": "bwf-md-2018:rally-009",
+          "sourceId": "bwf-md-2018",
+          "original": {
+            "start": 1394.5,
+            "end": 1395.5
+          },
+          "corrected": {
+            "start": 1385.366,
+            "end": 1395.5
+          },
+          "action": "correction",
+          "comment": "I extended the start of the rally, because here the rally already starts earlier but in a different camera view fromt he side, then changes to the usual top view.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:27:20Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1394.5s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1395.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1385.366s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1395.5s"
+        },
+        {
+          "id": "bwf-md-2018:rally-010",
+          "sourceId": "bwf-md-2018",
+          "original": {
+            "start": 1413,
+            "end": 1415
+          },
+          "corrected": {
+            "start": 1413,
+            "end": 1415
+          },
+          "action": "removal",
+          "comment": "Again, just service prep.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:29:06Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1413s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1415s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1413s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1415s"
+        },
+        {
+          "id": "bwf-md-2018:rally-011",
+          "sourceId": "bwf-md-2018",
+          "original": {
+            "start": 1419,
+            "end": 1425.5
+          },
+          "corrected": {
+            "start": 1413,
+            "end": 1425.5
+          },
+          "action": "correction",
+          "comment": "Again, longer service prep at the start and a camera view change towards the server in-between.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:29:18Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1419s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1425.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1413s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1425.5s"
+        },
+        {
+          "id": "bwf-md-2018:rally-012",
+          "sourceId": "bwf-md-2018",
+          "original": {
+            "start": 1442,
+            "end": 1469.5
+          },
+          "corrected": {
+            "start": 1442,
+            "end": 1469.5
+          },
+          "action": "approve",
+          "comment": "",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T10:29:55Z",
+          "originalStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1442s",
+          "originalEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1469.5s",
+          "reviewedStartUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1442s",
+          "reviewedEndUrl": "https://www.youtube.com/watch?v=GESh9Dg8oJE&t=1469.5s"
+        }
+      ],
+      "controls": []
+    },
+    {
+      "broadcast": "club-fixed-cam",
+      "url": "https://www.youtube.com/watch?v=PlKyci2aGKs",
+      "reviewStatus": "captain-verified",
+      "boundaries": [],
+      "evidence": [],
+      "controls": [
+        {
+          "id": "club-fixed-cam:empty",
+          "sourceId": "club-fixed-cam",
+          "kind": "empty-set",
+          "label": "Fixed-camera control: verify observed rallies; no proposed active interval.",
+          "state": "confirmed",
+          "comment": "For now, that's fine. Of course, there are rallies, but we cannot detect them using camera view changes, as it is just one view over the whole video. In a next step, we need to take player, racket and shuttle movement features into account too. That would expand our rally detection model to other videos than BWF, but would also further enhance our detections on BWF videos.",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T11:20:40Z"
+        }
+      ]
+    },
+    {
+      "broadcast": "negative-basketball",
+      "url": "https://www.youtube.com/watch?v=PDmqTrdr-vs",
+      "reviewStatus": "captain-verified",
+      "boundaries": [],
+      "evidence": [],
+      "controls": [
+        {
+          "id": "negative-basketball:inactive",
+          "sourceId": "negative-basketball",
+          "kind": "inactive",
+          "label": "Basketball negative remains inactive.",
+          "state": "confirmed",
+          "comment": "approved",
+          "verifier": "Jin-Ho",
+          "verifiedAt": "2026-09-22T14:23:51Z"
+        }
+      ]
+    }
+  ]
+}

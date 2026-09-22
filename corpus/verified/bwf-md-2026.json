@@ -1,0 +1,309 @@
+{
+ "schema": "bv-timeline-corpus/verified-candidates.v1",
+ "broadcast": "bwf-md-2026",
+ "candidateThreshold": 0.15,
+ "method": "every pass-A sample at or above the candidate threshold was seeked to at t-0.6 / t / t+0.6 and judged by eye from probe/debug/bwf-md-2026/verify/",
+ "verdicts": [
+  {
+   "i": 0,
+   "t": 1206.309,
+   "hd": 0.20855,
+   "verdict": "real",
+   "note": "cut umpire->bench (hand-marked)"
+  },
+  {
+   "i": 1,
+   "t": 1210.581,
+   "hd": 0.80404,
+   "verdict": "real",
+   "note": "cut bench->Hawk-Eye synthetic review (hand-marked)"
+  },
+  {
+   "i": 2,
+   "t": 1212.447,
+   "hd": 0.24344,
+   "verdict": "real",
+   "note": "NEW: virtual camera cut inside the Hawk-Eye animation"
+  },
+  {
+   "i": 3,
+   "t": 1213.779,
+   "hd": 0.22499,
+   "verdict": "real",
+   "note": "NEW: virtual camera cut inside the Hawk-Eye animation"
+  },
+  {
+   "i": 4,
+   "t": 1217.78,
+   "hd": 0.9535,
+   "verdict": "real",
+   "note": "cut Hawk-Eye 'OUT'->bench (hand-marked)"
+  },
+  {
+   "i": 5,
+   "t": 1229.112,
+   "hd": 0.58732,
+   "verdict": "real",
+   "note": "cut bench->court (hand-marked)"
+  },
+  {
+   "i": 6,
+   "t": 1244.307,
+   "hd": 0.611,
+   "verdict": "real",
+   "note": "cut court->close-up (hand-marked)"
+  },
+  {
+   "i": 7,
+   "t": 1246.039,
+   "hd": 0.40576,
+   "verdict": "real",
+   "note": "NEW: cut close-up->crowd, missed by 2 Hz marking"
+  },
+  {
+   "i": 8,
+   "t": 1247.642,
+   "hd": 0.15327,
+   "verdict": "real",
+   "note": "branded card appears - onset of the 1248 wipe"
+  },
+  {
+   "i": 9,
+   "t": 1248.577,
+   "hd": 0.50955,
+   "verdict": "real",
+   "note": "wipe crowd->low sideline (hand-marked)"
+  },
+  {
+   "i": 10,
+   "t": 1252.975,
+   "hd": 0.19748,
+   "verdict": "real",
+   "note": "cut low sideline->net-level (hand-marked)"
+  },
+  {
+   "i": 11,
+   "t": 1255.91,
+   "hd": 0.1664,
+   "verdict": "real",
+   "note": "branded card appears - onset of the 1257 wipe"
+  },
+  {
+   "i": 12,
+   "t": 1256.975,
+   "hd": 0.56418,
+   "verdict": "real",
+   "note": "wipe ->court (hand-marked)"
+  },
+  {
+   "i": 13,
+   "t": 1274.444,
+   "hd": 0.59231,
+   "verdict": "real",
+   "note": "cut court->close-up (hand-marked)"
+  },
+  {
+   "i": 14,
+   "t": 1276.175,
+   "hd": 0.70256,
+   "verdict": "real",
+   "note": "cut close-up->crowd (hand-marked)"
+  },
+  {
+   "i": 15,
+   "t": 1280.307,
+   "hd": 0.62972,
+   "verdict": "real",
+   "note": "wipe crowd->low sideline (hand-marked)"
+  },
+  {
+   "i": 16,
+   "t": 1284.572,
+   "hd": 0.18585,
+   "verdict": "real",
+   "note": "NEW: camera change inside the replay coverage"
+  },
+  {
+   "i": 17,
+   "t": 1290.177,
+   "hd": 0.1664,
+   "verdict": "real",
+   "note": "branded card appears - onset of the 1291 wipe"
+  },
+  {
+   "i": 18,
+   "t": 1291.24,
+   "hd": 0.60864,
+   "verdict": "real",
+   "note": "wipe ->close-up (hand-marked)"
+  },
+  {
+   "i": 19,
+   "t": 1294.176,
+   "hd": 0.68403,
+   "verdict": "real",
+   "note": "cut close-up->court (hand-marked)"
+  },
+  {
+   "i": 20,
+   "t": 1304.441,
+   "hd": 0.63702,
+   "verdict": "real",
+   "note": "cut court->bench (hand-marked)"
+  },
+  {
+   "i": 21,
+   "t": 1309.774,
+   "hd": 0.72271,
+   "verdict": "real",
+   "note": "dissolve bench->court (hand-marked)"
+  },
+  {
+   "i": 22,
+   "t": 1314.306,
+   "hd": 0.75187,
+   "verdict": "real",
+   "note": "dissolve court->close-up (hand-marked)"
+  },
+  {
+   "i": 23,
+   "t": 1317.103,
+   "hd": 0.611,
+   "verdict": "real",
+   "note": "cut close-up->court (hand-marked)"
+  },
+  {
+   "i": 24,
+   "t": 1325.505,
+   "hd": 0.65305,
+   "verdict": "real",
+   "note": "cut court->bench (hand-marked)"
+  },
+  {
+   "i": 25,
+   "t": 1331.372,
+   "hd": 0.59022,
+   "verdict": "real",
+   "note": "cut bench->court (hand-marked)"
+  },
+  {
+   "i": 26,
+   "t": 1340.969,
+   "hd": 0.67128,
+   "verdict": "real",
+   "note": "cut court->close-up (hand-marked)"
+  },
+  {
+   "i": 27,
+   "t": 1345.503,
+   "hd": 0.22618,
+   "verdict": "real",
+   "note": "NEW: cut close-up->close-up (different team), missed by 2 Hz marking"
+  },
+  {
+   "i": 28,
+   "t": 1355.807,
+   "hd": 0.56993,
+   "verdict": "real",
+   "note": "cut close-up->court (hand-marked)"
+  },
+  {
+   "i": 29,
+   "t": 1368.208,
+   "hd": 0.58708,
+   "verdict": "real",
+   "note": "cut court->net-level (hand-marked)"
+  },
+  {
+   "i": 30,
+   "t": 1374.338,
+   "hd": 0.69523,
+   "verdict": "real",
+   "note": "wipe net-level->court (hand-marked)"
+  },
+  {
+   "i": 31,
+   "t": 1379.269,
+   "hd": 0.6276,
+   "verdict": "real",
+   "note": "wipe court->low sideline (hand-marked)"
+  },
+  {
+   "i": 32,
+   "t": 1383.273,
+   "hd": 0.43281,
+   "verdict": "real",
+   "note": "cut low sideline->court (hand-marked)"
+  },
+  {
+   "i": 33,
+   "t": 1394.204,
+   "hd": 0.56236,
+   "verdict": "real",
+   "note": "cut court->net-level (hand-marked)"
+  },
+  {
+   "i": 34,
+   "t": 1396.072,
+   "hd": 0.51522,
+   "verdict": "real",
+   "note": "cut net-level->crowd (hand-marked)"
+  },
+  {
+   "i": 35,
+   "t": 1399.935,
+   "hd": 0.62972,
+   "verdict": "real",
+   "note": "wipe crowd->low sideline (hand-marked)"
+  },
+  {
+   "i": 36,
+   "t": 1401.808,
+   "hd": 0.23432,
+   "verdict": "real",
+   "note": "NEW: camera change inside the replay montage"
+  },
+  {
+   "i": 37,
+   "t": 1403.005,
+   "hd": 0.15858,
+   "verdict": "real",
+   "note": "NEW: camera change inside the replay montage"
+  },
+  {
+   "i": 38,
+   "t": 1403.939,
+   "hd": 0.20464,
+   "verdict": "real",
+   "note": "NEW: camera change inside the replay montage"
+  },
+  {
+   "i": 39,
+   "t": 1407.136,
+   "hd": 0.44748,
+   "verdict": "real",
+   "note": "cut low sideline->net-level (hand-marked)"
+  },
+  {
+   "i": 40,
+   "t": 1412.071,
+   "hd": 0.42315,
+   "verdict": "real",
+   "note": "wipe net-level->bench (hand-marked)"
+  },
+  {
+   "i": 41,
+   "t": 1446.737,
+   "hd": 0.39119,
+   "verdict": "real",
+   "note": "cut bench->bench (hand-marked)"
+  },
+  {
+   "i": 42,
+   "t": 1497.798,
+   "hd": 0.42079,
+   "verdict": "real",
+   "note": "cut court-edge->court (hand-marked)"
+  }
+ ]
+}
