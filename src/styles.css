@@ -561,7 +561,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-timeline-row.selected { background: rgba(255,255,255,.04); }
 /* Review-state colors are independent from selection. Selection only adds a
    bright ring so clicking a bar never looks like a correction. */
-.bv-rally-interval { position: absolute; z-index: 3; top: 4px; box-sizing: border-box; min-width: 3px; height: 22px; overflow: hidden; border: 1px solid var(--signal-warn); border-radius: var(--radius-xs); border-style: dashed; background: var(--signal-warn-tint); color: var(--text-primary); cursor: pointer; touch-action: none; user-select: none; }
+.bv-rally-interval { position: absolute; z-index: 3; top: 4px; box-sizing: border-box; min-width: 10px; height: 22px; overflow: hidden; border: 1px solid var(--signal-warn); border-radius: var(--radius-xs); border-style: dashed; background: var(--signal-warn-tint); color: var(--text-primary); cursor: pointer; touch-action: none; user-select: none; }
 .bv-rally-interval.unresolved { border-style: dashed; border-color: var(--signal-warn); background: var(--signal-warn-tint); }
 .bv-rally-interval.approve { border-style: solid; border-color: var(--rally-approve-color); background: var(--rally-approve-tint); }
 .bv-rally-interval.addition { border-style: solid; border-color: var(--lime-500); background: rgba(200,240,74,.18); }
@@ -573,7 +573,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-interval.selected:focus-visible { box-shadow: 0 0 0 2px rgba(255,255,255,.88), 0 0 0 4px rgba(98,182,255,.55), var(--focus-ring); }
 .bv-rally-interval-label { position: absolute; inset: 2px 11px; overflow: hidden; font: var(--type-mono); font-size: var(--fs-10); line-height: 16px; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; }
 /* Only the edge hit zones drag/resize. The bar body is click-to-seek only. */
-.bv-rally-edge { position: absolute; z-index: 6; top: -2px; bottom: -2px; width: 6px; padding: 0; border: 0; background: transparent; touch-action: none; cursor: ew-resize; }
+.bv-rally-edge { position: absolute; z-index: 6; top: -2px; bottom: -2px; width: 3px; padding: 0; border: 0; background: transparent; touch-action: none; cursor: ew-resize; }
 .bv-rally-edge:hover { cursor: ew-resize; }
 .bv-rally-edge.start { left: -3px; }
 .bv-rally-edge.end { right: -3px; }

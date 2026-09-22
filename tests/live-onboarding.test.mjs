@@ -2820,6 +2820,42 @@ test("rendered rally bar bodies select and seek while empty space remains generi
   assert.notEqual(session.video.currentTime, 10, "empty timeline space still uses generic playhead seeking");
 });
 
+test("long imported reviews keep every unresolved rally reachable while timeline pan advances", async () => {
+  const starts = [1057, 1117, 1156, 1177, 1191, 1237, 1259, 1267.5, 1302, 1339.5];
+  const ends = [1104, 1126, 1165.5, 1184, 1207.5, 1249.5, 1262.5, 1273.5, 1315, 1347.5];
+  const review = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: { id: "bwf-ws-2026", label: "BWF World Championships 2026", videoKey: "youtube:real-match", videoUrl: "https://www.youtube.com/watch?v=99riPBazzfk", reviewWindow: { startSec: 1050.5, endSec: 1351.7 } },
+    intervals: starts.map((start, index) => ({ id: "bwf-ws-2026:rally-" + String(index + 1).padStart(3, "0"), sourceId: "bwf-ws-2026", original: { startSec: start, endSec: ends[index] }, corrected: { startSec: start, endSec: ends[index] }, action: ["approve", "removal", "removal", "approve", "correction", "approve", "removal", "approve", "approve", "approve"][index], comment: ["", "Replay of the last rally.", "Camera angle after the interval.", "", "Cropped replay start.", "", "Replay of last rally.", "", "", ""][index], verifier: ["", "Jin-Ho", "Jin-Ho", "", "Jin-Ho", "", "Jin-Ho", "", "", ""][index], verifiedAt: "2026-09-22T09:00:00Z" })),
+    controls: []
+  };
+  const session = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true }, rallyReviewsByVideo: { "youtube:real-match": review } } });
+  session.flushStorage();
+  let panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  const bars = panel.querySelectorAll(".bv-rally-interval");
+  assert.equal(bars.length, 10, "all ten imported intervals render in the timeline");
+  bars.forEach((bar) => {
+    assert.ok(bar.style.left && bar.style.width, "every interval has a visible timeline geometry");
+  });
+  assert.match(textOf(panel.querySelector("[data-bso-rally-complete]")), /6 unresolved/, "the six empty-comment records remain explicit unresolved evidence");
+  const lastId = "bwf-ws-2026:rally-010";
+  const lastBar = bars.find((bar) => bar.getAttribute("data-bso-rally-interval") === lastId);
+  lastBar.dispatchEvent({ type: "click", target: lastBar, stopPropagation() {} });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.match(panel.querySelector('[data-bso-rally-interval="' + lastId + '"]').className, /selected/, "the final imported record is selectable");
+  assert.equal(session.video.currentTime, 1339.5, "selecting the final record seeks to its start");
+  buttonWithText(panel, "Zoom in").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  const scroller = panel.querySelector("[data-bso-rally-scroll]");
+  const beforePan = session.video.currentTime;
+  buttonWithText(panel, "Pan later").dispatchEvent({ type: "click" });
+  assert.ok(scroller.scrollLeft > 0, "pan advances the imported timeline beyond the initial viewport");
+  assert.equal(session.video.currentTime, beforePan, "timeline navigation does not alter the selected media time");
+  assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 10, "panning preserves all imported records");
+});
+
 test("runtime presentation leaves the rally clock owned by media time", async () => {
   const review = {
     schema: "badminton-vision.rally-review",

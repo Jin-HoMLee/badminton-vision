@@ -96,6 +96,12 @@ and remains incomplete until the reviewer explicitly confirms the empty set or
 adds/reviews a rally. JSON import still replaces that video-local document
 only after its identity check succeeds.
 
+Imported reviews keep every interval as a visible, selectable timeline
+record, including short late-window records: bars have a small visual minimum
+and their narrower edge hit zones leave a center body target. The viewport's
+bounded pan controls then expose records beyond the first fit-width view without
+changing media time or selection.
+
 The timeline navigation buttons are disabled when the review fits the viewport,
 and become bounded earlier/later pan controls only after zoom creates real
 horizontal pan state. Panning does not change media time or interval selection;
