@@ -2865,6 +2865,28 @@ test("long imported reviews keep every unresolved rally reachable while timeline
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 10, "panning preserves all imported records");
 });
 
+test("basketball validation cases explain the exact unresolved evidence", async () => {
+  const review = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: { id: "basketball-check", label: "Basketball sample", videoKey: "youtube:real-match", videoUrl: "https://www.youtube.com/watch?v=real-match", reviewWindow: { startSec: 12, endSec: 72 } },
+    intervals: [],
+    controls: [{ id: "basketball-check:control-inactive", sourceId: "basketball-check", kind: "inactive", label: "Expected non-badminton content · basketball", state: "confirmed", comment: "This is basketball.", verifier: "", verifiedAt: "2026-09-22" }]
+  };
+  const session = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true }, rallyReviewsByVideo: { "youtube:real-match": review } } });
+  session.flushStorage();
+  const panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  const list = panel.querySelector("[data-bso-rally-unresolved-list]");
+  assert.ok(list, "the completion block exposes actionable unresolved items");
+  const summary = textOf(list);
+  assert.match(summary, /Validation case · Expected non-badminton content · basketball/);
+  assert.match(summary, /review window 0:12\.000–1:12\.000/);
+  assert.match(summary, /missing Reviewed by/, "the summary identifies the actual missing field");
+  const unresolved = list.querySelector("button");
+  unresolved.dispatchEvent({ type: "click", target: unresolved });
+  assert.ok(session.overlayRoot().querySelector('[data-bso-rally-control="basketball-check:control-inactive"]'), "the unresolved item links back to its validation editor");
+});
+
 test("runtime presentation leaves the rally clock owned by media time", async () => {
   const review = {
     schema: "badminton-vision.rally-review",

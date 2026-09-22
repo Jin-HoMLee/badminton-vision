@@ -2819,6 +2819,52 @@
     body.scrollTop = rallyPanelScrollTop;
     return true;
   }
+  function rallyUnresolvedRequirement(value, kind) {
+    if (value === "action") return "choose an action";
+    if (value === "state") return "confirm expected result or mark it not true";
+    if (value === "confirmation") return "confirm expected result";
+    var fields = String(value || "").split(",").map(function (field) { return field.trim(); }).filter(Boolean);
+    if (!fields.length) return "review evidence";
+    return "missing " + fields.join(", ");
+  }
+  function rallyUnresolvedEntries(gate) {
+    if (!gate || !Array.isArray(gate.unresolved)) return [];
+    var windowBounds = rallyDocument && rallyDocument.source && rallyDocument.source.reviewWindow;
+    return gate.unresolved.map(function (entry) {
+      var entryText = String(entry);
+      var separator = entryText.lastIndexOf(":");
+      var id = separator < 0 ? entryText : entryText.slice(0, separator);
+      var requirement = separator < 0 ? "" : entryText.slice(separator + 1);
+      var interval = rallyDocument && rallyDocument.intervals.find(function (item) { return item.id === id; });
+      var control = rallyDocument && rallyDocument.controls.find(function (item) { return item.id === id; });
+      if (interval) {
+        var bounds = rallyDisplayBounds(interval);
+        var range = bounds ? " · " + rallyApi.formatSeconds(bounds.startSec) + "–" + rallyApi.formatSeconds(bounds.endSec) : "";
+        return { id: id, type: "interval", text: "Rally label · " + id + range + " — " + rallyUnresolvedRequirement(requirement, "interval") };
+      }
+      if (control) {
+        var windowText = windowBounds ? " · review window " + rallyApi.formatSeconds(windowBounds.startSec) + "–" + rallyApi.formatSeconds(windowBounds.endSec) : "";
+        return { id: id, type: "control", text: "Validation case · " + control.label + windowText + " — " + rallyUnresolvedRequirement(requirement, "control") };
+      }
+      var fallbackWindow = windowBounds ? " · review window " + rallyApi.formatSeconds(windowBounds.startSec) + "–" + rallyApi.formatSeconds(windowBounds.endSec) : "";
+      var fallbackLabel = id === "empty-set" ? "Expected no rally · fixed-camera badminton" : id;
+      return { id: id, type: "control", text: "Validation case · " + fallbackLabel + fallbackWindow + " — " + rallyUnresolvedRequirement(requirement, "control") };
+    });
+  }
+  function focusRallyUnresolved(entry) {
+    if (!entry) return;
+    if (entry.type === "interval") rallySelectedId = entry.id;
+    render();
+    setTimeout(function () {
+      var selector = entry.type === "interval"
+        ? '[data-bso-rally-editor="' + entry.id + '"]'
+        : '[data-bso-rally-control="' + entry.id + '"]';
+      var target = root && root.querySelector(selector);
+      var input = target && target.querySelector("[data-bso-rally-comment]");
+      if (input && typeof input.focus === "function") input.focus();
+      else if (target && typeof target.focus === "function") target.focus();
+    }, 0);
+  }
   function appendRallyPlaybackHelp(body) {
     if (!body) return;
     if (rallyHelpVisible) {
@@ -2915,11 +2961,21 @@
     rallyDocument.controls.forEach(function (control) { controls.appendChild(rallyControlCard(control)); });
     body.appendChild(controls);
     if (rallyNotice) body.appendChild(ui.el("p", { className: "bv-helper" + (rallyNotice.ok ? "" : " error"), role: "status", "data-bso-rally-notice": "true" }, [rallyNotice.message]));
+    var unresolvedEntries = rallyUnresolvedEntries(gate);
+    var unresolvedList = !gate.complete && unresolvedEntries.length
+      ? ui.el("ul", { className: "bv-rally-unresolved-list", "data-bso-rally-unresolved-list": "true" }, unresolvedEntries.map(function (entry) {
+        var link = ui.button(entry.text, { variant: "ghost", size: "sm", full: true, ariaLabel: "Focus " + entry.text, title: "Focus this unresolved review item", onClick: function () { focusRallyUnresolved(entry); } });
+        link.className += " bv-rally-unresolved-link";
+        return ui.el("li", {}, [link]);
+      }))
+      : null;
+    var completionCopy = [
+      ui.el("strong", {}, [gate.complete ? "Review complete" : "Completion blocked"]),
+      ui.el("p", { className: "bv-helper" }, [gate.complete ? "All intervals and validation cases have required evidence." : gate.unresolved.length + " unresolved evidence item(s)" + (gate.contradictions.length ? " · " + gate.contradictions.length + " contradiction(s)" : "") + ". Select an item below to focus its evidence."])
+    ];
+    if (unresolvedList) completionCopy.push(unresolvedList);
     body.appendChild(ui.el("div", { className: "bv-rally-completion", "data-bso-rally-complete": String(gate.complete) }, [
-      ui.el("div", {}, [
-        ui.el("strong", {}, [gate.complete ? "Review complete" : "Completion blocked"]),
-        ui.el("p", { className: "bv-helper" }, [gate.complete ? "All intervals and controls have action, reason, verifier, and date evidence." : gate.unresolved.length + " unresolved evidence item(s)" + (gate.contradictions.length ? " · " + gate.contradictions.length + " contradiction(s)" : "") + "."])
-      ]),
+      ui.el("div", {}, completionCopy),
       ui.el("div", { className: "bv-rally-toolbar" }, [
         importButton,
         ui.button("Export draft JSON", { variant: "secondary", size: "sm", icon: "download", onClick: function () { exportRallyJson(false); } }),

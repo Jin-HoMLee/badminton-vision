@@ -229,6 +229,11 @@ verifier/date evidence (approval comments are optional; correction/removal
 comments remain required), and until no confirmed empty/inactive case
 contradicts an active interval.
 
+When completion is blocked, the panel lists each unresolved rally label or
+validation case by identity, time range/review window, and exact missing
+requirement. Each entry is a focusable action that returns to the relevant
+editor when it still exists.
+
 The review store and JSON contain timestamps and text evidence only. The widget
 never stores or exports video, audio, image data, decoded frames, or model
 output.
