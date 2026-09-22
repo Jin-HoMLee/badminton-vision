@@ -8599,6 +8599,7 @@
     var rallyTimelineScroll = 0;
     var rallyImportInput = null;
     var rallyNotice = null;
+    var extensionContextInvalidated = false;
     var rallyGesture = null;
     var rallyIgnoreBarClick = false;
     var rallyPanelScrollTop = 0;
@@ -8699,13 +8700,37 @@
       return false;
     }
     function hasChrome() { return typeof chrome !== "undefined"; }
+    function handleExtensionContextFailure(error) {
+      var message = error && error.message ? error.message : String(error || "");
+      if (!/extension context (?:has been )?invalidated|context invalidated/i.test(message)) return false;
+      if (!extensionContextInvalidated) {
+        extensionContextInvalidated = true;
+        rallyNotice = { ok: false, message: "The extension was reloaded or disconnected. This change is still on this page but was not saved; reload this YouTube tab to reconnect, then import the draft again if needed." };
+        setTimeout(function () { if (root) render(); }, 0);
+      }
+      return true;
+    }
     function persist() {
       var key = state.videoKey || activeVideoKey || currentVideoKey();
       if (key) {
         state.videoKey = key;
         if (!state.videoUrl && window.location && /^https?:/.test(window.location.href)) state.videoUrl = window.location.href;
       }
-      if (hasChrome() && chrome.storage && chrome.storage.local) chrome.storage.local.set({ bvState: state }, function () { void chrome.runtime.lastError; });
+      if (!hasChrome()) return true;
+      try {
+        if (chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ bvState: state }, function () {
+            try {
+              var runtimeError = chrome.runtime && chrome.runtime.lastError;
+              if (runtimeError) handleExtensionContextFailure(runtimeError);
+            } catch (error) { handleExtensionContextFailure(error); }
+          });
+        }
+        return true;
+      } catch (error) {
+        handleExtensionContextFailure(error);
+        return false;
+      }
     }
     function send(message) {
       if (hasChrome() && chrome.runtime) chrome.runtime.sendMessage(message, function () { void chrome.runtime.lastError; });
@@ -10665,9 +10690,9 @@
         if (options.history !== false) recordRallyHistory(previous, normalized);
         rallyDocument = normalized;
         state = window.BVState.reduceExtensionState(state, { type: "SET_RALLY_REVIEW", videoKey: activeVideoKey || currentVideoKey(), document: normalized });
-        if (options.notice) rallyNotice = { ok: true, message: options.notice };
-        persist();
-        return true;
+        var persisted = persist();
+        if (options.notice && !extensionContextInvalidated) rallyNotice = { ok: true, message: options.notice };
+        return persisted || !extensionContextInvalidated;
       } catch (error) {
         rallyNotice = { ok: false, message: error && error.message ? error.message : String(error) };
         return false;

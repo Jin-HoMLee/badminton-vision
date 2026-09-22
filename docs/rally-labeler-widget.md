@@ -229,6 +229,11 @@ verifier/date evidence (approval comments are optional; correction/removal
 comments remain required), and until no confirmed empty/inactive case
 contradicts an active interval.
 
+If a browser extension reload invalidates the content context during a save,
+the widget keeps the in-page evidence visible and reports an actionable
+reconnect/reload message instead of surfacing an uncaught context error. No
+review data is silently treated as saved in that state.
+
 When completion is blocked, the panel lists each unresolved rally label or
 validation case by identity, time range/review window, and exact missing
 requirement. Each entry is a focusable action that returns to the relevant

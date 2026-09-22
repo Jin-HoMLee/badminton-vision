@@ -2887,6 +2887,27 @@ test("basketball validation cases explain the exact unresolved evidence", async 
   assert.ok(session.overlayRoot().querySelector('[data-bso-rally-control="basketball-check:control-inactive"]'), "the unresolved item links back to its validation editor");
 });
 
+test("an invalidated extension context shows an actionable reconnect error without losing in-page evidence", async () => {
+  const review = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: { id: "basketball-check", label: "Basketball sample", videoKey: "youtube:real-match", videoUrl: "https://www.youtube.com/watch?v=real-match", reviewWindow: { startSec: 12, endSec: 72 } },
+    intervals: [],
+    controls: [{ id: "basketball-check:control-inactive", sourceId: "basketball-check", kind: "inactive", label: "Expected non-badminton content · basketball", state: "unresolved", comment: "This is basketball.", verifier: "Jin-Ho", verifiedAt: "2026-09-22" }]
+  };
+  const session = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true }, rallyReviewsByVideo: { "youtube:real-match": review } } });
+  session.flushStorage();
+  const panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  const control = panel.querySelector("[data-bso-rally-control]");
+  const writesBeforeFailure = session.storageWrites.length;
+  session.context.chrome.storage.local.set = () => { throw new Error("Extension context invalidated."); };
+  buttonWithText(control, "Confirm expected result").dispatchEvent({ type: "click", target: control });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.match(textOf(session.overlayRoot()), /extension was reloaded or disconnected/i, "the failure explains the reconnect/reload action");
+  assert.equal(session.storageWrites.length, writesBeforeFailure, "the invalidated context does not claim a successful save");
+  assert.ok(session.overlayRoot().querySelector('[data-bso-rally-control="basketball-check:control-inactive"]'), "the reconnect-safe render keeps the in-page validation evidence visible");
+});
+
 test("runtime presentation leaves the rally clock owned by media time", async () => {
   const review = {
     schema: "badminton-vision.rally-review",
