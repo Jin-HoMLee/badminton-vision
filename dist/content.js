@@ -45,6 +45,7 @@
   // is persisted by video key; transient selection/zoom/gesture state is not.
   var rallyDocument = null;
   var rallySelectedId = null;
+  var rallyFocusedUnresolvedId = null;
   var rallyTimelineZoom = 1;
   var rallyTimelineScroll = 0;
   var rallyImportInput = null;
@@ -2662,7 +2663,7 @@
     if (!interval) return ui.el("p", { className: "bv-helper" }, ["Select an interval bar to inspect exact seconds and adjudicate it."]);
     var bounds = rallyApi.effectiveBounds(interval) || interval.corrected || interval.original;
     if (interval.action === "removal") {
-      var removalEditor = ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
+      var removalEditor = ui.el("section", { className: "bv-rally-editor" + (rallyFocusedUnresolvedId === interval.id ? " bv-rally-unresolved-focus" : ""), "data-bso-rally-editor": interval.id }, [
         ui.el("div", { className: "bv-rally-editor-heading" }, [
           ui.el("strong", {}, [interval.id]),
           ui.badge("removal", rallyActionBadgeTone("removal"), false)
@@ -2676,7 +2677,7 @@
       ]));
       return attachRallyKeyIsolation(removalEditor);
     }
-    var editor = ui.el("section", { className: "bv-rally-editor", "data-bso-rally-editor": interval.id }, [
+    var editor = ui.el("section", { className: "bv-rally-editor" + (rallyFocusedUnresolvedId === interval.id ? " bv-rally-unresolved-focus" : ""), "data-bso-rally-editor": interval.id }, [
       ui.el("div", { className: "bv-rally-editor-heading" }, [
         ui.el("strong", {}, [interval.id]),
         ui.badge(interval.action, rallyActionBadgeTone(interval.action), false)
@@ -2709,7 +2710,7 @@
     var help = control.kind === "empty-set"
       ? "Use Confirm expected result when this fixed-camera badminton window truly has no rally."
       : "Use Confirm expected result when this source is expected non-badminton content such as basketball.";
-    var card = ui.el("section", { className: "bv-rally-control", "data-bso-rally-control": control.id }, [
+    var card = ui.el("section", { className: "bv-rally-control" + (rallyFocusedUnresolvedId === control.id ? " bv-rally-unresolved-focus" : ""), "data-bso-rally-control": control.id }, [
       ui.el("div", { className: "bv-rally-control-heading" }, [ui.el("strong", {}, [control.label]), ui.badge(control.kind === "empty-set" ? "no-rally" : "non-badminton", "neutral", false), ui.badge(control.state, control.state === "unresolved" ? "warn" : control.state === "confirmed" ? "in" : "neutral", false)]),
       ui.el("p", { className: "bv-helper bv-rally-control-help" }, [help]),
       rallyMetadataFields(control)
@@ -2878,6 +2879,7 @@
   }
   function focusRallyUnresolved(entry) {
     if (!entry) return;
+    rallyFocusedUnresolvedId = entry.id;
     if (entry.type === "interval") rallySelectedId = entry.id;
     render();
     setTimeout(function () {
@@ -2996,7 +2998,7 @@
       : null;
     var completionCopy = [
       ui.el("strong", {}, [gate.complete ? "Review complete" : "Completion blocked"]),
-      ui.el("p", { className: "bv-helper" }, [gate.complete ? "All intervals and validation cases have required evidence." : gate.unresolved.length + " unresolved evidence item(s)" + (gate.contradictions.length ? " · " + gate.contradictions.length + " contradiction(s)" : "") + ". Select an item below to focus its evidence."])
+      ui.el("p", { className: "bv-helper", "data-bso-unresolved-count": String(gate.unresolved.length) }, [gate.complete ? "All intervals and validation cases have required evidence." : gate.unresolved.length + " unresolved evidence item(s)" + (gate.contradictions.length ? " · " + gate.contradictions.length + " contradiction(s)" : "") + ". Select an item below to focus its evidence."])
     ];
     if (unresolvedList) completionCopy.push(unresolvedList);
     body.appendChild(ui.el("div", { className: "bv-rally-completion", "data-bso-rally-complete": String(gate.complete) }, [

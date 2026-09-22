@@ -139,7 +139,8 @@ rally · fixed-camera badminton** and **Expected non-badminton content ·
 basketball**. Each case can be added or removed with the same toggle action;
 **Confirm expected result** and **Not true** preserve explicit evidence state.
 The canonical JSON keeps the stable `empty-set` and `inactive` kinds for
-compatibility.
+compatibility. A basketball/non-badminton case does not acquire a phantom
+no-rally requirement merely because it contains zero rally intervals.
 
 ## Canonical JSON contract
 

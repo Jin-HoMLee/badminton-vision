@@ -2884,7 +2884,39 @@ test("basketball validation cases explain the exact unresolved evidence", async 
   assert.match(summary, /missing Reviewed by/, "the summary identifies the actual missing field");
   const unresolved = list.querySelector("button");
   unresolved.dispatchEvent({ type: "click", target: unresolved });
-  assert.ok(session.overlayRoot().querySelector('[data-bso-rally-control="basketball-check:control-inactive"]'), "the unresolved item links back to its validation editor");
+  const focusedControl = session.overlayRoot().querySelector('[data-bso-rally-control="basketball-check:control-inactive"]');
+  assert.ok(focusedControl, "the unresolved item links back to its validation editor");
+  assert.match(focusedControl.className, /bv-rally-unresolved-focus/, "the linked editor has an obvious visible focus highlight");
+  assert.match(textOf(session.overlayRoot().querySelector("[data-bso-rally-unresolved-list]")), /missing Reviewed by/, "the exact missing requirement remains visible beside the focus target");
+});
+
+test("negative-basketball control confirmation resolves after the visible fields are filled", async () => {
+  const review = {
+    schema: "badminton-vision.rally-review",
+    version: 1,
+    source: { id: "negative-basketball", label: "Basketball", videoKey: "youtube:real-match", videoUrl: "https://www.youtube.com/watch?v=real-match", reviewWindow: { startSec: 0, endSec: 60 } },
+    intervals: [],
+    controls: [{ id: "negative-basketball:inactive", sourceId: "negative-basketball", kind: "inactive", label: "Expected non-badminton content · basketball", state: "unresolved", comment: "", verifier: "", verifiedAt: "" }]
+  };
+  const session = await createSession({ storedState: { videoKey: "youtube:real-match", settings: { rallyLabelerEnabled: true }, rallyReviewsByVideo: { "youtube:real-match": review } } });
+  session.flushStorage();
+  let panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.match(textOf(panel.querySelector("[data-bso-unresolved-count]")) || textOf(panel), /1 unresolved/);
+  const control = panel.querySelector('[data-bso-rally-control="negative-basketball:inactive"]');
+  control.querySelector("[data-bso-rally-comment]").value = "Confirmed basketball footage.";
+  control.querySelector("[data-bso-rally-verifier]").value = "Jin-Ho";
+  control.querySelector("[data-bso-rally-date]").value = "2026-09-22";
+  buttonWithText(control, "Confirm expected result").dispatchEvent({ type: "click", target: control });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "true", "the control transitions to resolved completion");
+  const exported = session.storageWrites.at(-1).bvState.rallyReviewsByVideo["youtube:real-match"];
+  assert.equal(exported.controls[0].state, "confirmed");
+  assert.equal(exported.controls[0].comment, "Confirmed basketball footage.");
+  assert.equal(exported.controls[0].verifier, "Jin-Ho");
+  assert.equal(exported.controls[0].verifiedAt, "2026-09-22");
+  const restored = await createSession({ storedState: JSON.parse(JSON.stringify(session.storageWrites.at(-1).bvState)) });
+  restored.flushStorage();
+  assert.equal(restored.overlayRoot().querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "true", "reload/hydration preserves the resolved validation case");
 });
 
 test("an invalidated extension context shows an actionable reconnect error without losing in-page evidence", async () => {

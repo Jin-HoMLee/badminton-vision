@@ -546,6 +546,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-rally-unresolved-list { display: flex; flex-direction: column; gap: var(--sp-1); margin: var(--sp-3) 0 0; padding: 0; list-style: none; }
 .bv-rally-unresolved-link { justify-content: flex-start; height: auto; min-height: var(--control-height-sm); padding: var(--sp-2) var(--sp-3); overflow: hidden; color: var(--text-muted); border-inline-start: 2px solid var(--signal-warn); text-align: left; text-overflow: ellipsis; white-space: normal; }
 .bv-rally-unresolved-link:hover:not(:disabled) { color: var(--text-primary); border-inline-start-color: var(--signal-info); background: var(--surface-active); }
+.bv-rally-unresolved-focus { border-color: var(--signal-info); box-shadow: 0 0 0 2px var(--signal-info-tint); }
 .bv-rally-toolbar > .bv-mono { min-width: 38px; color: var(--lime-400); text-align: center; font-size: var(--fs-11); }
 .bv-rally-timeline-scroll { position: relative; flex: 0 0 auto; width: 100%; max-width: 100%; overflow-x: scroll; overflow-y: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--ink-800); scrollbar-gutter: stable; }
 .bv-rally-timeline-scroll:focus-visible { box-shadow: var(--focus-ring); }

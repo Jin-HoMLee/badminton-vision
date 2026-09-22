@@ -550,10 +550,11 @@
       }
     });
     var activeCount = document.intervals.filter(function (interval) { return Boolean(effectiveBounds(interval)); }).length;
-    // An empty interval collection is not self-approving. A reviewer must
-    // explicitly add and confirm the empty-set control before a fresh empty
-    // video can pass completion.
-    if (document.intervals.length === 0) {
+    // A fresh empty review needs an explicit no-rally confirmation. An
+    // expected non-badminton case is a different validation path and must not
+    // acquire a phantom empty-set requirement merely because it has no rally
+    // intervals.
+    if (document.intervals.length === 0 && !document.controls.some(function (control) { return control.kind === "inactive"; })) {
       var emptySetControl = document.controls.find(function (control) { return control.kind === "empty-set"; });
       if (!emptySetControl || emptySetControl.state === "rejected") unresolved.push("empty-set:confirmation");
     }
