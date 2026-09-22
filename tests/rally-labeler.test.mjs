@@ -209,6 +209,18 @@ test("false-positive removal keeps explicit comment evidence and allows tombston
   assert.equal(model.completion(document).complete, false);
 });
 
+test("approval comments are optional but corrections and removals require them", () => {
+  const approved = model.reviewInterval(fixture(), "bwf-ws-2026:rally-001", { action: "approve", verifier: "developer@example.test", verifiedAt: "2026-09-22" });
+  assert.deepEqual(model.missingMetadataFields(approved.intervals[0]), [], "an approval with verifier/date is complete without a comment");
+  let exportable = fixture();
+  for (const interval of exportable.intervals) exportable = model.reviewInterval(exportable, interval.id, { action: "approve", verifier: "developer@example.test", verifiedAt: "2026-09-22" });
+  exportable = model.reviewControl(exportable, "club-fixed-cam:empty", { state: "rejected", ...evidence });
+  exportable = model.reviewControl(exportable, "negative-basketball:inactive", { state: "rejected", ...evidence });
+  assert.equal(model.completion(exportable).complete, true, "verified export allows approved intervals without comments");
+  assert.throws(() => model.reviewInterval(fixture(), "bwf-ws-2026:rally-001", { action: "correction", verifier: "developer@example.test", verifiedAt: "2026-09-22" }), /comment is required/);
+  assert.throws(() => model.removeInterval(fixture(), "bwf-ws-2026:rally-001", { verifier: "developer@example.test", verifiedAt: "2026-09-22" }), /comment is required/);
+});
+
 test("an empty review requires an explicit confirmed empty-set control", () => {
   let document = model.createDocument({ sourceId: "empty-source", videoKey: "youtube:empty", startSec: 0, endSec: 30 });
   assert.equal(model.completion(document).complete, false);

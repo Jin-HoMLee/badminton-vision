@@ -2266,6 +2266,10 @@
     if (!fields.verifier) fields.verifier = rallyPreferredVerifier({});
     if (!fields.verifiedAt) fields.verifiedAt = defaultRallyVerifiedAt();
     fields.action = action;
+    if (action === "correction" && !fields.comment) {
+      showRallyValidationError(new Error("Fill in comment before saving this correction."), { container: container });
+      return;
+    }
     if (action === "removal") {
       var removalError = rallyMissingEvidenceError(fields, "removing this false positive");
       if (removalError) {

@@ -2369,6 +2369,8 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(reviewActions[0].querySelector("[data-bso-icon]").getAttribute("data-bso-icon"), "check", "approval retains a non-color cue");
   assert.equal(reviewActions[1].querySelector("[data-bso-icon]").getAttribute("data-bso-icon"), "pencil", "correction retains a non-color cue");
   assert.equal(reviewActions[2].querySelector("[data-bso-icon]").getAttribute("data-bso-icon"), "x", "removal retains a non-color cue");
+  buttonWithText(panel, "Save correction").dispatchEvent({ type: "click" });
+  assert.match(textOf(panel.querySelector("[data-bso-rally-editor-error]")), /Fill in comment/, "correction validation identifies the required comment");
 
   buttonWithText(panel, "Zoom in").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');

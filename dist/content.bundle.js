@@ -6753,6 +6753,7 @@
 
     function removeInterval(document, id, fields) {
       fields = fields || {};
+      if (!optionalText(fields.comment)) throw new TypeError("comment is required before removing a false positive");
       var existing = document.intervals.find(function (item) { return item.id === String(id); });
       if (!existing) throw new TypeError("unknown interval id: " + id);
       return replaceInterval(document, id, function (interval) {
@@ -6784,6 +6785,9 @@
       editableInterval(document, id);
       return replaceInterval(document, id, function (interval) {
         var action = normalizeAction(fields.action || interval.action, interval.original);
+        if ((action === "correction" || action === "removal") && !optionalText(fields.comment)) {
+          throw new TypeError("comment is required before saving a " + (action === "correction" ? "correction" : "false-positive removal"));
+        }
         if (action === "approve") {
           if (!interval.original) throw new TypeError("an added interval cannot be approved as an original proposal");
           interval.corrected = clone(interval.original);
@@ -6837,8 +6841,18 @@
       return normalizeDocument(next);
     }
 
+    function missingMetadataFields(item) {
+      var missing = [];
+      var action = item && item.action;
+      // Approval records may intentionally have no explanatory comment; the
+      // reviewer/date pair still proves who made the decision and when.
+      if (action !== "approve" && !optionalText(item && item.comment)) missing.push("comment");
+      if (!optionalText(item && item.verifier)) missing.push("Reviewed by");
+      if (!optionalText(item && item.verifiedAt)) missing.push("review date");
+      return missing;
+    }
     function completeMetadata(item) {
-      return Boolean(optionalText(item.comment) && optionalText(item.verifier) && optionalText(item.verifiedAt));
+      return missingMetadataFields(item).length === 0;
     }
 
     function completion(document) {
@@ -6846,7 +6860,10 @@
       var contradictions = [];
       document.intervals.forEach(function (interval) {
         if (interval.action === "unresolved") unresolved.push(interval.id + ":action");
-        else if (!completeMetadata(interval)) unresolved.push(interval.id + ":evidence");
+        else {
+          var missing = missingMetadataFields(interval);
+          if (missing.length) unresolved.push(interval.id + ":" + missing.join(", "));
+        }
       });
       var activeCount = document.intervals.filter(function (interval) { return Boolean(effectiveBounds(interval)); }).length;
       // An empty interval collection is not self-approving. A reviewer must
@@ -6858,7 +6875,10 @@
       }
       document.controls.forEach(function (control) {
         if (control.state === "unresolved") unresolved.push(control.id + ":state");
-        else if (!completeMetadata(control)) unresolved.push(control.id + ":evidence");
+        else {
+          var missingControl = missingMetadataFields(control);
+          if (missingControl.length) unresolved.push(control.id + ":" + missingControl.join(", "));
+        }
         if (control.state === "confirmed" && activeCount > 0 && (control.kind === "empty-set" || control.kind === "inactive")) {
           contradictions.push(control.id + ":active-intervals");
         }
@@ -7042,6 +7062,7 @@
       addControl: addControl,
       reviewControl: reviewControl,
       completion: completion,
+      missingMetadataFields: missingMetadataFields,
       serialize: serialize,
       parse: parse,
       createTimelineView: createTimelineView,
@@ -10787,6 +10808,10 @@
       if (!fields.verifier) fields.verifier = rallyPreferredVerifier({});
       if (!fields.verifiedAt) fields.verifiedAt = defaultRallyVerifiedAt();
       fields.action = action;
+      if (action === "correction" && !fields.comment) {
+        showRallyValidationError(new Error("Fill in comment before saving this correction."), { container: container });
+        return;
+      }
       if (action === "removal") {
         var removalError = rallyMissingEvidenceError(fields, "removing this false positive");
         if (removalError) {
