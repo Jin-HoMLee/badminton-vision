@@ -518,8 +518,15 @@ test("fresh rally initialization creates a complete empty workspace before impor
   assert.equal(panel.querySelectorAll("[data-bso-rally-interval]").length, 0);
   assert.equal(panel.querySelector("[data-bso-rally-complete]").getAttribute("data-bso-rally-complete"), "false", "zero intervals are not silently complete");
   assert.ok(buttonWithText(panel, "Add missing rally"), "the complete workspace is available before import");
-  assert.ok(buttonWithText(panel, "Add empty-set control"), "explicit empty-set confirmation is available before import");
+  assert.ok(buttonWithText(panel, "Add no-rally case"), "the expected no-rally validation case is available before import");
   assert.ok(buttonWithText(panel, "Export draft JSON"), "fresh state can be exported before import");
+  buttonWithText(panel, "Add no-rally case").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.match(textOf(panel.querySelector("[data-bso-rally-control]")), /fixed-camera badminton/);
+  assert.ok(buttonWithText(panel, "Remove no-rally case"), "the same validation case action becomes a clear removal toggle");
+  buttonWithText(panel, "Remove no-rally case").dispatchEvent({ type: "click" });
+  panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
+  assert.equal(panel.querySelector("[data-bso-rally-control]"), null, "removing a validation case clears its evidence card");
   buttonWithText(panel, "Add missing rally").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   assert.equal(panel.querySelectorAll("[data-bso-rally-interval]").length, 1, "the first rally can be created in fresh state");
@@ -2565,7 +2572,7 @@ test("developer rally widget edits, zooms, scrolls, adds, removes, and seeks onl
   assert.equal(panel.querySelectorAll(".bv-rally-interval").filter((node) => String(node.className).includes("removal")).length, 1, "the interval can be removed again after restoration");
   assert.equal(panel.querySelectorAll(".bv-rally-interval").length, 2, "the removed bar remains in place beside the active one");
 
-  buttonWithText(panel, "Add empty-set control").dispatchEvent({ type: "click" });
+  buttonWithText(panel, "Add no-rally case").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   const control = panel.querySelector("[data-bso-rally-control]");
   control.querySelector("[data-bso-rally-comment]").value = "Rallies are present, so this empty-set control is explicitly false.";
@@ -3034,7 +3041,7 @@ test("invalid rally evidence stays editable and shows a validation notice", asyn
   assert.equal(editor.querySelector("[data-bso-rally-date]").value, "2026-02-31", "the invalid draft remains editable");
   assert.match(textOf(panel), /verifiedAt must be an ISO date or UTC timestamp/);
 
-  buttonWithText(panel, "Add empty-set control").dispatchEvent({ type: "click" });
+  buttonWithText(panel, "Add no-rally case").dispatchEvent({ type: "click" });
   panel = session.overlayRoot().querySelector('[data-bso-panel="rallyLabeler"]');
   const control = panel.querySelector("[data-bso-rally-control]");
   control.querySelector("[data-bso-rally-comment]").value = "Checked manually";

@@ -2303,7 +2303,17 @@
     if (setRallyDocument(rallyApi.restoreInterval(rallyDocument, id), { notice: "Restored " + id + " for review." })) render();
   }
   function addRallyControl(kind) {
-    if (setRallyDocument(rallyApi.addControl(rallyDocument, kind), { notice: "Added an explicit " + kind + " confirmation." })) render();
+    if (setRallyDocument(rallyApi.addControl(rallyDocument, kind), { notice: "Added a validation case." })) render();
+  }
+  function removeRallyControl(kind) {
+    if (!rallyDocument || !rallyApi) return;
+    var control = rallyDocument.controls.find(function (item) { return item.kind === kind; });
+    if (control && setRallyDocument(rallyApi.removeControl(rallyDocument, control.id), { notice: "Removed the validation case." })) render();
+  }
+  function toggleRallyControl(kind) {
+    var exists = rallyDocument && rallyDocument.controls.some(function (control) { return control.kind === kind; });
+    if (exists) removeRallyControl(kind);
+    else addRallyControl(kind);
   }
   function commitRallyControl(id, controlState, container) {
     var fields = rallyEvidence(container);
@@ -2671,12 +2681,16 @@
     return attachRallyKeyIsolation(editor);
   }
   function rallyControlCard(control) {
+    var help = control.kind === "empty-set"
+      ? "Use Confirm expected result when this fixed-camera badminton window truly has no rally."
+      : "Use Confirm expected result when this source is expected non-badminton content such as basketball.";
     var card = ui.el("section", { className: "bv-rally-control", "data-bso-rally-control": control.id }, [
-      ui.el("div", { className: "bv-rally-control-heading" }, [ui.el("strong", {}, [control.label]), ui.badge(control.kind, "neutral", false), ui.badge(control.state, control.state === "unresolved" ? "warn" : control.state === "confirmed" ? "in" : "neutral", false)]),
+      ui.el("div", { className: "bv-rally-control-heading" }, [ui.el("strong", {}, [control.label]), ui.badge(control.kind === "empty-set" ? "no-rally" : "non-badminton", "neutral", false), ui.badge(control.state, control.state === "unresolved" ? "warn" : control.state === "confirmed" ? "in" : "neutral", false)]),
+      ui.el("p", { className: "bv-helper bv-rally-control-help" }, [help]),
       rallyMetadataFields(control)
     ]);
     card.appendChild(ui.el("div", { className: "bv-rally-editor-actions" }, [
-      ui.button("Confirm", { variant: "primary", size: "sm", onClick: function () { commitRallyControl(control.id, "confirmed", card); } }),
+      ui.button("Confirm expected result", { variant: "primary", size: "sm", onClick: function () { commitRallyControl(control.id, "confirmed", card); } }),
       ui.button("Not true", { variant: "secondary", size: "sm", onClick: function () { commitRallyControl(control.id, "rejected", card); } })
     ]));
     return attachRallyKeyIsolation(card);
@@ -2889,11 +2903,13 @@
     ]));
     body.appendChild(rallyTimeline());
     body.appendChild(rallySelectedEditor(rallyIntervalById(rallySelectedId)));
-    var controls = ui.el("section", { className: "bv-rally-controls", "aria-label": "Control confirmations" }, [
-      ui.el("div", { className: "bv-rally-control-heading" }, [ui.el("strong", {}, ["Control confirmations"]), ui.el("span", { className: "bv-helper" }, ["Explicitly resolve empty or inactive source controls when present."])]),
+    var hasEmptyCase = rallyDocument.controls.some(function (control) { return control.kind === "empty-set"; });
+    var hasInactiveCase = rallyDocument.controls.some(function (control) { return control.kind === "inactive"; });
+    var controls = ui.el("section", { className: "bv-rally-controls", "aria-label": "Validation cases" }, [
+      ui.el("div", { className: "bv-rally-control-heading" }, [ui.el("strong", {}, ["Validation cases"]), ui.el("span", { className: "bv-helper" }, ["Optional expected outcomes kept separate from rally intervals: fixed-camera badminton should contain no rally, while basketball is expected non-badminton content."])]),
       ui.el("div", { className: "bv-rally-toolbar" }, [
-        ui.button("Add empty-set control", { variant: "secondary", size: "sm", title: "Add a review result for a source expected to contain no rally intervals", disabled: rallyDocument.controls.some(function (control) { return control.kind === "empty-set"; }), onClick: function () { addRallyControl("empty-set"); } }),
-        ui.button("Add inactive control", { variant: "secondary", size: "sm", title: "Add a review result for a negative-control video that should remain inactive", disabled: rallyDocument.controls.some(function (control) { return control.kind === "inactive"; }), onClick: function () { addRallyControl("inactive"); } })
+        ui.button(hasEmptyCase ? "Remove no-rally case" : "Add no-rally case", { variant: "secondary", size: "sm", title: hasEmptyCase ? "Remove the expected no-rally fixed-camera badminton case" : "Add an expected no-rally case for fixed-camera badminton footage", onClick: function () { toggleRallyControl("empty-set"); } }),
+        ui.button(hasInactiveCase ? "Remove non-badminton case" : "Add non-badminton case", { variant: "secondary", size: "sm", title: hasInactiveCase ? "Remove the expected non-badminton basketball case" : "Add an expected non-badminton case for basketball footage", onClick: function () { toggleRallyControl("inactive"); } })
       ])
     ]);
     rallyDocument.controls.forEach(function (control) { controls.appendChild(rallyControlCard(control)); });

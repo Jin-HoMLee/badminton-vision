@@ -133,9 +133,13 @@ playback help** in that same lower area. Overlay panels use one restrained
 translucent surface token so
 video details remain faintly visible behind them without blur; text, fields,
 controls, focus states, and boundaries remain opaque/readable, and transparency
-never changes pointer hit-testing. Control confirmations are explicit results
-for empty-set and inactive/negative-control sources, not additional rally
-labels.
+never changes pointer hit-testing. The **Validation cases** section contains
+optional expected outcomes, kept distinct from rally intervals: **Expected no
+rally · fixed-camera badminton** and **Expected non-badminton content ·
+basketball**. Each case can be added or removed with the same toggle action;
+**Confirm expected result** and **Not true** preserve explicit evidence state.
+The canonical JSON keeps the stable `empty-set` and `inactive` kinds for
+compatibility.
 
 ## Canonical JSON contract
 
@@ -171,7 +175,7 @@ finite non-negative JSON numbers rounded to milliseconds.
       "id": "club-fixed-cam:empty",
       "sourceId": "bwf-ws-2026",
       "kind": "empty-set",
-      "label": "No rallies in the review window",
+      "label": "Expected no rally · fixed-camera badminton",
       "state": "rejected",
       "comment": "Rallies are visible in this source.",
       "verifier": "reviewer-handle",
@@ -194,9 +198,11 @@ finite non-negative JSON numbers rounded to milliseconds.
   active bar.
 - Interval `action` is `unresolved`, `approve`, `correction`, `addition`, or
   `removal`.
-- Control `kind` is `empty-set` or `inactive`; `state` is `unresolved`,
-  `confirmed`, or `rejected`. `rejected` explicitly records that the proposed
-  negative control is not true; it is not an unresolved omission.
+- A validation-case `kind` remains `empty-set` or `inactive` for canonical
+  compatibility; the UI presents these as expected no-rally/fixed-camera
+  badminton and expected non-badminton/basketball outcomes. `state` is
+  `unresolved`, `confirmed`, or `rejected`. `rejected` explicitly records that
+  the proposed expected outcome is not true; it is not an unresolved omission.
 - `verifiedAt` is `YYYY-MM-DD` or an ISO UTC timestamp.
 
 The importer also accepts the corpus-oriented shorthand below and normalizes it
@@ -218,9 +224,10 @@ input omitted one:
 Import followed by export always passes through `normalizeDocument`; exporting
 that result again is byte-stable under `serialize`. **Export draft JSON** is
 available while work remains. **Export verified JSON** is disabled until every
-interval and supplied control has an action/state plus non-empty comment,
-verifier, and date, and until no confirmed empty/inactive control contradicts
-an active interval.
+interval and supplied validation case has an action/state plus required
+verifier/date evidence (approval comments are optional; correction/removal
+comments remain required), and until no confirmed empty/inactive case
+contradicts an active interval.
 
 The review store and JSON contain timestamps and text evidence only. The widget
 never stores or exports video, audio, image data, decoded frames, or model

@@ -181,7 +181,7 @@
       id: id,
       sourceId: sourceId,
       kind: kind,
-      label: optionalText(raw.label) || (kind === "empty-set" ? "No rallies in the review window" : "Rally state stays inactive"),
+      label: optionalText(raw.label) || (kind === "empty-set" ? "Expected no rally · fixed-camera badminton" : "Expected non-badminton content · basketball"),
       state: state,
       comment: optionalText(raw.comment != null ? raw.comment : raw.reason),
       verifier: optionalText(raw.verifier),
@@ -455,6 +455,13 @@
       clearEvidence(interval);
       return interval;
     });
+  }
+
+  function removeControl(document, id) {
+    if (!document.controls.some(function (control) { return control.id === String(id); })) throw new TypeError("unknown control id: " + id);
+    var next = clone(document);
+    next.controls = next.controls.filter(function (control) { return control.id !== String(id); });
+    return normalizeDocument(next);
   }
 
   function reviewInterval(document, id, fields) {
@@ -737,6 +744,7 @@
     restoreInterval: restoreInterval,
     reviewInterval: reviewInterval,
     addControl: addControl,
+    removeControl: removeControl,
     reviewControl: reviewControl,
     completion: completion,
     missingMetadataFields: missingMetadataFields,

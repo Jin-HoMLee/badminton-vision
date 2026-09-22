@@ -221,6 +221,18 @@ test("approval comments are optional but corrections and removals require them",
   assert.throws(() => model.removeInterval(fixture(), "bwf-ws-2026:rally-001", { verifier: "developer@example.test", verifiedAt: "2026-09-22" }), /comment is required/);
 });
 
+test("validation cases have clear outcome semantics and are reversible", () => {
+  let document = model.createDocument({ sourceId: "validation-source", videoKey: "youtube:validation", startSec: 0, endSec: 30 });
+  document = model.addControl(document, "empty-set");
+  document = model.addControl(document, "inactive");
+  assert.match(document.controls.find((control) => control.kind === "empty-set").label, /fixed-camera badminton/);
+  assert.match(document.controls.find((control) => control.kind === "inactive").label, /basketball/);
+  const emptyId = document.controls.find((control) => control.kind === "empty-set").id;
+  document = model.removeControl(document, emptyId);
+  assert.equal(document.controls.some((control) => control.kind === "empty-set"), false);
+  assert.throws(() => model.removeControl(document, emptyId), /unknown control id/);
+});
+
 test("an empty review requires an explicit confirmed empty-set control", () => {
   let document = model.createDocument({ sourceId: "empty-source", videoKey: "youtube:empty", startSec: 0, endSec: 30 });
   assert.equal(model.completion(document).complete, false);
