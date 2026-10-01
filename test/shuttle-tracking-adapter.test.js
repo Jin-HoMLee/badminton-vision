@@ -34,6 +34,17 @@ function frame({ dots = [], fill = 0, block = null } = {}) {
   return { width: WIDTH, height: HEIGHT, data };
 }
 
+function sizedFrame(width, height, { fill = 0 } = {}) {
+  const data = new Uint8Array(width * height * 4);
+  for (let pixel = 0; pixel < width * height; pixel += 1) {
+    data[pixel * 4] = fill;
+    data[pixel * 4 + 1] = fill;
+    data[pixel * 4 + 2] = fill;
+    data[pixel * 4 + 3] = 255;
+  }
+  return { width, height, data };
+}
+
 function sample(requestId, mediaTime, pixels, extra = {}) {
   return {
     sessionId: 'shuttle-test',
@@ -364,4 +375,41 @@ test('async analyzer drops concurrent work as backpressure without changing stat
 
   const anchor = await adapter.analyze(sample('r2', 0.2, frame({ dots: [{ x: 8 }] })));
   assert.equal(shuttleResult(anchor).reason, 'candidate-needs-continuity');
+});
+
+test('configured maxLongEdge above the default is honored by the live frame path', async () => {
+  // 512x128 = 65536 pixels keeps maxPixels non-binding so only the long-edge
+  // bound decides the size, and 512 > the 256 default makes the difference
+  // observable.
+  const width = 512;
+  const height = 128;
+  const maxLongEdge = 512;
+  const large = {
+    sessionId: 'shuttle-test',
+    requestId: 'large-0',
+    mediaTime: 0,
+    capturedAt: 100,
+    dimensions: { width, height },
+    frame: sizedFrame(width, height),
+    frameFormat: 'rgba-array-v1'
+  };
+
+  // Sync transport path (processFrame -> resizePixels): the configured edge
+  // keeps the transported dimensions, so it warms up instead of tripping the
+  // frame-dimensions-mismatch reset that the ignored option used to cause.
+  const syncAdapter = new shuttle.LocalShuttleTrajectoryAdapter({ options: { maxLongEdge } });
+  const syncFirst = shuttleResult(syncAdapter.processFrame(large));
+  assert.equal(syncFirst.reason, 'warming-up');
+  assert.notEqual(syncFirst.reason, 'frame-dimensions-mismatch');
+
+  // Async analyzer path (readFramePixels) must forward the same option.
+  const asyncAdapter = new shuttle.LocalShuttleTrajectoryAdapter({ options: { maxLongEdge } });
+  const asyncFirst = shuttleResult(await asyncAdapter.analyze({ ...large, requestId: 'large-async-0' }));
+  assert.equal(asyncFirst.reason, 'warming-up');
+
+  // The default adapter still bounds to 256, which is the mismatch the option
+  // exists to avoid.
+  const defaultAdapter = new shuttle.LocalShuttleTrajectoryAdapter();
+  const defaultFirst = shuttleResult(defaultAdapter.processFrame({ ...large, requestId: 'large-default-0' }));
+  assert.equal(defaultFirst.reason, 'frame-dimensions-mismatch');
 });

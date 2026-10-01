@@ -747,7 +747,7 @@
         return this.unknown(sample, 'stale-frame', 'fallback', false);
       }
       if (!pixels) pixels = directPixels(sample.frame);
-      if (pixels) pixels = resizePixels(pixels, this.options.maxPixels);
+      if (pixels) pixels = resizePixels(pixels, this.options.maxPixels, this.options.maxLongEdge);
       if (!pixels) {
         this.reset('invalid-frame');
         return this.unknown(sample, 'invalid-frame', 'fallback', false);
@@ -886,7 +886,8 @@
       try {
         const pixels = await readFramePixels(sample?.frame, {
           environment: this.environment,
-          maxPixels: this.options.maxPixels
+          maxPixels: this.options.maxPixels,
+          maxLongEdge: this.options.maxLongEdge
         });
         return this.processFrame(sample, pixels);
       } finally {
