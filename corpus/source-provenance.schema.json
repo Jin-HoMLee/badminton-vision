@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://badminton-vision.invalid/schemas/source-provenance.v1.json",
+  "title": "Badminton Vision per-video source provenance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "videoKey", "media", "contributor", "consent", "annotationLicense", "intendedShareability", "split", "createdAt", "updatedAt"],
+  "properties": {
+    "schema": { "const": "bv-source-provenance/v1" },
+    "videoKey": { "type": "string", "minLength": 1 },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "rightsBasis", "rightsStatus", "license", "licenseUrl", "mediaIncluded", "captureMethod", "recordedAt"],
+      "properties": {
+        "owner": { "type": "string" },
+        "rightsBasis": { "enum": ["unknown", "owner-recorded", "explicit-license", "contributor-grant", "public-url-reference"] },
+        "rightsStatus": { "enum": ["not-cleared", "pending", "cleared"] },
+        "license": { "type": ["string", "null"] },
+        "licenseUrl": { "anyOf": [{ "type": "string", "pattern": "^https://" }, { "type": "null" }] },
+        "mediaIncluded": { "type": "boolean" },
+        "captureMethod": { "enum": ["unknown", "self-recorded", "synthetic", "third-party-upload", "public-url-reference"] },
+        "recordedAt": { "anyOf": [{ "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}(?:T.*Z)?$" }, { "type": "null" }] }
+      }
+    },
+    "contributor": { "type": "string" },
+    "consent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidenceReference"],
+      "properties": {
+        "status": { "enum": ["unknown", "not-required", "pending", "obtained", "declined"] },
+        "evidenceReference": { "type": ["string", "null"] }
+      }
+    },
+    "annotationLicense": { "enum": ["", "CC-BY-4.0", "CC-BY-SA-4.0", "CC0-1.0"] },
+    "intendedShareability": { "enum": ["not-determined", "private", "reference-only", "shareable"] },
+    "split": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "unitKey", "assignment"],
+      "properties": {
+        "strategy": { "const": "fnv1a-match-key-v1" },
+        "unitKey": { "type": "string", "minLength": 1 },
+        "assignment": { "enum": ["train", "validation", "test"] }
+      }
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

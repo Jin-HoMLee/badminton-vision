@@ -20,6 +20,9 @@
     labelUndoByVideo: {},
     manualLabelsVersion: LABEL_STORE_VERSION,
     lastEdit: null,
+    // Rights/provenance records are canonical per-video records. They stay
+    // separate from labels so CSV import cannot imply or upgrade clearance.
+    sourceProvenanceByVideo: {},
     // Developer-only rally-boundary reviews are separate from shot labels.
     // Each canonical JSON document is owned by its stable video key.
     rallyReviewsByVideo: {},
@@ -314,6 +317,24 @@
 
   function copyRecords(records) {
     return Array.isArray(records) ? records.map(clone) : [];
+  }
+
+  function copySourceProvenanceMap(raw, options) {
+    var result = {};
+    if (!raw || typeof raw !== "object") return result;
+    Object.keys(raw).forEach(function (key) {
+      if (!raw[key] || typeof raw[key] !== "object" || Array.isArray(raw[key])) return;
+      result[String(key)] = root.BVProvenance
+        ? root.BVProvenance.normalizeSourceRecord(raw[key], { videoKey: String(key), now: raw[key].createdAt || options && options.now })
+        : clone(raw[key]);
+    });
+    return result;
+  }
+
+  function sourceProvenanceForVideo(stateOrMap, videoKey) {
+    var map = stateOrMap && stateOrMap.sourceProvenanceByVideo ? stateOrMap.sourceProvenanceByVideo : stateOrMap;
+    if (!map || videoKey == null || !map[String(videoKey)]) return null;
+    return clone(map[String(videoKey)]);
   }
 
   function copyRallyReviewMap(raw) {
@@ -637,6 +658,7 @@
     var value = Object.assign({}, defaults, raw);
     value.panels = Object.assign({}, defaults.panels, copyPanelVisibility(raw.panels));
     value.settings = Object.assign({}, defaults.settings, copySettings(raw.settings));
+    value.sourceProvenanceByVideo = copySourceProvenanceMap(raw.sourceProvenanceByVideo, options);
     value.rallyReviewsByVideo = copyRallyReviewMap(raw.rallyReviewsByVideo);
     value.panelOverrides = copyPanelOverrides(raw.panelOverrides);
     value.panelsByVideo = copyPanelVisibilityMap(raw.panelsByVideo);
@@ -854,6 +876,15 @@
         }
         return current;
       }
+      case "SET_SOURCE_PROVENANCE": {
+        var sourceKey = action.videoKey != null ? String(action.videoKey) : current.videoKey;
+        if (!sourceKey || !root.BVProvenance) return current;
+        var sources = copySourceProvenanceMap(current.sourceProvenanceByVideo);
+        if (action.record && typeof action.record === "object") {
+          sources[sourceKey] = root.BVProvenance.normalizeSourceRecord(action.record, { videoKey: sourceKey, now: action.record.createdAt });
+        } else delete sources[sourceKey];
+        return initialExtensionState(Object.assign({}, current, { sourceProvenanceByVideo: sources }));
+      }
       case "SET_RALLY_REVIEW": {
         var rallyKey = action.videoKey != null ? String(action.videoKey) : current.videoKey;
         if (!rallyKey) return current;
@@ -951,6 +982,7 @@
     normalizeLabelStore: function (input, videoKey, options) { return stateForVideo(input, videoKey, options); },
     stateForVideo: stateForVideo,
     labelsForVideo: labelsForVideo,
+    sourceProvenanceForVideo: sourceProvenanceForVideo,
     rallyReviewForVideo: rallyReviewForVideo,
     PANEL_LAYOUT_KEYS: PANEL_LAYOUT_KEYS.slice(),
     PANEL_COLLAPSE_KEYS: PANEL_COLLAPSE_KEYS.slice(),

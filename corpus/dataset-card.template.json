@@ -1,0 +1,39 @@
+{
+  "schema": "bv-dataset-card/v1",
+  "name": "Badminton Vision rights-cleared manual-label corpus",
+  "version": "0.0.0-pilot",
+  "status": "template",
+  "mediaRights": {
+    "allowedRightsBases": ["owner-recorded", "explicit-license", "contributor-grant"],
+    "mediaIncludedOnlyWhenCleared": true,
+    "publicUrlReferencesEvaluationOnly": true
+  },
+  "annotationRights": {
+    "license": "CC-BY-4.0"
+  },
+  "consent": {
+    "identifiablePlayersRequireEvidence": true,
+    "evidenceStorage": "Private release records; public source records contain only non-sensitive evidence references."
+  },
+  "splits": {
+    "unit": "match",
+    "strategy": "fnv1a-match-key-v1",
+    "assignments": ["train", "validation", "test"]
+  },
+  "intendedUses": [
+    "rights-cleared badminton research and evaluation",
+    "manual-label quality review"
+  ],
+  "prohibitedUses": [
+    "training or fine-tuning without separate project authorization",
+    "identity recognition or biometric profiling",
+    "redistribution of uncleared media or private consent evidence",
+    "conversion of BWF, broadcast, or uncleared public-URL references into training sources"
+  ],
+  "trainingAuthorized": false,
+  "sources": [],
+  "maintenance": {
+    "contact": "Set a project contact before release.",
+    "reviewBeforeRelease": true
+  }
+}

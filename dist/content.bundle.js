@@ -6674,6 +6674,230 @@
     });
   })(typeof globalThis !== "undefined" ? globalThis : window);
 
+/* src/provenance.js */
+  /* Rights-first source records and portable manual-label packages. */
+  (function (root) {
+    "use strict";
+
+    var SOURCE_SCHEMA = "bv-source-provenance/v1";
+    var PACKAGE_SCHEMA = "bv-manual-label-package/v1";
+    var SPLIT_STRATEGY = "fnv1a-match-key-v1";
+    var RIGHTS_BASES = ["unknown", "owner-recorded", "explicit-license", "contributor-grant", "public-url-reference"];
+    var RIGHTS_STATUSES = ["not-cleared", "pending", "cleared"];
+    var CAPTURE_METHODS = ["unknown", "self-recorded", "synthetic", "third-party-upload", "public-url-reference"];
+    var CONSENT_STATUSES = ["unknown", "not-required", "pending", "obtained", "declined"];
+    var SHAREABILITY = ["not-determined", "private", "reference-only", "shareable"];
+    var SPLITS = ["train", "validation", "test"];
+    var TRAINING_COMPATIBLE_MEDIA_LICENSES = ["CC0-1.0", "CC-BY-4.0", "CC-BY-SA-4.0"];
+    var ANNOTATION_LICENSES = ["", "CC-BY-4.0", "CC-BY-SA-4.0", "CC0-1.0"];
+
+    function clone(value) {
+      if (value == null || typeof value !== "object") return value;
+      if (Array.isArray(value)) return value.map(clone);
+      var copy = {};
+      Object.keys(value).forEach(function (key) { copy[key] = clone(value[key]); });
+      return copy;
+    }
+
+    function text(value) { return value == null ? "" : String(value).trim(); }
+    function choice(value, allowed, fallback) { return allowed.indexOf(value) >= 0 ? value : fallback; }
+    function nullableText(value) { var result = text(value); return result || null; }
+    function nowIso(options) {
+      var value = options && options.now;
+      if (typeof value === "function") value = value();
+      if (value instanceof Date) return value.toISOString();
+      return typeof value === "string" && value ? value : new Date().toISOString();
+    }
+
+    function hash32(value) {
+      var hash = 2166136261;
+      var input = String(value || "");
+      for (var index = 0; index < input.length; index += 1) {
+        hash ^= input.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+      }
+      return hash >>> 0;
+    }
+
+    function splitForMatch(unitKey) {
+      var key = text(unitKey);
+      if (!key) return null;
+      var bucket = hash32(key) % 100;
+      return bucket < 80 ? "train" : bucket < 90 ? "validation" : "test";
+    }
+
+    function normalizeSourceRecord(input, options) {
+      input = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+      options = options || {};
+      var media = input.media && typeof input.media === "object" && !Array.isArray(input.media) ? input.media : {};
+      var consent = input.consent && typeof input.consent === "object" && !Array.isArray(input.consent) ? input.consent : {};
+      var split = input.split && typeof input.split === "object" && !Array.isArray(input.split) ? input.split : {};
+      var videoKey = text(options.videoKey != null ? options.videoKey : input.videoKey);
+      var unitKey = text(split.unitKey) || videoKey;
+      var createdAt = text(input.createdAt) || nowIso(options);
+      var record = {
+        schema: SOURCE_SCHEMA,
+        videoKey: videoKey,
+        media: {
+          owner: text(media.owner),
+          rightsBasis: choice(media.rightsBasis, RIGHTS_BASES, "unknown"),
+          rightsStatus: choice(media.rightsStatus, RIGHTS_STATUSES, "not-cleared"),
+          license: nullableText(media.license),
+          licenseUrl: nullableText(media.licenseUrl),
+          mediaIncluded: media.mediaIncluded === true,
+          captureMethod: choice(media.captureMethod, CAPTURE_METHODS, "unknown"),
+          recordedAt: nullableText(media.recordedAt)
+        },
+        contributor: text(input.contributor),
+        consent: {
+          status: choice(consent.status, CONSENT_STATUSES, "unknown"),
+          evidenceReference: nullableText(consent.evidenceReference)
+        },
+        annotationLicense: choice(input.annotationLicense, ANNOTATION_LICENSES, ""),
+        intendedShareability: choice(input.intendedShareability, SHAREABILITY, "not-determined"),
+        split: {
+          strategy: SPLIT_STRATEGY,
+          unitKey: unitKey,
+          assignment: splitForMatch(unitKey)
+        },
+        createdAt: createdAt,
+        updatedAt: text(input.updatedAt) || createdAt
+      };
+
+      // Public URLs without an affirmative rights basis are reference-only.
+      // Normalization can only make this class more conservative, never clear it.
+      if (record.media.rightsBasis === "public-url-reference" || record.media.captureMethod === "public-url-reference") {
+        record.media.rightsBasis = "public-url-reference";
+        record.media.captureMethod = "public-url-reference";
+        record.media.rightsStatus = "not-cleared";
+        record.media.mediaIncluded = false;
+        record.intendedShareability = "reference-only";
+      }
+      return record;
+    }
+
+    function isIsoDateOrTime(value) {
+      if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z)?$/.test(value)) return false;
+      return !Number.isNaN(Date.parse(value.length === 10 ? value + "T00:00:00Z" : value));
+    }
+
+    function isWebUrl(value) {
+      return typeof value === "string" && /^https:\/\/[^\s]+$/i.test(value);
+    }
+
+    function validateSourceRecord(input, options) {
+      options = options || {};
+      var record = normalizeSourceRecord(input, { videoKey: input && input.videoKey, now: input && input.createdAt || options.now });
+      var errors = [];
+      var isObject = input && typeof input === "object" && !Array.isArray(input);
+      var rawMedia = isObject && input.media && typeof input.media === "object" && !Array.isArray(input.media) ? input.media : null;
+      var rawConsent = isObject && input.consent && typeof input.consent === "object" && !Array.isArray(input.consent) ? input.consent : null;
+      var rawSplit = isObject && input.split && typeof input.split === "object" && !Array.isArray(input.split) ? input.split : null;
+      function has(object, key) { return Boolean(object && Object.prototype.hasOwnProperty.call(object, key)); }
+      if (!isObject) errors.push("source record must be an object");
+      if (!isObject || input.schema !== SOURCE_SCHEMA) errors.push("schema must be " + SOURCE_SCHEMA);
+      if (!record.videoKey) errors.push("videoKey is required");
+      if (options.videoKey != null && record.videoKey !== String(options.videoKey)) errors.push("videoKey does not match the active video");
+      ["owner", "rightsBasis", "rightsStatus", "license", "licenseUrl", "mediaIncluded", "captureMethod", "recordedAt"].forEach(function (key) {
+        if (!has(rawMedia, key)) errors.push("media." + key + " is required");
+      });
+      if (rawMedia && RIGHTS_BASES.indexOf(rawMedia.rightsBasis) < 0) errors.push("media.rightsBasis is invalid");
+      if (rawMedia && RIGHTS_STATUSES.indexOf(rawMedia.rightsStatus) < 0) errors.push("media.rightsStatus is invalid");
+      if (rawMedia && CAPTURE_METHODS.indexOf(rawMedia.captureMethod) < 0) errors.push("media.captureMethod is invalid");
+      if (rawMedia && typeof rawMedia.mediaIncluded !== "boolean") errors.push("media.mediaIncluded must be boolean");
+      if (!record.media.owner) errors.push("media.owner is required");
+      if (record.media.recordedAt && !isIsoDateOrTime(record.media.recordedAt)) errors.push("media.recordedAt must be an ISO date or UTC timestamp");
+      if (record.media.licenseUrl && !isWebUrl(record.media.licenseUrl)) errors.push("media.licenseUrl must be an https URL");
+      if (!has(input, "contributor") || !record.contributor) errors.push("contributor is required");
+      ["status", "evidenceReference"].forEach(function (key) { if (!has(rawConsent, key)) errors.push("consent." + key + " is required"); });
+      if (rawConsent && CONSENT_STATUSES.indexOf(rawConsent.status) < 0) errors.push("consent.status is invalid");
+      if (!has(input, "annotationLicense") || !record.annotationLicense) errors.push("annotationLicense is required");
+      if (!has(input, "intendedShareability") || SHAREABILITY.indexOf(input.intendedShareability) < 0) errors.push("intendedShareability is invalid");
+      ["strategy", "unitKey", "assignment"].forEach(function (key) { if (!has(rawSplit, key)) errors.push("split." + key + " is required"); });
+      if (!record.split.unitKey) errors.push("split.unitKey is required");
+      if (rawSplit && rawSplit.strategy !== SPLIT_STRATEGY) errors.push("split strategy is invalid");
+      if (rawSplit && rawSplit.assignment !== splitForMatch(record.split.unitKey)) errors.push("split assignment is not deterministic");
+      if (SPLITS.indexOf(record.split.assignment) < 0) errors.push("split assignment is required");
+      if (!has(input, "createdAt") || !isIsoDateOrTime(input.createdAt)) errors.push("createdAt must be an ISO UTC timestamp");
+      if (!has(input, "updatedAt") || !isIsoDateOrTime(input.updatedAt)) errors.push("updatedAt must be an ISO UTC timestamp");
+      if (record.media.rightsStatus === "cleared") {
+        if (["owner-recorded", "explicit-license", "contributor-grant"].indexOf(record.media.rightsBasis) < 0) errors.push("cleared media needs an affirmative rights basis");
+        if (record.media.captureMethod === "self-recorded" && !record.media.recordedAt) errors.push("self-recorded media needs recordedAt");
+        if (record.media.rightsBasis === "explicit-license" && (!record.media.license || !record.media.licenseUrl)) errors.push("explicit-license media needs license and licenseUrl");
+        if (record.media.rightsBasis === "contributor-grant" && !record.media.license) errors.push("contributor-grant media needs a recorded license or release reference");
+      }
+      if (record.consent.status === "obtained" && !record.consent.evidenceReference) errors.push("obtained consent needs an evidence reference");
+      if (record.consent.status === "not-required" && record.media.captureMethod !== "synthetic") errors.push("consent may be not-required only for synthetic media");
+      return { valid: errors.length === 0, errors: errors, record: record };
+    }
+
+    function sourceGate(input, options) {
+      var validated = validateSourceRecord(input, options);
+      var record = validated.record;
+      var reasons = validated.errors.slice();
+      if (record.media.rightsStatus !== "cleared") reasons.push("media rights are not cleared");
+      if (!record.media.mediaIncluded) reasons.push("media is not included");
+      if (record.intendedShareability !== "shareable") reasons.push("source is not intended to be shareable");
+      if (["obtained", "not-required"].indexOf(record.consent.status) < 0) reasons.push("identifiable-player consent is not resolved");
+      if (record.media.captureMethod !== "synthetic" && record.consent.status !== "obtained") reasons.push("non-synthetic media needs obtained consent");
+      if (!record.annotationLicense) reasons.push("annotation license is missing");
+      if (record.media.rightsBasis === "explicit-license" && TRAINING_COMPATIBLE_MEDIA_LICENSES.indexOf(record.media.license) < 0) reasons.push("media license is not recorded as training-compatible");
+      if (record.media.rightsBasis === "public-url-reference" || record.media.captureMethod === "public-url-reference") reasons.push("public URL references are evaluation-only");
+      reasons = reasons.filter(function (reason, index) { return reasons.indexOf(reason) === index; });
+      return {
+        shareable: reasons.length === 0,
+        trainingSourceEligible: reasons.length === 0,
+        trainingAuthorized: false,
+        reasons: reasons,
+        record: record
+      };
+    }
+
+    function createLabelPackage(source, labels, options) {
+      options = options || {};
+      var normalized = normalizeSourceRecord(source, { videoKey: source && source.videoKey, now: source && source.createdAt || options.now });
+      return {
+        schema: PACKAGE_SCHEMA,
+        exportedAt: nowIso(options),
+        source: normalized,
+        labels: Array.isArray(labels) ? clone(labels) : []
+      };
+    }
+
+    function parseLabelPackage(value, options) {
+      options = options || {};
+      var document = value;
+      if (typeof value === "string") {
+        try { document = JSON.parse(value); } catch (_) { return { ok: false, error: "Dataset JSON is not valid JSON." }; }
+      }
+      if (!document || typeof document !== "object" || Array.isArray(document) || document.schema !== PACKAGE_SCHEMA) {
+        return { ok: false, error: "Unrecognized dataset JSON schema." };
+      }
+      if (!Array.isArray(document.labels)) return { ok: false, error: "Dataset JSON labels must be an array." };
+      var validated = validateSourceRecord(document.source, { videoKey: options.videoKey });
+      if (!validated.valid) return { ok: false, error: "Invalid source record: " + validated.errors.join("; "), errors: validated.errors };
+      return { ok: true, source: validated.record, labels: clone(document.labels), exportedAt: text(document.exportedAt) || null };
+    }
+
+    root.BVProvenance = Object.freeze({
+      SOURCE_SCHEMA: SOURCE_SCHEMA,
+      PACKAGE_SCHEMA: PACKAGE_SCHEMA,
+      SPLIT_STRATEGY: SPLIT_STRATEGY,
+      RIGHTS_BASES: RIGHTS_BASES.slice(),
+      RIGHTS_STATUSES: RIGHTS_STATUSES.slice(),
+      CAPTURE_METHODS: CAPTURE_METHODS.slice(),
+      CONSENT_STATUSES: CONSENT_STATUSES.slice(),
+      SHAREABILITY: SHAREABILITY.slice(),
+      ANNOTATION_LICENSES: ANNOTATION_LICENSES.slice(),
+      splitForMatch: splitForMatch,
+      normalizeSourceRecord: normalizeSourceRecord,
+      validateSourceRecord: validateSourceRecord,
+      sourceGate: sourceGate,
+      createLabelPackage: createLabelPackage,
+      parseLabelPackage: parseLabelPackage
+    });
+  })(typeof globalThis !== "undefined" ? globalThis : window);
+
 /* src/rally-labeler.js */
   /*
    * Pure developer rally-review model. The content widget consumes this module,
@@ -7467,6 +7691,9 @@
       labelUndoByVideo: {},
       manualLabelsVersion: LABEL_STORE_VERSION,
       lastEdit: null,
+      // Rights/provenance records are canonical per-video records. They stay
+      // separate from labels so CSV import cannot imply or upgrade clearance.
+      sourceProvenanceByVideo: {},
       // Developer-only rally-boundary reviews are separate from shot labels.
       // Each canonical JSON document is owned by its stable video key.
       rallyReviewsByVideo: {},
@@ -7761,6 +7988,24 @@
 
     function copyRecords(records) {
       return Array.isArray(records) ? records.map(clone) : [];
+    }
+
+    function copySourceProvenanceMap(raw, options) {
+      var result = {};
+      if (!raw || typeof raw !== "object") return result;
+      Object.keys(raw).forEach(function (key) {
+        if (!raw[key] || typeof raw[key] !== "object" || Array.isArray(raw[key])) return;
+        result[String(key)] = root.BVProvenance
+          ? root.BVProvenance.normalizeSourceRecord(raw[key], { videoKey: String(key), now: raw[key].createdAt || options && options.now })
+          : clone(raw[key]);
+      });
+      return result;
+    }
+
+    function sourceProvenanceForVideo(stateOrMap, videoKey) {
+      var map = stateOrMap && stateOrMap.sourceProvenanceByVideo ? stateOrMap.sourceProvenanceByVideo : stateOrMap;
+      if (!map || videoKey == null || !map[String(videoKey)]) return null;
+      return clone(map[String(videoKey)]);
     }
 
     function copyRallyReviewMap(raw) {
@@ -8084,6 +8329,7 @@
       var value = Object.assign({}, defaults, raw);
       value.panels = Object.assign({}, defaults.panels, copyPanelVisibility(raw.panels));
       value.settings = Object.assign({}, defaults.settings, copySettings(raw.settings));
+      value.sourceProvenanceByVideo = copySourceProvenanceMap(raw.sourceProvenanceByVideo, options);
       value.rallyReviewsByVideo = copyRallyReviewMap(raw.rallyReviewsByVideo);
       value.panelOverrides = copyPanelOverrides(raw.panelOverrides);
       value.panelsByVideo = copyPanelVisibilityMap(raw.panelsByVideo);
@@ -8301,6 +8547,15 @@
           }
           return current;
         }
+        case "SET_SOURCE_PROVENANCE": {
+          var sourceKey = action.videoKey != null ? String(action.videoKey) : current.videoKey;
+          if (!sourceKey || !root.BVProvenance) return current;
+          var sources = copySourceProvenanceMap(current.sourceProvenanceByVideo);
+          if (action.record && typeof action.record === "object") {
+            sources[sourceKey] = root.BVProvenance.normalizeSourceRecord(action.record, { videoKey: sourceKey, now: action.record.createdAt });
+          } else delete sources[sourceKey];
+          return initialExtensionState(Object.assign({}, current, { sourceProvenanceByVideo: sources }));
+        }
         case "SET_RALLY_REVIEW": {
           var rallyKey = action.videoKey != null ? String(action.videoKey) : current.videoKey;
           if (!rallyKey) return current;
@@ -8398,6 +8653,7 @@
       normalizeLabelStore: function (input, videoKey, options) { return stateForVideo(input, videoKey, options); },
       stateForVideo: stateForVideo,
       labelsForVideo: labelsForVideo,
+      sourceProvenanceForVideo: sourceProvenanceForVideo,
       rallyReviewForVideo: rallyReviewForVideo,
       PANEL_LAYOUT_KEYS: PANEL_LAYOUT_KEYS.slice(),
       PANEL_COLLAPSE_KEYS: PANEL_COLLAPSE_KEYS.slice(),
@@ -8929,6 +9185,7 @@
     // Keep direct-source recovery/tests tolerant of an older partial bundle.
     var panelLayoutApi = window.BVPanelLayout || null;
     var rallyApi = window.BVRallyLabeler || null;
+    var provenanceApi = window.BVProvenance || null;
     var state = window.BVState.initialExtensionState();
     // Popup actions can arrive while the initial storage read is still pending.
     // Hold them until the stored video-local state is applied so hydration cannot
@@ -8946,6 +9203,7 @@
     var draft = newDraft();
     var importResult = null;
     var csvInput = null;
+    var datasetInput = null;
     // The boundary editor is an opt-in developer tool. Its canonical document
     // is persisted by video key; transient selection/zoom/gesture state is not.
     var rallyDocument = null;
@@ -12109,6 +12367,102 @@
       if (hasChrome() && chrome.runtime) send({ type: "OPEN_SUMMARY" });
       else if (window.open) window.open("summary.html?from=" + encodeURIComponent(window.location.href), "_blank");
     }
+    function sourceProvenanceRecord() {
+      if (!provenanceApi) return null;
+      var key = activeVideoKey || state.videoKey || currentVideoKey();
+      return window.BVState.sourceProvenanceForVideo(state, key) || provenanceApi.normalizeSourceRecord({}, { videoKey: key });
+    }
+    function updateSourceProvenance(path, value) {
+      if (!provenanceApi) return;
+      var key = activeVideoKey || state.videoKey || currentVideoKey();
+      var record = sourceProvenanceRecord();
+      var target = record;
+      for (var index = 0; index < path.length - 1; index += 1) target = target[path[index]];
+      target[path[path.length - 1]] = value;
+      record.updatedAt = new Date().toISOString();
+      state = window.BVState.reduceExtensionState(state, { type: "SET_SOURCE_PROVENANCE", videoKey: key, record: record });
+      persist();
+      render();
+    }
+    function exportDatasetJson() {
+      if (!provenanceApi) return;
+      var source = sourceProvenanceRecord();
+      var validated = provenanceApi.validateSourceRecord(source, { videoKey: activeVideoKey || state.videoKey || currentVideoKey() });
+      if (!validated.valid) {
+        setImportResult({ error: "Complete the source record before dataset export: " + validated.errors.join("; ") });
+        return;
+      }
+      var packageDocument = provenanceApi.createLabelPackage(validated.record, state.manualLabels || []);
+      var jsonText = JSON.stringify(packageDocument, null, 2) + "\n";
+      if (singleton) singleton.lastExportDatasetJson = jsonText;
+      var link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([jsonText], { type: "application/json" }));
+      link.download = "badminton-vision-label-package.json";
+      link.click();
+      setTimeout(function () { URL.revokeObjectURL(link.href); }, 0);
+    }
+    function importDatasetJsonText(text) {
+      if (!provenanceApi || !window.BVReview || !window.BVState) return;
+      var key = activeVideoKey || state.videoKey || currentVideoKey();
+      var parsed = provenanceApi.parseLabelPackage(String(text || ""), { videoKey: key });
+      if (!parsed.ok) { setImportResult({ error: parsed.error }); return; }
+      var existing = (state.manualLabels || []).slice();
+      var merged = existing.slice();
+      var imported = 0;
+      var skipped = 0;
+      for (var index = 0; index < parsed.labels.length; index += 1) {
+        var raw = parsed.labels[index];
+        var source = raw && String(raw.source || raw.provenance || "manual").toLowerCase().replace(/[ _]+/g, "-");
+        if (!raw || typeof raw !== "object" || ["manual", "manual-edit", "manual-correction"].indexOf(source) < 0) {
+          setImportResult({ error: "Dataset JSON contains a non-manual or invalid label; nothing was imported." });
+          return;
+        }
+        var normalized = window.BVReview.normalizeManualLabel(raw, { now: new Date().toISOString() });
+        if (!normalized || !normalized.eventId || !normalized.shot) {
+          setImportResult({ error: "Dataset JSON contains an invalid label; nothing was imported." });
+          return;
+        }
+        if (merged.some(function (record) { return record && String(record.eventId) === String(normalized.eventId); })) skipped += 1;
+        else { merged = window.BVReview.upsert(merged, normalized); imported += 1; }
+      }
+      // Apply source and labels only after the complete package passes. In
+      // particular, an uncleared imported record remains uncleared verbatim.
+      state = window.BVState.reduceExtensionState(state, { type: "SET_SOURCE_PROVENANCE", videoKey: key, record: parsed.source });
+      if (imported) state = window.BVState.reduceExtensionState(state, { type: "SET_REVIEW_LABELS", videoKey: key, labels: merged });
+      strokes = reviewStrokes();
+      persist();
+      send({ type: "IMPORT_LABEL_PACKAGE", count: imported });
+      setImportResult({ imported: imported, skipped: skipped, total: parsed.labels.length, package: true });
+    }
+    function readDatasetFile(file) {
+      function handle(text) { importDatasetJsonText(String(text || "")); }
+      if (file && typeof file.text === "function") {
+        var reading = file.text();
+        if (reading && typeof reading.then === "function") reading.then(handle, function () { setImportResult({ error: "Could not read the selected dataset JSON file." }); });
+        else handle(reading);
+      } else if (file && typeof FileReader !== "undefined") {
+        var reader = new FileReader();
+        reader.onload = function () { handle(reader.result); };
+        reader.onerror = function () { setImportResult({ error: "Could not read the selected dataset JSON file." }); };
+        reader.readAsText(file);
+      } else setImportResult({ error: "This browser cannot read the selected dataset JSON file." });
+    }
+    function importDatasetJson() {
+      if (!datasetInput) {
+        datasetInput = document.createElement("input");
+        datasetInput.type = "file";
+        datasetInput.accept = ".json,application/json";
+        datasetInput.setAttribute("data-bso-import-dataset-input", "true");
+        datasetInput.style.display = "none";
+        (document.body || document.documentElement || document).appendChild(datasetInput);
+        datasetInput.addEventListener("change", function () {
+          var file = datasetInput.files && datasetInput.files[0];
+          datasetInput.value = "";
+          if (file) readDatasetFile(file);
+        });
+      }
+      datasetInput.click();
+    }
     function exportCsv() {
       var videoUrl = window.location && /^https?:/.test(window.location.href) ? window.location.href : data.video.url;
       var rows = strokes.map(function (stroke, index) {
@@ -12217,6 +12571,48 @@
       refreshLabelingClock();
       return true;
     }
+    function provenanceInput(label, value, attributes, onChange) {
+      var input = ui.el("input", Object.assign({ type: "text", value: value || "", onChange: function (event) { onChange(event.target.value); } }, attributes || {}));
+      input.value = value || "";
+      return ui.el("label", { className: "bv-provenance-field" }, [ui.el("span", {}, [label]), input]);
+    }
+    function provenanceSelect(label, value, values, attribute, onChange) {
+      var select = ui.el("select", { onChange: function (event) { onChange(event.target.value); } }, values.map(function (entry) {
+        return ui.el("option", { value: entry.value, selected: entry.value === value }, [entry.label]);
+      }));
+      select.value = value;
+      if (attribute) select.setAttribute(attribute, "true");
+      return ui.el("label", { className: "bv-provenance-field" }, [ui.el("span", {}, [label]), select]);
+    }
+    function sourceProvenanceSection() {
+      if (!provenanceApi) return null;
+      var record = sourceProvenanceRecord();
+      var gate = provenanceApi.sourceGate(record, { videoKey: activeVideoKey || state.videoKey || currentVideoKey() });
+      var option = function (value) { return { value: value, label: value || "not set" }; };
+      var fields = ui.el("div", { className: "bv-provenance-grid" }, [
+        provenanceInput("Media owner", record.media.owner, { "data-bso-source-owner": "true", placeholder: "Person or organization" }, function (value) { updateSourceProvenance(["media", "owner"], value); }),
+        provenanceSelect("Rights basis", record.media.rightsBasis, provenanceApi.RIGHTS_BASES.map(option), "data-bso-source-rights-basis", function (value) { updateSourceProvenance(["media", "rightsBasis"], value); }),
+        provenanceSelect("Rights status", record.media.rightsStatus, provenanceApi.RIGHTS_STATUSES.map(option), "data-bso-source-rights-status", function (value) { updateSourceProvenance(["media", "rightsStatus"], value); }),
+        provenanceSelect("Capture method", record.media.captureMethod, provenanceApi.CAPTURE_METHODS.map(option), "data-bso-source-capture-method", function (value) { updateSourceProvenance(["media", "captureMethod"], value); }),
+        provenanceInput("Captured / recorded at", record.media.recordedAt, { "data-bso-source-recorded-at": "true", placeholder: "YYYY-MM-DD or UTC timestamp" }, function (value) { updateSourceProvenance(["media", "recordedAt"], value || null); }),
+        provenanceInput("Contributor", record.contributor, { "data-bso-source-contributor": "true", placeholder: "Name or contributor ID" }, function (value) { updateSourceProvenance(["contributor"], value); }),
+        provenanceSelect("Consent status", record.consent.status, provenanceApi.CONSENT_STATUSES.map(option), "data-bso-source-consent-status", function (value) { updateSourceProvenance(["consent", "status"], value); }),
+        provenanceInput("Consent evidence reference", record.consent.evidenceReference, { "data-bso-source-consent-evidence": "true", placeholder: "Release ID or private record reference" }, function (value) { updateSourceProvenance(["consent", "evidenceReference"], value || null); }),
+        provenanceSelect("Annotation license", record.annotationLicense, provenanceApi.ANNOTATION_LICENSES.map(option), "data-bso-source-annotation-license", function (value) { updateSourceProvenance(["annotationLicense"], value); }),
+        provenanceSelect("Intended shareability", record.intendedShareability, provenanceApi.SHAREABILITY.map(option), "data-bso-source-shareability", function (value) { updateSourceProvenance(["intendedShareability"], value); }),
+        provenanceInput("Media license", record.media.license, { "data-bso-source-license": "true", placeholder: "e.g. CC-BY-4.0 or release ID" }, function (value) { updateSourceProvenance(["media", "license"], value || null); }),
+        provenanceInput("Media license URL", record.media.licenseUrl, { type: "url", "data-bso-source-license-url": "true", placeholder: "https://…" }, function (value) { updateSourceProvenance(["media", "licenseUrl"], value || null); }),
+        provenanceInput("Match / split key", record.split.unitKey, { "data-bso-source-split-key": "true" }, function (value) { updateSourceProvenance(["split", "unitKey"], value); }),
+        ui.el("label", { className: "bv-provenance-field checkbox" }, [ui.el("span", {}, ["Media included in package"]), ui.el("input", { type: "checkbox", checked: record.media.mediaIncluded, "data-bso-source-media-included": "true", onChange: function (event) { updateSourceProvenance(["media", "mediaIncluded"], Boolean(event.target.checked)); } })])
+      ]);
+      return ui.el("details", { className: "bv-provenance", open: true, "data-bso-source-provenance": "true" }, [
+        ui.el("summary", {}, ["Source rights & provenance"]),
+        ui.el("p", { className: "bv-helper" }, ["Record facts only. A public URL is not a rights grant. Consent evidence should be a release ID or private reference, not the private release itself."]),
+        fields,
+        ui.el("p", { className: "bv-helper", "data-bso-source-split": record.split.assignment || "" }, ["Deterministic match split: ", ui.badge(record.split.assignment || "unassigned", record.split.assignment ? "info" : "warn"), " · ", record.split.strategy]),
+        ui.el("p", { className: "bv-helper", role: "status", "data-bso-source-gate": gate.shareable ? "shareable" : "blocked" }, [gate.shareable ? ui.badge("shareable source", "in") : ui.badge("not shareable", "warn"), " ", gate.shareable ? "Rights, consent, and licenses pass the source gate. Training is still not authorized." : gate.reasons.join("; ")])
+      ]);
+    }
     function manualPanel() {
       // Offline mode has no suggestion source. Fixture suggestions only enter
       // the correction path when the live overlay is explicitly enabled.
@@ -12226,7 +12622,7 @@
       var canDelete = Boolean(editingEventId && labelForEvent(editingEventId));
       var saveButton = ui.button(saveActionLabel, { variant: "primary", size: "sm", disabled: !saveLabel, onClick: saveDraft });
       saveButton.setAttribute("data-bso-label-save", "true");
-      var panel = ui.panel("Manual labeling", { layoutId: "manual", icon: "pencil", mediaTime: state.time, className: "bv-label-panel bv-overlay-label", bodyStyle: { flex: "1" }, collapsed: panelCollapsed("manual"), onToggleCollapse: function (value) { togglePanelCollapsed("manual", value); }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), ui.button("Import CSV", { variant: "ghost", size: "sm", icon: "upload", onClick: importCsv }), state.lastEdit ? ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit }) : null, canDelete ? ui.button("Delete label", { variant: "danger", size: "sm", onClick: deleteExistingLabel }) : null, ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Close", { variant: "ghost", size: "sm", onClick: closeLabeling }), saveButton])]) }, []);
+      var panel = ui.panel("Manual labeling", { layoutId: "manual", icon: "pencil", mediaTime: state.time, className: "bv-label-panel bv-overlay-label", bodyStyle: { flex: "1" }, collapsed: panelCollapsed("manual"), onToggleCollapse: function (value) { togglePanelCollapsed("manual", value); }, actions: [ui.kbd("Esc"), ui.iconButton("x", "Close manual labeling", { size: "sm", onClick: closeLabeling })], footer: ui.el("div", { style: { display: "flex", alignItems: "center", gap: "var(--sp-4)", flexWrap: "wrap" } }, [ui.button("Export CSV", { variant: "ghost", size: "sm", icon: "download", onClick: exportCsv }), ui.button("Import CSV", { variant: "ghost", size: "sm", icon: "upload", onClick: importCsv }), ui.button("Export JSON", { variant: "ghost", size: "sm", icon: "download", onClick: exportDatasetJson }), ui.button("Import JSON", { variant: "ghost", size: "sm", icon: "upload", onClick: importDatasetJson }), state.lastEdit ? ui.button("Undo", { variant: "ghost", size: "sm", onClick: undoLastEdit }) : null, canDelete ? ui.button("Delete label", { variant: "danger", size: "sm", onClick: deleteExistingLabel }) : null, ui.el("span", { style: { marginLeft: "auto", display: "flex", gap: "var(--sp-3)" } }, [ui.button("Close", { variant: "ghost", size: "sm", onClick: closeLabeling }), saveButton])]) }, []);
       panel.tabIndex = 0;
       panel.setAttribute("data-bso-label-mode", editingEventId ? "edit" : "create");
       panel.setAttribute("data-bso-draft-state", saveLabel ? "dirty" : "ready");
@@ -12236,6 +12632,7 @@
       // the panel is expanded again, so nothing is lost by skipping the body.
       if (body) {
         body.appendChild(ui.callout("guide", "Manual / offline mode", "Playback is read-only. No court seed, inference model, or production CV evidence is required."));
+        body.appendChild(sourceProvenanceSection());
         body.appendChild(ui.el("div", { className: "bv-segment-window" }, [ui.el("span", { className: "bv-mono", "data-bso-label-window": "true" }, [(draft.start || "current timestamp") + " → " + (draft.end || "—")]), ui.el("span", { className: "bv-segment-controls" }, [ui.button("Start", { variant: "ghost", size: "sm", disabled: currentMediaTimestamp() == null, onClick: function () { if (currentMediaTimestamp() != null) draft.start = formatMediaTime(currentMediaTimestamp()); syncManualDraft(); } }), ui.button("End", { variant: "ghost", size: "sm", disabled: currentMediaTimestamp() == null, onClick: function () { if (currentMediaTimestamp() != null) draft.end = formatMediaTime(currentMediaTimestamp()); syncManualDraft(); } })]) ]));
         if (activeSuggestion) body.appendChild(ui.el("div", { className: "bv-manual-suggestion" }, [ui.badge("auto suggestion", "warn"), ui.el("span", { className: "bv-feed-shot" + (draft.shot ? " replaced" : "") }, [activeSuggestion.shot]), ui.confidence(activeSuggestion.confidence, { showWord: true }), ui.el("span", { style: { marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: "var(--sp-2)", font: "var(--type-ui-sm)", color: "var(--text-faint)" } }, ["accept", ui.kbd("↵", true)])]));
         body.appendChild(ui.el("span", { className: "bv-field-label" }, ["Shot family"]));
@@ -12250,7 +12647,7 @@
         if (importResult) {
           var resultText = importResult.error
             ? "Import failed: " + importResult.error
-            : "Imported " + importResult.imported + " label" + (importResult.imported === 1 ? "" : "s") + (importResult.skipped ? " · skipped " + importResult.skipped + " duplicate" + (importResult.skipped === 1 ? "" : "s") : "") + ".";
+            : "Imported " + importResult.imported + " label" + (importResult.imported === 1 ? "" : "s") + (importResult.skipped ? " · skipped " + importResult.skipped + " duplicate" + (importResult.skipped === 1 ? "" : "s") : "") + (importResult.package ? " with source provenance" : "") + ".";
           body.appendChild(ui.el("p", { className: "bv-helper bv-import-result" + (importResult.error ? " error" : ""), role: "status", "data-bso-import-result": "true" }, [importResult.error ? ui.badge("failed", "warn") : ui.badge("ok", "in"), " " + resultText]));
         }
         if (state.manualLabels && state.manualLabels.length) {

@@ -15,3 +15,11 @@ The first interaction could succeed when it happened between UI updates. The cap
 While Manual labeling is open, media/runtime updates patch the panel clock in place. Form controls update the current draft and their ARIA state in place, without retaining a panel or control reference. A completed new save persists the normalized record under `manualLabelsByVideo`, clears edit mode, resets a ready-for-next-label draft, and keeps the panel open. The explicit close actions are the normal close path. Existing-label edit, delete, undo, and CSV export retain their prior event-id/provenance and deterministic behavior.
 
 The focused regression path is in `tests/live-onboarding.test.mjs` (`manual labeling survives three sequential saves, rerenders, reload, and CRUD`). It creates three sequential labels, injects the update that previously masked the third interaction, exercises every third-label control, verifies the open/reset state and video-local reload, then verifies edit/delete/undo/export and unchanged playback fields.
+
+## Source rights and provenance
+
+Each video may have one canonical `bv-source-provenance/v1` record in `bvState.sourceProvenanceByVideo[videoKey]`. **Source rights & provenance** in the manual panel edits and reviews that record without touching playback. `src/provenance.js` normalizes and validates the record, assigns the whole match to a deterministic split from its stable match key, and exposes a conservative source gate. A public-URL reference is always normalized to `not-cleared`, `mediaIncluded: false`, and `reference-only`; no import can upgrade it.
+
+**Export JSON** writes `bv-manual-label-package/v1`, containing the active video's manual labels and source record. **Import JSON** validates the complete source before applying either source or labels and rejects non-manual labels. Uncleared status survives round-trip unchanged. CSV export/import remains available and labels-only for compatibility; CSV never creates, changes, or clears source rights.
+
+The machine-readable schema is `corpus/source-provenance.schema.json`. Capture procedure, private consent-evidence handling, and the reusable release are in `docs/capture-and-consent.md` and `docs/player-consent-template.md`. Source-gate eligibility is not training authorization.

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://badminton-vision.invalid/schemas/dataset-card.v1.json",
+  "title": "Badminton Vision dataset card",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "name", "version", "status", "mediaRights", "annotationRights", "consent", "splits", "intendedUses", "prohibitedUses", "trainingAuthorized", "sources", "maintenance"],
+  "properties": {
+    "schema": { "const": "bv-dataset-card/v1" },
+    "name": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["template", "private-pilot", "release-candidate", "released"] },
+    "mediaRights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowedRightsBases", "mediaIncludedOnlyWhenCleared", "publicUrlReferencesEvaluationOnly"],
+      "properties": {
+        "allowedRightsBases": { "type": "array", "items": { "enum": ["owner-recorded", "explicit-license", "contributor-grant"] }, "uniqueItems": true },
+        "mediaIncludedOnlyWhenCleared": { "const": true },
+        "publicUrlReferencesEvaluationOnly": { "const": true }
+      }
+    },
+    "annotationRights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["license"],
+      "properties": { "license": { "enum": ["CC-BY-4.0", "CC-BY-SA-4.0", "CC0-1.0"] } }
+    },
+    "consent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identifiablePlayersRequireEvidence", "evidenceStorage"],
+      "properties": {
+        "identifiablePlayersRequireEvidence": { "const": true },
+        "evidenceStorage": { "type": "string", "minLength": 1 }
+      }
+    },
+    "splits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "strategy", "assignments"],
+      "properties": {
+        "unit": { "const": "match" },
+        "strategy": { "const": "fnv1a-match-key-v1" },
+        "assignments": { "type": "array", "items": { "enum": ["train", "validation", "test"] }, "minItems": 3, "maxItems": 3, "uniqueItems": true }
+      }
+    },
+    "intendedUses": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+    "prohibitedUses": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+    "trainingAuthorized": { "const": false },
+    "sources": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "maintenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contact", "reviewBeforeRelease"],
+      "properties": {
+        "contact": { "type": "string" },
+        "reviewBeforeRelease": { "const": true }
+      }
+    }
+  }
+}

@@ -20,6 +20,7 @@ const contentBundleSources = [
   "src/seed-card.js",
   "src/fixtures.js",
   "src/review.js",
+  "src/provenance.js",
   "src/rally-labeler.js",
   "src/state.js",
   "src/ui.js",
@@ -235,7 +236,7 @@ async function createSession({ bundle = false, storedState = { videoKey: "youtub
   context.removeEventListener = (name, listener) => { windowListeners[name] = (windowListeners[name] || []).filter((item) => item !== listener); };
   const files = bundle
     ? []
-    : ["src/rally-labeler.js", "src/state.js", "analysis/index.js", "src/calibration.js", "src/panel-layout.js", "src/seed-card.js", "src/fixtures.js", "src/review.js", "src/analysis.js", "src/ui.js", "src/hough-guidance.js", "src/content.js"];
+    : ["src/rally-labeler.js", "src/state.js", "analysis/index.js", "src/calibration.js", "src/panel-layout.js", "src/seed-card.js", "src/fixtures.js", "src/review.js", "src/provenance.js", "src/analysis.js", "src/ui.js", "src/hough-guidance.js", "src/content.js"];
   if (!bundle) {
     context.BVRuntime = {
       startIntegratedRuntime: (options = {}) => {
@@ -1341,6 +1342,136 @@ test("CSV import restores exported labels with an identical round trip and de-du
   root = restored.overlayRoot();
   assert.match(textOf(root), /Import failed/);
   assert.equal(restored.storageWrites.at(-1).bvState.manualLabelsByVideo["youtube:real-match"].length, 2, "a rejected import leaves the store untouched");
+});
+
+function storedSourceRecord(videoKey = "youtube:real-match") {
+  return {
+    schema: "bv-source-provenance/v1",
+    videoKey,
+    media: {
+      owner: "Captain",
+      rightsBasis: "owner-recorded",
+      rightsStatus: "cleared",
+      license: null,
+      licenseUrl: null,
+      mediaIncluded: true,
+      captureMethod: "self-recorded",
+      recordedAt: "2026-10-03"
+    },
+    contributor: "Captain",
+    consent: { status: "obtained", evidenceReference: "release-123" },
+    annotationLicense: "CC-BY-4.0",
+    intendedShareability: "shareable",
+    split: { strategy: "fnv1a-match-key-v1", unitKey: videoKey, assignment: "train" },
+    createdAt: "2026-10-03T00:00:00.000Z",
+    updatedAt: "2026-10-03T00:00:00.000Z"
+  };
+}
+
+function unclearedSourceRecord(videoKey = "youtube:real-match") {
+  return {
+    schema: "bv-source-provenance/v1",
+    videoKey,
+    media: {
+      owner: "BWF TV",
+      rightsBasis: "public-url-reference",
+      rightsStatus: "not-cleared",
+      license: null,
+      licenseUrl: null,
+      mediaIncluded: false,
+      captureMethod: "public-url-reference",
+      recordedAt: null
+    },
+    contributor: "reference-only",
+    consent: { status: "unknown", evidenceReference: null },
+    annotationLicense: "CC-BY-4.0",
+    intendedShareability: "reference-only",
+    split: { strategy: "fnv1a-match-key-v1", unitKey: videoKey, assignment: "train" },
+    createdAt: "2026-10-03T00:00:00.000Z",
+    updatedAt: "2026-10-03T00:00:00.000Z"
+  };
+}
+
+test("JSON dataset export/import carries source provenance alongside labels", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false, sourceProvenanceByVideo: { "youtube:real-match": storedSourceRecord() } } });
+  live.flushStorage();
+  live.onMessage({ type: "OPEN_LABELING", requestId: "json-export-open" });
+  let root = live.overlayRoot();
+
+  const splitNode = root.querySelector("[data-bso-source-split]");
+  assert.ok(splitNode, "the provenance section renders the deterministic split");
+  assert.match(textOf(splitNode), /Deterministic match split/);
+  assert.match(textOf(splitNode), /train/);
+  assert.equal(root.querySelector("[data-bso-source-gate]").getAttribute("data-bso-source-gate"), "shareable");
+
+  function setTime(seconds) { live.video.currentTime = seconds; live.video.dispatchEvent({ type: "timeupdate", target: live.video }); }
+  setTime(20);
+  buttonWithText(root, "Start").dispatchEvent({ type: "click" });
+  setTime(20.5);
+  buttonWithText(root, "End").dispatchEvent({ type: "click" });
+  root.querySelector('[data-bso-shot="Serve"]').dispatchEvent({ type: "click" });
+  root = live.overlayRoot();
+  root.querySelector("[data-bso-label-save]").dispatchEvent({ type: "click" });
+  root = live.overlayRoot();
+  assert.equal(root.querySelectorAll('[data-bso-label-source="manual"]').length, 1);
+
+  buttonWithText(root, "Export JSON").dispatchEvent({ type: "click" });
+  const exported = JSON.parse(live.context.__BV_CONTENT_SINGLETON_V1__.lastExportDatasetJson);
+  assert.equal(exported.schema, "bv-manual-label-package/v1");
+  assert.equal(exported.source.media.owner, "Captain");
+  assert.equal(exported.labels.length, 1);
+  assert.equal(exported.labels[0].shot, "Serve");
+
+  const restored = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  restored.flushStorage();
+  restored.onMessage({ type: "OPEN_LABELING", requestId: "json-import-open" });
+  root = restored.overlayRoot();
+  const importButton = buttonWithText(root, "Import JSON");
+  assert.ok(importButton, "Import JSON sits next to Export JSON in the manual panel");
+  importButton.dispatchEvent({ type: "click" });
+  const input = restored.documentRef.querySelector("[data-bso-import-dataset-input]");
+  assert.ok(input, "import opens a JSON file picker input");
+  input.files = [{ name: "badminton-vision-label-package.json", text: async () => JSON.stringify(exported) }];
+  input.dispatchEvent({ type: "change" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  root = restored.overlayRoot();
+  assert.match(textOf(root), /Imported 1 label.*with source provenance/);
+  const stored = restored.storageWrites.at(-1).bvState;
+  assert.equal(stored.sourceProvenanceByVideo["youtube:real-match"].media.owner, "Captain");
+  assert.equal(stored.manualLabelsByVideo["youtube:real-match"].length, 1);
+  assert.equal(stored.manualLabelsByVideo["youtube:real-match"][0].shot, "Serve");
+});
+
+test("an uncleared public URL source stays reference-only and never upgrades on import", async () => {
+  const live = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false, sourceProvenanceByVideo: { "youtube:real-match": unclearedSourceRecord() } } });
+  live.flushStorage();
+  live.onMessage({ type: "OPEN_LABELING", requestId: "uncleared-open" });
+  let root = live.overlayRoot();
+
+  assert.equal(root.querySelector("[data-bso-source-gate]").getAttribute("data-bso-source-gate"), "blocked");
+  assert.match(textOf(root.querySelector("[data-bso-source-gate]")), /public URL references are evaluation-only/);
+
+  buttonWithText(root, "Export JSON").dispatchEvent({ type: "click" });
+  const exported = JSON.parse(live.context.__BV_CONTENT_SINGLETON_V1__.lastExportDatasetJson);
+  assert.equal(exported.source.media.rightsStatus, "not-cleared");
+  assert.equal(exported.source.media.mediaIncluded, false);
+  assert.equal(exported.source.intendedShareability, "reference-only");
+
+  const restored = await createSession({ storedState: { videoKey: "youtube:real-match", enabled: true, seeded: false } });
+  restored.flushStorage();
+  restored.onMessage({ type: "OPEN_LABELING", requestId: "uncleared-import-open" });
+  root = restored.overlayRoot();
+  buttonWithText(root, "Import JSON").dispatchEvent({ type: "click" });
+  const input = restored.documentRef.querySelector("[data-bso-import-dataset-input]");
+  input.files = [{ name: "package.json", text: async () => JSON.stringify(exported) }];
+  input.dispatchEvent({ type: "change" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  root = restored.overlayRoot();
+  const stored = restored.storageWrites.at(-1).bvState.sourceProvenanceByVideo["youtube:real-match"];
+  assert.equal(stored.media.rightsStatus, "not-cleared", "import never upgrades an uncleared source");
+  assert.equal(stored.media.mediaIncluded, false);
+  assert.equal(stored.intendedShareability, "reference-only");
+  assert.equal(root.querySelector("[data-bso-source-gate]").getAttribute("data-bso-source-gate"), "blocked");
 });
 
 function evidenceResult({ mediaTime = 12, keypointOffset = 0, includeRacket = true, includeRacketHands = false, includeRacketDetections = false, includeBox = true, unknown = false } = {}) {

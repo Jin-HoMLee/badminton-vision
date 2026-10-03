@@ -1,0 +1,46 @@
+{
+  "schema": "bv-manual-label-package/v1",
+  "exportedAt": "2026-10-03T00:00:00.000Z",
+  "source": {
+    "schema": "bv-source-provenance/v1",
+    "videoKey": "synthetic:phase0-dry-run",
+    "media": {
+      "owner": "Badminton Vision project synthetic fixture",
+      "rightsBasis": "owner-recorded",
+      "rightsStatus": "cleared",
+      "license": null,
+      "licenseUrl": null,
+      "mediaIncluded": false,
+      "captureMethod": "synthetic",
+      "recordedAt": null
+    },
+    "contributor": "synthetic-test-fixture",
+    "consent": {
+      "status": "not-required",
+      "evidenceReference": null
+    },
+    "annotationLicense": "CC-BY-4.0",
+    "intendedShareability": "private",
+    "split": {
+      "strategy": "fnv1a-match-key-v1",
+      "unitKey": "synthetic:phase0-dry-run",
+      "assignment": "train"
+    },
+    "createdAt": "2026-10-03T00:00:00.000Z",
+    "updatedAt": "2026-10-03T00:00:00.000Z"
+  },
+  "labels": [
+    {
+      "eventId": "synthetic-label-1",
+      "shot": "Clear",
+      "startSec": 1,
+      "endSec": 1.4,
+      "time": "00:01.000",
+      "source": "manual",
+      "provenance": "manual",
+      "status": "accepted",
+      "createdAt": "2026-10-03T00:00:00.000Z",
+      "updatedAt": "2026-10-03T00:00:00.000Z"
+    }
+  ]
+}
