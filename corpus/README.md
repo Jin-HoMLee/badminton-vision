@@ -16,6 +16,20 @@ It comes from the Phase-0 court-view probe (E1/E2 entry gates). That
 investigation's report is not copied here; this directory is the durable
 substrate, and `SCHEMA.md` is the field-level contract.
 
+## Rights-cleared source records (separate from this evaluation manifest)
+
+Manual-label sources use the machine-readable `source-provenance.schema.json`
+and are persisted per video by the extension. Portable
+`bv-manual-label-package/v1` JSON carries that source record alongside manual
+labels; CSV remains labels-only and conveys no rights. `dataset-card.schema.json`
+and `dataset-card.template.json` make media rights, annotation rights, consent,
+match-level splits, intended uses, prohibited uses, and the no-training status
+explicit. See `docs/manual-labeling.md` and `docs/capture-and-consent.md`.
+
+These artifacts do **not** change this directory's broadcast boundary. BWF,
+broadcast, and other uncleared public-URL entries remain metadata-only,
+`mediaIncluded: false`, and evaluation/reference-only.
+
 ## Inventory
 
 Five canonical broadcasts, each with a 300 s window. `courtView` is the marked

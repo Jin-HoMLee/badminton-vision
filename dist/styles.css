@@ -369,6 +369,13 @@ button:focus-visible, [tabindex]:focus-visible { outline: none; box-shadow: var(
 .bv-manual-saved .bv-field-label { margin: var(--sp-2) var(--sp-2) var(--sp-3); }
 .bv-manual-saved .bv-feed { max-height: 160px; overflow-y: auto; }
 .bv-manual-suggestion .replaced { color: var(--text-faint); text-decoration: line-through; }
+.bv-provenance { margin: var(--sp-5) 0; padding: var(--sp-4); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); background: rgba(255,255,255,.02); }
+.bv-provenance summary { cursor: pointer; color: var(--text-primary); font: var(--type-ui-sm); }
+.bv-provenance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); margin-top: var(--sp-4); }
+.bv-provenance-field { display: flex; min-width: 0; flex-direction: column; gap: var(--sp-2); color: var(--text-faint); font: var(--type-label); }
+.bv-provenance-field input, .bv-provenance-field select { box-sizing: border-box; width: 100%; min-width: 0; padding: var(--sp-3); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--ink-700); color: var(--text-primary); font: var(--type-ui-sm); }
+.bv-provenance-field.checkbox { flex-direction: row; align-items: center; justify-content: space-between; }
+.bv-provenance-field.checkbox input { width: auto; }
 .bv-field-label { display: block; margin: var(--sp-6) 0 var(--sp-4); font: var(--type-label); letter-spacing: var(--ls-caps); text-transform: uppercase; color: var(--text-faint); }
 .bv-shot-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-3); }
 .bv-shot { position: relative; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-width: 0; height: var(--control-height-lg); padding: 0 var(--sp-4); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); background: var(--surface-raised); color: var(--text-body); text-align: left; font: var(--type-ui-sm); }

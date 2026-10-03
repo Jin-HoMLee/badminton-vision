@@ -7,6 +7,13 @@ are part of the corpus. The metadata is not a rights grant: the committed
 manifest records `rights.status: "not-cleared"`, with no license, permission,
 public-domain, or reuse-rights evidence.
 
+Rights-cleared manual-label sources use the separate machine-readable
+`source-provenance.schema.json` (`bv-source-provenance/v1`) and dataset releases
+use `dataset-card.schema.json` (`bv-dataset-card/v1`). They do not widen this
+evaluation schema or confer rights on its public URLs. The extension's portable
+`bv-manual-label-package/v1` JSON keeps one source record beside its manual
+labels; labels-only CSV never changes provenance.
+
 The Phase-0 court-view probe produced the inherited court-view, scene-change,
 and verification records. The timeline files also carry rally-active intervals
 that were independently adjudicated from direct playback by the captain,

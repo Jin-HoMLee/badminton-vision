@@ -29,6 +29,7 @@ const expectedFiles = [
   "panel-layout.js",
   "popup.html",
   "popup.js",
+  "provenance.js",
   "review.js",
   "rally-labeler.js",
   "runtime.js",
