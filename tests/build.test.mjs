@@ -124,13 +124,21 @@ function assertPngSize(buffer, expectedSize, file) {
   assert.equal(buffer.toString("ascii", 12, 16), "IHDR", `${file} starts with a valid IHDR chunk`);
   assert.equal(buffer.readUInt32BE(16), expectedSize, `${file} has the declared width`);
   assert.equal(buffer.readUInt32BE(20), expectedSize, `${file} has the declared height`);
+  assert.equal(buffer[25], 6, `${file} preserves an RGBA transparency channel`);
   assert.equal(buffer.toString("ascii", buffer.length - 8, buffer.length - 4), "IEND", `${file} has a PNG terminator`);
 }
 
 function assertValidSvg(source, file) {
   const xml = source.replace(/<!--[\s\S]*?-->/g, "");
   assert.doesNotMatch(xml, /<!DOCTYPE|<!ENTITY|<\?(?!xml\b)|<(?:script|foreignObject)\b/i, `${file} has safe SVG content`);
-  assert.doesNotMatch(xml, /\b(?:href|xlink:href)\s*=|\burl\s*\(/i, `${file} is self-contained`);
+  assert.doesNotMatch(xml, /\b(?:href|xlink:href)\s*=/i, `${file} has no linked assets`);
+  const urlReferences = [...xml.matchAll(/\burl\s*\(([^)]*)\)/gi)];
+  assert.equal(urlReferences.length, (xml.match(/\burl\s*\(/gi) || []).length, `${file} has parseable URL references`);
+  for (const match of urlReferences) {
+    const rawTarget = match[1].trim();
+    const quotedTarget = /^(["'])(.*)\1$/.exec(rawTarget);
+    assert.match(quotedTarget ? quotedTarget[2] : rawTarget, /^#[A-Za-z_][\w:.-]*$/, `${file} uses only local fragment references`);
+  }
 
   const stack = [];
   let cursor = 0;
@@ -180,7 +188,10 @@ test("production build contains only local runtime design-system assets", async 
     assertPngSize(await readFile(join(dist, file)), Number(size), file);
   }
   for (const file of ["icon-16.svg", "icon-32.svg", "icon.svg", "logo-mark.svg"]) {
-    assertValidSvg(await readFile(join(dist, "design-system/assets", file), "utf8"), `design-system/assets/${file}`);
+    const source = await readFile(join(dist, "design-system/assets", file), "utf8");
+    assertValidSvg(source, `design-system/assets/${file}`);
+    assert.match(source, /<mask\s+id="shuttle-cutouts"(?:\s|>)/, `${file} defines transparent shuttle detail cutouts`);
+    assert.match(source, /mask="url\(#shuttle-cutouts\)"/, `${file} applies the shuttle detail cutouts`);
   }
   assert.equal(manifest.web_accessible_resources.some((entry) => entry.resources.includes("design-system/tokens/*")), true);
   assert.deepEqual(manifest.content_scripts?.flatMap((entry) => entry.js || []), ["content.bundle.js"]);
