@@ -1,3 +1,43 @@
+# Badminton Vision
+
+**A local-first, confidence-aware badminton rally review overlay for YouTube.**
+
+## What it does
+
+Badminton Vision adds a lightweight analysis overlay on top of badminton videos you watch on YouTube. Everything runs in your browser: on-device body-pose and racket detection, a conservative shuttle-candidate tracker, optional four-corner court calibration, and a confidence-aware stroke feed with manual labeling and CSV export. There is no account, no upload, no remote inference, and no token meter — and the overlay never pauses, mutes, scrubs, resizes, or re-renders the video it sits beside.
+
+## Key features
+
+- **Runs entirely on-device** — no account, upload, cloud inference, or token meter.
+- **Non-intrusive overlay** — sits beside the YouTube player and never touches playback.
+- **Local detection** — bundled body-pose (LiteOpenPose) and racket (EfficientDet-Lite0) models, WebGPU-first with a WASM fallback, plus a conservative shuttle-candidate tracker.
+- **Optional court calibration** — click four outer corners to project the official court geometry for a minimap and confidence-flagged line-call check.
+- **Manual labeling + CSV export** — keyboard-first shot labels with shortcuts, always available.
+- **Confidence-aware results** — suggestions carry their confidence and stay visibly unknown rather than guessed.
+
+## Quick start
+
+Prerequisites: **Node.js ≥ 20** and **Chrome ≥ 148**.
+
+```sh
+npm run build
+```
+
+Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select the `dist/` directory. Open any badminton match on `youtube.com/watch` and click the Badminton Vision toolbar badge.
+
+Rebuild, test, or package:
+
+```sh
+npm run build    # rebuild dist/
+npm test         # unit + integration tests
+npm run check    # build + tests
+npm run pack     # build dist/ and write the release .zip
+```
+
+Implementation and runtime details live in [`docs/runtime.md`](docs/runtime.md) and [`docs/shuttle-tracking.md`](docs/shuttle-tracking.md); the release-package boundary and packed offline acceptance procedure are in [`docs/e2e-smoke.md`](docs/e2e-smoke.md).
+
+---
+
 # Badminton Stats Overlay — MVP PRD
 
 **Status:** concept/UX PRD after Lavish wireframe review
