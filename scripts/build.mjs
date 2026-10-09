@@ -238,7 +238,17 @@ function assertValidSvg(source, file) {
       !Number.isFinite(Number(rootAttributes.height)) || Number(rootAttributes.height) <= 0) {
     throw new Error(`Invalid SVG dimensions in ${file}`);
   }
-  if (/\b(?:href|xlink:href)\s*=|\burl\s*\(/i.test(source)) throw new Error(`SVG must not reference external assets: ${file}`);
+  if (/\b(?:href|xlink:href)\s*=/i.test(source)) throw new Error(`SVG must not reference external assets: ${file}`);
+  const urlReferences = [...source.matchAll(/\burl\s*\(([^)]*)\)/gi)];
+  if ((source.match(/\burl\s*\(/gi) || []).length !== urlReferences.length) {
+    throw new Error(`Invalid SVG URL reference in ${file}`);
+  }
+  for (const match of urlReferences) {
+    const rawTarget = match[1].trim();
+    const quotedTarget = /^(["'])(.*)\1$/.exec(rawTarget);
+    const target = quotedTarget ? quotedTarget[2] : rawTarget;
+    if (!/^#[A-Za-z_][\w:.-]*$/.test(target)) throw new Error(`SVG must not reference external assets: ${file}`);
+  }
 }
 
 function assertPng(buffer, expectedSize, file) {
@@ -253,6 +263,7 @@ function assertPng(buffer, expectedSize, file) {
   if (width !== expectedSize || height !== expectedSize) {
     throw new Error(`PNG icon ${file} must be ${expectedSize}x${expectedSize}, got ${width}x${height}`);
   }
+  if (buffer[25] !== 6) throw new Error(`PNG icon ${file} must preserve RGBA transparency`);
 }
 
 const remoteScriptTag = /<script\b[^>]*\bsrc\s*=\s*["']?\s*(?:(?:https?:)?\/\/)[^"'\s>]+/i;

@@ -1,6 +1,10 @@
-# Badminton Vision
+<p align="center">
+  <img src="design-system/assets/logo-mark.svg" width="72" height="72" alt="Badminton Vision mark">
+</p>
 
-**A local-first, confidence-aware badminton rally review overlay for YouTube.**
+<h1 align="center">Badminton Vision</h1>
+
+<p align="center"><strong>A local-first, confidence-aware badminton rally review overlay for YouTube.</strong></p>
 
 ## What it does
 
