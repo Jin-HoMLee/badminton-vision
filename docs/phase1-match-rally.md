@@ -67,18 +67,44 @@ motion of a real rally still reads as sustained motion.
 
 ## Acceptance
 
-The behavioral regression gate is `tests/phase1-rally-state.test.mjs`: it
-derives a deterministic frame-evidence stream from the committed corpus
+The pure state-machine regression gate is `tests/phase1-rally-state.test.mjs`:
+it derives a deterministic frame-evidence stream from the committed corpus
 (`rallyActive`, `courtView`, `sceneChanges`, with the scene-change shot labels
 used to reconstruct which view shows the rally) and replays it through both
-machines, reporting recall/precision/p90 boundary error/merge-split per
-broadcast and asserting zero `MATCH DETECTED` on the basketball negative.
+machines. It reports recall/precision/p90 boundary error/merge-split per
+broadcast and asserts zero `MATCH DETECTED` on the basketball negative.
 
-Committed targets, judged on the worst broadcast: recall `>= 0.90`, precision
-`>= 0.85`, p90 start error `<= 2.0 s`, p90 end error `<= 3.0 s`, merge/split
-`< 10%`, and zero `MATCH DETECTED` on the basketball negative. Focused unit
-coverage for the hysteresis windows, gating, back-dating, and estimated/
-suggested markers lives in `analysis/test/match-rally-state.test.js`.
+The end-to-end offscreen gate is `test/phase1-rally-e2e.test.js`. It feeds the
+same corpus projection through the real `LocalPoseShuttleAnalyzer` composition,
+protocol result envelope, offscreen motion calculation, match gate, and rally
+machine. Deterministic pose/shuttle/racket seams stand in for detector output;
+the test does not read, store, or persist media. It covers the three badminton
+sources, the fixed-camera no-rally control, and the basketball negative. It
+also asserts estimated/suggested output markers, unknown winner/outcome fields,
+duplicate-timestamp dropping, session reset/end stability, and no playback
+property mutation.
+
+Run the reproducible proof with:
+
+```sh
+node --test test/phase1-rally-e2e.test.js tests/phase1-rally-state.test.mjs
+```
+
+The current deterministic output is:
+
+| source | recall | precision | start p90 | end p90 | splits | merges |
+|---|---:|---:|---:|---:|---:|---:|
+| `bwf-ws-2026` | 0.973 | 1.000 | 1.66 s | 0.13 s | 0 | 0 |
+| `bwf-md-2026` | 0.972 | 1.000 | 1.20 s | 0.05 s | 0 | 0 |
+| `bwf-md-2018` | 0.973 | 1.000 | 1.33 s | 0.17 s | 0 | 0 |
+
+The fixed-camera control emits zero rallies. The basketball negative emits zero
+rallies and reaches `MATCH DETECTED` zero times. Committed targets, judged on
+the worst badminton broadcast: recall `>= 0.90`, precision `>= 0.85`, p90
+start error `<= 2.0 s`, p90 end error `<= 3.0 s`, merge/split `< 10%`, and zero
+`MATCH DETECTED` on the basketball negative. Focused unit coverage for the
+hysteresis windows, gating, back-dating, and estimated/suggested markers lives
+in `analysis/test/match-rally-state.test.js`.
 
 ## Honest limits
 
@@ -89,3 +115,9 @@ suggested markers lives in `analysis/test/match-rally-state.test.js`.
   within their tolerances on the committed corpus.
 - No court-view opinion is formed. Doubles and very short rallies remain
   weak/unsupported cases; nothing here implies a confirmed count.
+- Evidence gap: the committed corpus is metadata-only and contains no video or
+  detector outputs. The end-to-end gate proves the local extension composition
+  and temporal contract against deterministic corpus-derived evidence; it does
+  not prove real pose/shuttle/racket detector recall on source media. A real-CV
+  quality claim requires separately authorized media and labels and is outside
+  this proof.
